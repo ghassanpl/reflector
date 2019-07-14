@@ -2,7 +2,7 @@
 
 ## Example
 
-See the [example in the wiki](/ghassanpl/reflector/wiki/Example).
+See the [example in the wiki](https://github.com/ghassanpl/reflector/wiki/Example).
 
 ## Dependencies
 
