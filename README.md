@@ -4,9 +4,7 @@
 
 * C++17 (C++20 even)
 * [nlohmann/json](https://github.com/nlohmann/json/)
-* [fmtlib](https://github.com/fmtlib/fmt)
 * [args](https://github.com/Taywee/args)
-* [magic_enum](https://github.com/Neargye/magic_enum)
 * my personal [baselib](https://github.com/ghassanpl/baselib)
 
 ## Usage

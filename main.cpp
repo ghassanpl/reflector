@@ -4,10 +4,7 @@
 #include <vector>
 #include <charconv>
 #include <fstream>
-#include <fmt/format.h>
-#include <fmt/ostream.h>
 #include <nlohmann/json.hpp>
-#include <magic_enum.hpp>
 #include <args.hxx>
 #include "../../baselib/Include/ASCII.h"
 #include "../../baselib/Include/Strings.h"
@@ -16,6 +13,8 @@
 using nlohmann::json;
 
 enum class AccessMode { Unspecified, Public, Private, Protected };
+
+static constexpr const char* AMStrings[] = { "Unspecified", "Public", "Private", "Protected" };
 
 struct Declaration
 {
@@ -33,7 +32,7 @@ struct Declaration
 		result["Name"] = Name;
 		result["DeclarationLine"] = DeclarationLine;
 		if (Access != AccessMode::Unspecified)
-			result["Access"] = magic_enum::enum_name(Access);
+			result["Access"] = AMStrings[(int)Access];
 		if (!Comments.empty())
 			result["Comments"] = Comments;
 		return result;
@@ -227,7 +226,7 @@ using baselib::string_view;
 string_view Expect(string_view str, string_view value)
 {
 	if (!str.starts_with(value))
-		throw std::exception(fmt::format("Expected `{}`", value).c_str());
+		throw std::exception(baselib::Stringify("Expected `", value, "`").c_str());
 	str.remove_prefix(value.size());
 	return TrimWhitespace(str);
 }
@@ -263,7 +262,9 @@ inline std::string OnlyType(std::string str)
 template <typename... ARGS>
 void ReportError(std::filesystem::path path, size_t line_num, ARGS&&... args)
 {
-	fmt::print("[ERROR] in file {} at line {}: {}", path.string(), line_num);
+	std::cerr << "[ERROR] in file "<< path << " at line " << line_num;
+	((std::cerr << std::forward<ARGS>(args)), ...);
+	std::cerr << "\n";
 }
 
 json ParsePropertyList(string_view line)
@@ -556,7 +557,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 	path = path.lexically_normal();
 
 	if (!options.Quiet)
-		fmt::print("Analyzing file {}\n", path.string());
+		std::cout << "Analyzing file " << path << "\n";
 
 	std::vector<std::string> lines;
 	std::string line;
@@ -602,14 +603,14 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 			}
 			if (options.Verbose)
 			{
-				fmt::print("Found class {}\n", mirror.Classes.back().Name);
+				std::cout << "Found class " << mirror.Classes.back().Name << "\n";
 			}
 		}
 		else if (line.starts_with(options.FieldPrefix))
 		{
 			if (mirror.Classes.size() == 0)
 			{
-				ReportError(path, line_num + 1, "Field not in class");
+				ReportError(path, line_num + 1, options.FieldPrefix, "() not in class");
 				return false;
 			}
 
@@ -628,7 +629,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 		{
 			if (mirror.Classes.size() == 0)
 			{
-				ReportError(path, line_num + 1, "Method not in class");
+				ReportError(path, line_num + 1, options.MethodPrefix, "() not in class");
 				return false;
 			}
 
@@ -647,7 +648,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 		{
 			if (mirror.Classes.size() == 0)
 			{
-				ReportError(path, line_num + 1, "", options.MacroPrefix, "Body() not in class");
+				ReportError(path, line_num + 1, options.BodyPrefix, "() not in class");
 				return false;
 			}
 
@@ -716,7 +717,6 @@ struct FileWriter
 	void WriteLine(ARGS&& ... args)
 	{
 		mOutFile << std::string(CurrentIndent, '\t');
-		//fmt::print(mOutFile, std::forward<T>(format), );
 		((mOutFile << std::forward<ARGS>(args)), ...);
 		if (InDefine)
 			mOutFile << " \\";
@@ -1130,7 +1130,7 @@ int main(int argc, const char* argv[])
 				final_files.push_back(std::move(path));
 		}
 
-		fmt::print("{} reflectable files found\n", final_files.size());
+		std::cout << final_files.size() << " reflectable files found\n";
 
 		/// Create all classes
 		for (auto& file : final_files)
@@ -1155,7 +1155,7 @@ int main(int argc, const char* argv[])
 			modified_files++;
 
 			if (!options.Quiet)
-				fmt::print("Building class file {}\n", file_path);
+				std::cout << "Building class file " << file_path << "\n";
 
 			FileWriter f(file_path);
 			f.WriteLine(TIMESTAMP_TEXT, file_change_time);
@@ -1238,12 +1238,12 @@ int main(int argc, const char* argv[])
 			}
 
 			if (!options.Quiet)
-				fmt::print("{} mirror files changed\n", modified_files);
+				std::cout << modified_files << " mirror files changed\n";
 		}
 		else
 		{
 			if (!options.Quiet)
-				fmt::print("No mirror files changed\n");
+				std::cout << "No mirror files changed\n";
 		}
 
 	}
