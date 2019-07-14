@@ -1,132 +1,50 @@
 #pragma once
-#include <nlohmann/json.hpp>
 #include "Component.mirror.h"
 
 namespace Ass
 {
-	class Object;
-
-	struct Point { float x = 0, y = 0; };
-
-	/// The base class for all Components
+	/// Classes are declared like this. Right now they have to derive (at some point) from Reflector::Reflectable.
+	/// Support for "structs", reflected classes with no bases, is coming.
 	RClass({"Category": "Components", "Icon": "ICON_FA_CUBE"})
 	class Component : public Reflector::Reflectable
 	{
+		/// Classes need to have this macro at the beginning. It automatically sets the following members to `public:`.
 		RBody()
 
-		/// The name of this component, must be unique within the owning Object
+		/// Fields are declared like this. All reflected entities can have properties. These can be queried at runtime. Compile-time property queries
+		/// would also be possible, but are not available right now. Properties are stored as JSON strings, and, if nlohmann/json is included, as nlohmann::json values.
+		/// Some properties modify the behavior of the Reflector, e.g. generate getters/setters.
 		RField({"ReadOnly": true, "Required": true, "Setter": false})
 		std::string Name;
 
-		/// Sets the name of this component; it must be unique within the owning Object
+		/// Methods are declared like this. They have to have trailing return types at the moment. This will change in the future, at least
+		/// for simple types.
 		RMethod()
-		auto SetName(std::string_view name) -> void {}
+		auto SetName(std::string_view name) -> void;
 
-		///************************************************************************/
-		/// Object passthrough methods
-		///************************************************************************/
-
-		/// Gets the position of the owning Object
+		/// Methods can be virtual, and can have inline bodies. Right now there is support for generating "binding" methods (for scripting languages
+		/// like Lua, etc.) - static functions with a common signature that call the reflected method.
 		RMethod()
-		auto GetPosition() -> Point { return {}; }
-
-		/// Sets the position of the owning Object
-		RMethod()
-		auto SetPosition(Point pos) -> void {}
-
-		/// Gets the scale of the owning Object
-		RMethod()
-		auto GetScale() -> Point { return {}; }
-
-		/// Sets the scale of the owning Object
-		RMethod()
-		auto SetScale(Point scale) -> void {}
-
-		/// Gets the rotation of the owning Object
-		RMethod()
-		auto GetRotation() -> float { return {}; }
-
-		/// Sets the rotation of the owning Object
-		RMethod()
-		auto SetRotation(float rot) -> void {}
-
-		/// Gets the local transform of the owning Object
-		RMethod()
-		auto GetLocalTransform() -> float { return {}; }
-
-		/// Gets the global transform of the owning Object
-		RMethod()
-		auto GetGlobalTransform() -> float { return {}; }
-
-		/// Checks whether a component of the given name exists in the owning Object
-		RMethod()
-		auto ComponentNameExists(std::string_view name) -> bool { return {}; }
-
-		/// Returns the component of the owning Object with the given name, or null otherwise
-		RMethod()
-		auto GetComponentByName(std::string_view name) -> Component* { return {}; }
-
-		///************************************************************************/
-		/// Events
-		///************************************************************************/
-
-		/// Calls the method with the given name in this Component
-		RMethod()
-		auto CallEvent(std::string_view event_name) -> void {}
-
-		///************************************************************************/
-		/// Game Events
-		///************************************************************************/
-
-		RMethod()
-		auto OnInstantiate() -> void { Instantiate(); }
-
-		/// Called when the owning Object requests a resource load of this Component.
-		/// By default it's equivalent to LoadAsync()
-		RMethod()
-		auto OnLoadRequested() -> void { }
+		virtual auto OnLoadRequested() -> void
+		{
+			LoadResources();
+		}
 		
-		/// Called when the owning Object requests a resource unload of this Component.
-		/// By default it just unloads the component resources.
-		RMethod()
-		auto OnUnloadRequested() -> void { UnloadResources(); }
-
-		/// Asynchronously loads the resources of this component. The exact behavior depends on the
-		/// type of component.
-		RMethod()
-		auto LoadAsync() -> void { }
-
-		/// Asynchronously loads the resources of this component, giving these loads priority. The exact behavior depends on the
-		/// type of component.
-		RMethod()
-		auto LoadAsyncWithPriority() -> void { }
-
-		/// Synchronously loads the resources of this component. The exact behavior depends on the
-		/// type of component.
-		RMethod()
-		auto LoadSync() -> void {}
-
-		virtual auto DrawDebug() -> void {}
-
 	protected:
 
 		virtual void LoadResources() {}
-		virtual void UnloadResources() {}
-
+		
 		virtual void Instantiate() {}
 
-		friend class Object;
-
-		/// The parent owning Object of this component
+		/// Fields and methods can be of any access level. Comments that start with '///' like this one will be included
+		/// in the reflection data.
 		RField({"ParentPointer": true})
-		Object* mParentObject = nullptr;
+		class Object* mParentObject = nullptr;
 	};
 
-	RClass()
-	struct Meh
-	{
-	};
-
+	/// Enums can also be reflected.
+	/// Right now, only enum classes are supported.
+	/// Enumerators can have initializers, but only integer literal initializers are supported right now.
 	REnum()
 	enum class TestEnum
 	{
