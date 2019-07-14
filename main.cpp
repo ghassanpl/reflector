@@ -16,14 +16,14 @@
 
 using nlohmann::json;
 
-enum class AccessMode { Public, Private, Protected };
+enum class AccessMode { Unspecified, Public, Private, Protected };
 
 struct Declaration
 {
 	json Properties = json::object();
 	std::string Name;
 	size_t DeclarationLine = 0;
-	AccessMode Access = AccessMode::Private;
+	AccessMode Access = AccessMode::Unspecified;
 	std::vector<std::string> Comments;
 
 	json ToJSON() const
@@ -33,7 +33,8 @@ struct Declaration
 			result["Properties"] = Properties;
 		result["Name"] = Name;
 		result["DeclarationLine"] = DeclarationLine;
-		result["Access"] = magic_enum::enum_name(Access);
+		if (Access != AccessMode::Unspecified)
+			result["Access"] = magic_enum::enum_name(Access);
 		if (!Comments.empty())
 			result["Comments"] = Comments;
 		return result;
@@ -59,7 +60,8 @@ struct Field : public Declaration
 		result["Type"] = Type;
 		if (!InitializingExpression.empty())
 			result["InitializingExpression"] = InitializingExpression;
-		result["DisplayName"] = DisplayName;
+		if (DisplayName != Name)
+			result["DisplayName"] = DisplayName;
 		#define ADDFLAG(n) if (Flags.IsSet(CommonFlags::n)) result[#n] = true
 		ADDFLAG(NoGetter);
 		ADDFLAG(NoSetter);
@@ -134,22 +136,29 @@ struct Class : public Declaration
 	json ToJSON() const
 	{
 		auto result = Declaration::ToJSON();
-		result["ParentClass"] = ParentClass;
+		if (!ParentClass.empty())
+			result["ParentClass"] = ParentClass;
 
 		if (Flags.IsSet(ClassFlags::Struct))
 			result["Struct"] = true;
 		if (Flags.IsSet(ClassFlags::NoConstructors))
 			result["NoConstructors"] = true;
 
-		auto& fields = result["Fields"] = json::object();
-		for (auto& field : Fields)
+		if (!Fields.empty())
 		{
-			fields[field.Name] = field.ToJSON();
+			auto& fields = result["Fields"] = json::object();
+			for (auto& field : Fields)
+			{
+				fields[field.Name] = field.ToJSON();
+			}
 		}
-		auto& methods = result["Methods"] = json::object();
-		for (auto& method : Methods)
+		if (!Methods.empty())
 		{
-			methods[method.Name] = method.ToJSON();
+			auto& methods = result["Methods"] = json::object();
+			for (auto& method : Methods)
+			{
+				methods[method.Name] = method.ToJSON();
+			}
 		}
 
 		result["BodyLine"] = BodyLine;
@@ -572,7 +581,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 	FileMirror mirror;
 	mirror.SourceFilePath = std::filesystem::absolute(path);
 
-	AccessMode current_access = AccessMode::Private;
+	AccessMode current_access = AccessMode::Unspecified;
 
 	std::vector<std::string> comments;
 
