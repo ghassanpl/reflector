@@ -1,0 +1,5 @@
+old/
+x64/
+.vs/
+*.user
+*.pdb
