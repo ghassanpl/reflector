@@ -1,5 +1,13 @@
 # reflector
 
+## What is it?
+
+TODO
+
+## How to use
+
+TODO
+
 ## Example
 
 See the [example in the wiki](https://github.com/ghassanpl/reflector/wiki/Example).
@@ -11,7 +19,7 @@ See the [example in the wiki](https://github.com/ghassanpl/reflector/wiki/Exampl
 * [args](https://github.com/Taywee/args)
 * my personal [baselib](https://github.com/ghassanpl/baselib)
 
-## Usage
+## Command line
 
 	Reflector.exe files... {OPTIONS}
 	OPTIONS:
