@@ -1,6 +1,8 @@
 #pragma once
 
 #include <typeindex>
+#include <vector>
+#include <string_view>
 
 namespace Reflector
 {
@@ -9,15 +11,50 @@ namespace Reflector
 
 	};
 
+
+	struct ClassReflectionData;
+	struct FieldReflectionData;
+	struct MethodReflectionData;
+
 	struct ClassReflectionData
 	{
-		const char* ClassName;
-		const char* ParentClassName;
-		const char* Parameters;
+		std::string_view ClassName;
+		std::string_view ParentClassName;
+		std::string_view Properties = "{}";
 #ifdef NLOHMANN_JSON_VERSION_MAJOR
-		nlohmann::json ParametersJSON;
+		nlohmann::json PropertiesJSON;
 #endif
+		void* (*Constructor)(const ::Reflector::ClassReflectionData&) = {};
+
+		/// These are vectors and not e.g. initializer_list's because you might want to create your own classes
+		std::vector<FieldReflectionData> Fields; 
+		std::vector<MethodReflectionData> Methods;
+
 		std::type_index TypeIndex;
+	};
+
+	struct FieldReflectionData
+	{
+		std::string_view FieldName;
+		std::string_view FieldType;
+		std::string_view Initializer;
+		std::string_view Properties = "{}";
+#ifdef NLOHMANN_JSON_VERSION_MAJOR
+		nlohmann::json PropertiesJSON;
+#endif
+		std::type_index FieldTypeIndex;
+	};
+
+	struct MethodReflectionData
+	{
+		std::string_view MethodName;
+		std::string_view ReturnType;
+		std::string_view Parameters;
+		std::string_view Properties = "{}";
+#ifdef NLOHMANN_JSON_VERSION_MAJOR
+		nlohmann::json PropertiesJSON;
+#endif
+		std::type_index ReturnTypeIndex;
 	};
 
 	struct Reflectable
@@ -27,15 +64,22 @@ namespace Reflector
 			static const ClassReflectionData data = { 
 				.ClassName = "Reflectable",
 				.ParentClassName = "",
-				.Parameters = "",
+				.Properties = "",
 #ifdef NLOHMANN_JSON_VERSION_MAJOR
-				.ParametersJSON = ::nlohmann::json::object(),
+				.PropertiesJSON = ::nlohmann::json::object(),
 #endif
 				.TypeIndex = typeid(Reflectable)
 			}; 
 			return data;
 		}
 
+		Reflectable() noexcept = default;
+		Reflectable(::Reflector::ClassReflectionData const& klass) noexcept : mClass(&klass) {}
+
 		virtual ~Reflectable() = default;
+
+	protected:
+
+		ClassReflectionData const* mClass = nullptr;
 	};
 }

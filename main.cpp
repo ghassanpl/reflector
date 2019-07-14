@@ -20,7 +20,7 @@ enum class AccessMode { Public, Private, Protected };
 
 struct Declaration
 {
-	json Parameters = json::object();
+	json Properties = json::object();
 	std::string Name;
 	size_t DeclarationLine = 0;
 	AccessMode Access = AccessMode::Private;
@@ -29,8 +29,8 @@ struct Declaration
 	json ToJSON() const
 	{
 		json result = json::object();
-		if (!Parameters.empty())
-			result["Parameters"] = Parameters;
+		if (!Properties.empty())
+			result["Properties"] = Properties;
 		result["Name"] = Name;
 		result["DeclarationLine"] = DeclarationLine;
 		result["Access"] = magic_enum::enum_name(Access);
@@ -86,7 +86,7 @@ struct Method : public Declaration
 {
 	std::string Type;
 	baselib::EnumFlags<MethodFlags> Flags;
-	std::string Arguments;
+	std::string Parameters;
 	std::string Body;
 	size_t SourceFieldDeclarationLine = 0;
 
@@ -94,7 +94,7 @@ struct Method : public Declaration
 	{
 		json result = Declaration::ToJSON();
 		result["Type"] = Type;
-		result["Arguments"] = Arguments;
+		result["Parameters"] = Parameters;
 		if (!Body.empty())
 			result["Body"] = Body;
 		if (SourceFieldDeclarationLine != 0)
@@ -258,7 +258,7 @@ void ReportError(std::filesystem::path path, size_t line_num, ARGS&&... args)
 	fmt::print("[ERROR] in file {} at line {}: {}", path.string(), line_num);
 }
 
-json ParseParameterList(string_view line)
+json ParsePropertyList(string_view line)
 {
 	line = TrimWhitespace(line);
 	line = Expect(line, "(");
@@ -284,7 +284,7 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 
 	auto line = TrimWhitespace(lines[line_num]);
 	line.remove_prefix(options.EnumPrefix.size());
-	henum.Parameters = ParseParameterList(line);
+	henum.Properties = ParsePropertyList(line);
 
 	line_num++;
 	auto header_line = TrimWhitespace(lines[line_num]);
@@ -418,7 +418,7 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 	Field field;
 	line.remove_prefix(options.FieldPrefix.size());
 	field.Access = mode;
-	field.Parameters = ParseParameterList(line);
+	field.Properties = ParsePropertyList(line);
 	field.DeclarationLine = line_num;
 	field.Comments = std::move(comments);
 	auto decl = ParseFieldDecl(next_line);
@@ -428,24 +428,24 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 	else
 		field.DisplayName = field.Name;
 
-	//field.Parameters["#Type"] = field.Type;
-	//field.Parameters["#Name"] = field.DisplayName;
-	//field.Parameters["#Initializer"] = field.InitializingExpression;
+	//field.Properties["#Type"] = field.Type;
+	//field.Properties["#Name"] = field.DisplayName;
+	//field.Properties["#Initializer"] = field.InitializingExpression;
 
 	/// Disable if explictly stated
-	if (field.Parameters.value("Getter", true) == false)
+	if (field.Properties.value("Getter", true) == false)
 		field.Flags.Set(Field::CommonFlags::NoGetter);
-	if (field.Parameters.value("Setter", true) == false)
+	if (field.Properties.value("Setter", true) == false)
 		field.Flags.Set(Field::CommonFlags::NoSetter);
-	if (field.Parameters.value("Editor", true) == false || field.Parameters.value("Edit", true) == false)
+	if (field.Properties.value("Editor", true) == false || field.Properties.value("Edit", true) == false)
 		field.Flags.Set(Field::CommonFlags::NoEdit);
 
 	/// Private implies Getter = false, Setter = false, Editor = false
-	if (field.Parameters.value("Private", false))
+	if (field.Properties.value("Private", false))
 		field.Flags.Set(Field::CommonFlags::NoEdit, Field::CommonFlags::NoSetter, Field::CommonFlags::NoGetter);
 
 	/// ParentPointer implies Editor = false, Setter = false
-	if (field.Parameters.value("ParentPointer", false))
+	if (field.Properties.value("ParentPointer", false))
 		field.Flags.Set(Field::CommonFlags::NoEdit, Field::CommonFlags::NoSetter);
 
 	/// ChildVector implies Setter = false
@@ -454,11 +454,11 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 		field.Flags.Set(Field::CommonFlags::NoSetter);
 
 	/// Enable if explictly stated
-	if (field.Parameters.value("Getter", false) == true)
+	if (field.Properties.value("Getter", false) == true)
 		field.Flags.Unset(Field::CommonFlags::NoGetter);
-	if (field.Parameters.value("Setter", false) == true)
+	if (field.Properties.value("Setter", false) == true)
 		field.Flags.Unset(Field::CommonFlags::NoSetter);
-	if (field.Parameters.value("Editor", false) == true || field.Parameters.value("Edit", false) == true)
+	if (field.Properties.value("Editor", false) == true || field.Properties.value("Edit", false) == true)
 		field.Flags.Unset(Field::CommonFlags::NoEdit);
 
 	if (!klass.Flags.IsSet(ClassFlags::Struct))
@@ -496,7 +496,7 @@ void ParseMethodDecl(string_view line, Method& method)
 			num_pars--;
 		line.remove_prefix(1);
 	} while (num_pars);
-	method.Arguments = string_view{ start_args + 1, line.begin() - 1 };
+	method.Parameters = string_view{ start_args + 1, line.begin() - 1 };
 
 	line = TrimWhitespace(line);
 
@@ -518,13 +518,13 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	Method method;
 	line.remove_prefix(options.MethodPrefix.size());
 	method.Access = mode;
-	method.Parameters = ParseParameterList(line);
+	method.Properties = ParsePropertyList(line);
 	method.DeclarationLine = line_num;
 	ParseMethodDecl(next_line, method);
 
-	//method.Parameters["#Type"] = method.Type;
-	//method.Parameters["#Name"] = method.Name;
-	//method.Parameters["#Arguments"] = method.Arguments;
+	//method.Properties["#Type"] = method.Type;
+	//method.Properties["#Name"] = method.Name;
+	//method.Properties["#Parameters"] = method.Parameters;
 
 	method.Comments = std::move(comments);
 
@@ -535,7 +535,7 @@ Class ParseClassDecl(string_view line, string_view next_line, size_t line_num, s
 {
 	Class klass;
 	line.remove_prefix(options.ClassPrefix.size());
-	klass.Parameters = ParseParameterList(line);
+	klass.Properties = ParsePropertyList(line);
 	klass.DeclarationLine = line_num;
 	auto header = ParseClassDecl(next_line);
 	klass.Name = header.first;
@@ -544,11 +544,11 @@ Class ParseClassDecl(string_view line, string_view next_line, size_t line_num, s
 	if (klass.ParentClass.empty())
 		klass.Flags += ClassFlags::Struct;
 
-	if (klass.Flags.IsSet(ClassFlags::Struct) || klass.Parameters.value("Abstract", false) == true)
+	if (klass.Flags.IsSet(ClassFlags::Struct) || klass.Properties.value("Abstract", false) == true || klass.Properties.value("Singleton", false) == true)
 		klass.Flags += ClassFlags::NoConstructors;
 
-	//klass.Parameters["#Name"] = header.first;
-	//klass.Parameters["#Parent"] = OnlyType(header.second);
+	//klass.Properties["#Name"] = header.first;
+	//klass.Properties["#Parent"] = OnlyType(header.second);
 
 	return klass;
 }
@@ -798,7 +798,7 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 	output.StartDefine("#define ", options.MacroPrefix, "_VISIT_", klass.Name, "_FIELDS(", options.MacroPrefix, "_VISITOR)");
 	for (auto& field : klass.Fields)
 	{
-		output.WriteLine("", options.MacroPrefix, "_VISITOR(\"", field.DisplayName, "\", &", klass.Name, "::", field.Name, ", &", klass.Name, "::GetFieldParameters_", field.DisplayName, ", ",
+		output.WriteLine("", options.MacroPrefix, "_VISITOR(\"", field.DisplayName, "\", &", klass.Name, "::", field.Name, ", &", klass.Name, "::GetFieldReflectionData_", field.DisplayName, ", ",
 			(field.Flags.IsSet(Field::CommonFlags::NoEdit) ? "std::false_type{}" : "std::true_type{}"),
 			");");
 	}
@@ -831,22 +831,76 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 		/// Constructors
 		if (!klass.Flags.IsSet(ClassFlags::NoConstructors))
 		{
-			output.WriteLine(klass.Name, "() : ", klass.ParentClass, "(\"", klass.Name, "\") {}");
-			output.WriteLine(klass.Name, "(const ::", options.MacroPrefix, "::Framework::RClass* klass) : ", klass.ParentClass, "(klass) {}");
+			output.WriteLine(klass.Name, "() : ", klass.ParentClass, "(StaticGetReflectionData()) {}");
+			output.WriteLine(klass.Name, "(::Reflector::ClassReflectionData const& klass) : ", klass.ParentClass, "(klass) {}");
 		}
 	}
 
-	/// Methods:
-	
+	/// Reflection Data Method:
+
 	output.WriteLine("static ::Reflector::ClassReflectionData const& StaticGetReflectionData() {");
 	output.CurrentIndent++;
 	output.WriteLine("static const ::Reflector::ClassReflectionData _data = {");
 	output.CurrentIndent++;
 	output.WriteLine(".ClassName = \"", klass.Name, "\",");
 	output.WriteLine(".ParentClassName = \"", OnlyType(klass.ParentClass), "\",");
-	output.WriteLine(".Parameters = R\"_REFLECT_(", klass.Parameters.dump(), ")_REFLECT_\",");
-	if (options.UseJSON)
-		output.WriteLine(".ParametersJSON = ::nlohmann::json::parse(R\"_REFLECT_(", klass.Parameters.dump(), ")_REFLECT_\"),");
+
+	if (!klass.Properties.empty())
+	{
+		output.WriteLine(".Properties = R\"_REFLECT_(", klass.Properties.dump(), ")_REFLECT_\",");
+		if (options.UseJSON)
+			output.WriteLine(".PropertiesJSON = ::nlohmann::json::parse(R\"_REFLECT_(", klass.Properties.dump(), ")_REFLECT_\"),");
+	}
+	if (!klass.Flags.IsSet(ClassFlags::NoConstructors))
+		output.WriteLine(".Constructor = +[](const ::Reflector::ClassReflectionData& klass){ return (void*)new self_type{klass}; },");
+
+	/// Fields
+	output.WriteLine(".Fields = {");
+	output.CurrentIndent++;
+	for (auto& field : klass.Fields)
+	{
+		output.WriteLine("::Reflector::FieldReflectionData {");
+		output.CurrentIndent++;
+		output.WriteLine(".FieldName = \"", field.Name, "\",");
+		output.WriteLine(".FieldType = \"", field.Type, "\",");
+		if (!field.Properties.empty())
+		{
+			output.WriteLine(".Properties = R\"_REFLECT_(", field.Properties.dump(), ")_REFLECT_\",");
+			if (options.UseJSON)
+				output.WriteLine(".PropertiesJSON = ::nlohmann::json::parse(R\"_REFLECT_(", field.Properties.dump(), ")_REFLECT_\"),");
+		}
+		output.WriteLine(".FieldTypeIndex = typeid(", field.Type, ")");
+		output.CurrentIndent--;
+		output.WriteLine("},");
+	}
+	output.CurrentIndent--;
+	output.WriteLine("},");
+
+	/// Methods
+	output.WriteLine(".Methods = {");
+	output.CurrentIndent++;
+	for (auto& method : klass.Methods)
+	{
+		output.WriteLine("::Reflector::MethodReflectionData {");
+		output.CurrentIndent++;
+		output.WriteLine(".MethodName = \"", method.Name, "\",");
+		output.WriteLine(".ReturnType = \"", method.Type, "\",");
+		if (!method.Parameters.empty())
+			output.WriteLine(".Parameters = \"", method.Parameters, "\",");
+		if (!method.Properties.empty())
+		{
+			output.WriteLine(".Properties = R\"_REFLECT_(", method.Properties.dump(), ")_REFLECT_\",");
+			if (options.UseJSON)
+				output.WriteLine(".PropertiesJSON = ::nlohmann::json::parse(R\"_REFLECT_(", method.Properties.dump(), ")_REFLECT_\"),");
+		}
+		output.WriteLine(".ReturnTypeIndex = typeid(", method.Type, ")");
+		output.CurrentIndent--;
+		output.WriteLine("},");
+	}
+	output.CurrentIndent--;
+	output.WriteLine("},");
+
+	/// Rest
 	output.WriteLine(".TypeIndex = typeid(self_type)");
 	output.CurrentIndent--;
 	output.WriteLine("}; return _data;");
@@ -875,38 +929,14 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	if (!BuildCommonClassEntry(output, mirror, klass, options))
 		return false;
 
-	/// - StaticGetConstructor
-	if (!klass.Parameters.value("Abstract", false) && !klass.Parameters.value("Singleton", false))
-	{
-		output.WriteLine("static std::function<void*(const ::Reflector::Class*)> StaticGetConstructor() noexcept {");
-		output.WriteLine("\treturn [](const ::Reflector::Class* klass){ return (void*)new self_type{klass}; };");
-		output.WriteLine("}");
-	}
-	else
-	{
-		output.WriteLine("static std::function<void*(const ::Reflector::Class*)> StaticGetConstructor() noexcept {");
-		output.WriteLine("\treturn {};");
-		output.WriteLine("}");
-	}
-
-	/// Field parameter getters
-	for (auto& field : klass.Fields)
-	{
-		output.WriteLine("static const char* GetFieldParameters_", field.DisplayName, "() noexcept {");
-		output.WriteJSON(field.Parameters);
-		output.WriteLine("}");
-		if (options.UseJSON)
-			output.WriteLine("static ::nlohmann::json const& GetFieldParametersJSON_", field.DisplayName, "() { static const auto _json = ::nlohmann::json::parse(GetFieldParameters_", field.DisplayName, "()); return _json; }");
-	}
-
 	for (auto& func : klass.Methods)
 	{
 		/// Callables for all methods
 		if (!func.Flags.IsSet(MethodFlags::NoCallable))
-			output.WriteLine("", options.MacroPrefix, "_CALLABLE((", func.Type, "), ", func.Name, ", (", func.Arguments, "))");
+			output.WriteLine("", options.MacroPrefix, "_CALLABLE((", func.Type, "), ", func.Name, ", (", func.Parameters, "))");
 		if (func.Flags.IsSet(MethodFlags::Artificial))
 		{
-			output.WriteLine(func.Type, " ", func.Name, "(", func.Arguments, ") { ", func.Body, " }");
+			output.WriteLine(func.Type, " ", func.Name, "(", func.Parameters, ") { ", func.Body, " }");
 		}
 	}
 
@@ -933,7 +963,7 @@ bool BuildStructEntry(FileWriter& output, const FileMirror& mirror, const Class&
 		output.WriteLine("sys->StartObject();");
 		for (auto& field : klass.Fields)
 		{
-			if (field.Parameters.value("Script", true) == false)
+			if (field.Properties.value("Script", true) == false)
 				continue;
 			output.WriteLine("sys->Push(this->", field.Name, ");");
 			output.WriteLine("sys->SetField(\"", field.Name, "\");");
@@ -947,7 +977,7 @@ bool BuildStructEntry(FileWriter& output, const FileMirror& mirror, const Class&
 		auto indent = output.Indent();
 		for (auto& field : klass.Fields)
 		{
-			if (field.Parameters.value("Script", true) == false)
+			if (field.Properties.value("Script", true) == false)
 				continue;
 			output.WriteLine("sys->GetField(index, \"", field.Name, "\");");
 			output.WriteLine("sys->GetAs(sys->GetTop(), this->", field.Name, ");");
@@ -959,11 +989,11 @@ bool BuildStructEntry(FileWriter& output, const FileMirror& mirror, const Class&
 	/// Field parameter getters
 	for (auto& field : klass.Fields)
 	{
-		output.WriteLine("static const char* GetFieldParameters_", field.DisplayName, "() noexcept {");
-		output.WriteJSON(field.Parameters);
+		output.WriteLine("static const char* GetFieldReflectionData_", field.DisplayName, "() noexcept {");
+		output.WriteJSON(field.Properties);
 		output.WriteLine("}");
 		if (options.UseJSON)
-			output.WriteLine("static ::nlohmann::json const& GetFieldParametersJSON_", field.DisplayName, "() { static const auto _json = ::nlohmann::json::parse(GetFieldParameters_", field.DisplayName, "()); return _json; }");
+			output.WriteLine("static ::nlohmann::json const& GetFieldPropertiesJSON_", field.DisplayName, "() { static const auto _json = ::nlohmann::json::parse(GetFieldProperties_", field.DisplayName, "()); return _json; }");
 	}
 
 	output.EndDefine("");
@@ -1021,11 +1051,11 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	}
 	output.WriteLine("}");
 
-	output.WriteLine("inline const char* GetEnumParameters(", henum.Name, ") {");
-	output.WriteJSON(henum.Parameters);
+	output.WriteLine("inline const char* GetEnumProperties(", henum.Name, ") {");
+	output.WriteJSON(henum.Properties);
 	output.WriteLine("}");
 	if (options.UseJSON)
-		output.WriteLine("inline ::nlohmann::json const& GetEnumParametersJSON(", henum.Name, ") { static const auto _json = ::nlohmann::json::parse(GetEnumParameters(", henum.Name, "{})); return _json; }");
+		output.WriteLine("inline ::nlohmann::json const& GetEnumPropertiesJSON(", henum.Name, ") { static const auto _json = ::nlohmann::json::parse(GetEnumProperties(", henum.Name, "{})); return _json; }");
 
 	output.WriteLine();
 
@@ -1046,7 +1076,7 @@ int main(int argc, const char* argv[])
 	args::Flag quiet{ parser, "quiet", "Don't print out created file names",{ 'q', "quiet" }, args::Options::Single };
 	args::Flag force{ parser, "force", "Ignore timestamps, regenerate all files", { 'f', "force" }, args::Options::Single };
 	args::Flag verbose{ parser, "verbose", "Print additional information",{ 'v', "verbose" }, args::Options::Single };
-	args::Flag use_json{ parser, "json", "Output code that uses nlohmann::json to store class parameters", { 'j', "json" }, args::Options::Single };
+	args::Flag use_json{ parser, "json", "Output code that uses nlohmann::json to store class properties", { 'j', "json" }, args::Options::Single };
 	args::PositionalList<std::filesystem::path> paths_list{ parser, "files", "Files or directories to scan", args::Options::Required };
 
 	try

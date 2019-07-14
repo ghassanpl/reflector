@@ -9,7 +9,7 @@ namespace Ass
 	struct Point { float x = 0, y = 0; };
 
 	/// The base class for all Components
-	RClass({"Category": "Components", "Abstract": true, "Icon": "ICON_FA_CUBE"})
+	RClass({"Category": "Components", "Icon": "ICON_FA_CUBE"})
 	class Component : public Reflector::Reflectable
 	{
 		RBody()
@@ -120,6 +120,19 @@ namespace Ass
 		/// The parent owning Object of this component
 		RField({"ParentPointer": true})
 		Object* mParentObject = nullptr;
+	};
+
+	RClass()
+	struct Meh
+	{
+	};
+
+	REnum()
+	enum class TestEnum
+	{
+		A = 5,
+		B,
+		C
 	};
 
 }
