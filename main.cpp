@@ -1090,6 +1090,7 @@ int main(int argc, const char* argv[])
 	args::Flag force{ parser, "force", "Ignore timestamps, regenerate all files", { 'f', "force" }, args::Options::Single };
 	args::Flag verbose{ parser, "verbose", "Print additional information",{ 'v', "verbose" }, args::Options::Single };
 	args::Flag use_json{ parser, "json", "Output code that uses nlohmann::json to store class properties", { 'j', "json" }, args::Options::Single };
+	args::Flag create_db{ parser, "db", "Create a JSON database with reflection data", { 'd', "database" }, args::Options::Single };
 	args::PositionalList<std::filesystem::path> paths_list{ parser, "files", "Files or directories to scan", args::Options::Required };
 
 	try
@@ -1198,7 +1199,6 @@ int main(int argc, const char* argv[])
 		{
 			/// Output JSON db
 			auto cwd = std::filesystem::current_path();
-			std::ofstream jsondb{ cwd / "ReflectDatabase.json", std::ios_base::openmode{ std::ios_base::trunc } };
 			std::ofstream classes_file(cwd / "Classes.reflect.h", std::ios_base::openmode{ std::ios_base::trunc });
 			std::ofstream includes_file(cwd / "Includes.reflect.h", std::ios_base::openmode{ std::ios_base::trunc });
 
@@ -1216,14 +1216,19 @@ int main(int argc, const char* argv[])
 				for (auto& henum : mirror.Enums)
 					classes_file << "ReflectEnum(" << henum.Name << ");" << std::endl;
 
-				db[mirror.SourceFilePath.string()] = mirror.ToJSON();
+				if (create_db)
+					db[mirror.SourceFilePath.string()] = mirror.ToJSON();
 			}
 
 			includes_file.close();
 			classes_file.close();
 
-			jsondb << db.dump(1, '\t');
-			jsondb.close();
+			if (create_db)
+			{
+				std::ofstream jsondb{ cwd / "ReflectDatabase.json", std::ios_base::openmode{ std::ios_base::trunc } };
+				jsondb << db.dump(1, '\t');
+				jsondb.close();
+			}
 
 			if (!std::filesystem::exists(cwd / "Reflector.h") || options.Force)
 			{
