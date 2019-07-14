@@ -3,3 +3,5 @@ x64/
 .vs/
 *.user
 *.pdb
+ReflectDatabase.json
+Reflector.h
