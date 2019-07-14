@@ -46,7 +46,6 @@ struct Field : public Declaration
 	{
 		NoGetter,
 		NoSetter,
-		NoSerialize,
 		NoEdit
 	};
 	baselib::EnumFlags<CommonFlags> Flags;
@@ -64,7 +63,6 @@ struct Field : public Declaration
 		#define ADDFLAG(n) if (Flags.IsSet(CommonFlags::n)) result[#n] = true
 		ADDFLAG(NoGetter);
 		ADDFLAG(NoSetter);
-		ADDFLAG(NoSerialize);
 		ADDFLAG(NoEdit);
 		#undef ADDFLAG
 		return result;
@@ -441,16 +439,14 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 		field.Flags.Set(Field::CommonFlags::NoSetter);
 	if (field.Parameters.value("Editor", true) == false || field.Parameters.value("Edit", true) == false)
 		field.Flags.Set(Field::CommonFlags::NoEdit);
-	if (field.Parameters.value("Serialize", true) == false)
-		field.Flags.Set(Field::CommonFlags::NoSerialize);
 
-	/// Private implies Serialize = false, Getter = false, Setter = false, Editor = false
+	/// Private implies Getter = false, Setter = false, Editor = false
 	if (field.Parameters.value("Private", false))
-		field.Flags.Set(Field::CommonFlags::NoSerialize, Field::CommonFlags::NoEdit, Field::CommonFlags::NoSetter, Field::CommonFlags::NoGetter);
+		field.Flags.Set(Field::CommonFlags::NoEdit, Field::CommonFlags::NoSetter, Field::CommonFlags::NoGetter);
 
-	/// ParentPointer implies Serialize = false, Editor = false, Setter = false
+	/// ParentPointer implies Editor = false, Setter = false
 	if (field.Parameters.value("ParentPointer", false))
-		field.Flags.Set(Field::CommonFlags::NoSerialize, Field::CommonFlags::NoEdit, Field::CommonFlags::NoSetter);
+		field.Flags.Set(Field::CommonFlags::NoEdit, Field::CommonFlags::NoSetter);
 
 	/// ChildVector implies Setter = false
 	auto type = string_view{ field.Type };
@@ -464,8 +460,6 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 		field.Flags.Unset(Field::CommonFlags::NoSetter);
 	if (field.Parameters.value("Editor", false) == true || field.Parameters.value("Edit", false) == true)
 		field.Flags.Unset(Field::CommonFlags::NoEdit);
-	if (field.Parameters.value("Serialize", false) == true)
-		field.Flags.Unset(Field::CommonFlags::NoSerialize);
 
 	if (!klass.Flags.IsSet(ClassFlags::Struct))
 	{
@@ -843,21 +837,25 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 	}
 
 	/// Methods:
-	/// - GetClassParameters
-	output.WriteLine("static const char* GetClassParameters() noexcept {");
-	output.WriteJSON(klass.Parameters);
-	output.WriteLine("}");
+	
+	output.WriteLine("static ::Reflector::ClassReflectionData const& StaticGetReflectionData() {");
+	output.CurrentIndent++;
+	output.WriteLine("static const ::Reflector::ClassReflectionData _data = {");
+	output.CurrentIndent++;
+	output.WriteLine(".ClassName = \"", klass.Name, "\",");
+	output.WriteLine(".ParentClassName = \"", OnlyType(klass.ParentClass), "\",");
+	output.WriteLine(".Parameters = R\"_REFLECT_(", klass.Parameters.dump(), ")_REFLECT_\",");
 	if (options.UseJSON)
-		output.WriteLine("static ::nlohmann::json const& GetClassParametersJSON() { static const auto _json = ::nlohmann::json::parse(GetClassParameters()); return _json; }");
-	/// - StaticGetClassName
-	output.WriteLine("static const char* StaticGetClassName() noexcept { return \"", klass.Name, "\"; }");
-	/// - StaticGetParentClassName
-	output.WriteLine("static const char* StaticGetParentClassName() noexcept { return \"", OnlyType(klass.ParentClass), "\"; }");
+		output.WriteLine(".ParametersJSON = ::nlohmann::json::parse(R\"_REFLECT_(", klass.Parameters.dump(), ")_REFLECT_\"),");
+	output.WriteLine(".TypeIndex = typeid(self_type)");
+	output.CurrentIndent--;
+	output.WriteLine("}; return _data;");
+	output.CurrentIndent--;
+	output.WriteLine("}");
 
 	if (!klass.ParentClass.empty())
 	{
-		output.WriteLine("virtual const char* GetClassName() const noexcept { return StaticGetClassName(); }");
-		output.WriteLine("virtual const char* GetParentClassName() const noexcept { return StaticGetParentClassName(); }");
+		output.WriteLine("virtual ::Reflector::ClassReflectionData const& GetReflectionData() const override { return StaticGetReflectionData(); }");
 	}
 
 	/// - StaticVisitMethods
@@ -890,60 +888,6 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		output.WriteLine("\treturn {};");
 		output.WriteLine("}");
 	}
-
-	/// - SerializeWrite
-	output.WriteLine("virtual void SerializeWrite(::Reflector::Serializer* ser) const override {");
-	{
-		auto indent = output.Indent();
-
-		if (!klass.ParentClass.empty())
-		{
-			output.WriteLine("parent_type::SerializeWrite(ser);");
-		}
-		for (auto& field : klass.Fields)
-		{
-			if (field.Flags.IsSet(Field::CommonFlags::NoSerialize))
-				continue;
-
-			if (field.Parameters.value("Serialize", "") == "Custom")
-				output.WriteLine("this->SerializeWrite_", field.DisplayName, "(ser)");
-			else
-				output.WriteLine("ser->WriteField(\"", field.DisplayName, "\", this->", field.Name, ");");
-		}
-	}
-	output.WriteLine("}");
-
-	/// - SerializeRead
-	output.WriteLine("virtual void SerializeRead(::Reflector::Serializer::ValueHandle handle) override {");
-	{
-		auto indent = output.Indent();
-
-		if (!klass.ParentClass.empty())
-			output.WriteLine("parent_type::SerializeRead(handle);");
-		for (auto& field : klass.Fields)
-		{
-			if (field.Flags.IsSet(Field::CommonFlags::NoSerialize))
-				continue;
-
-			bool required = field.Parameters.value("Required", false);
-			if (field.Parameters.value("Serialize", "") == "Custom")
-				output.WriteLine("this->SerializeRead_", field.DisplayName, "(handle);");
-			else
-				output.WriteLine("handle->ReadField(\"", field.DisplayName, "\", this->", field.Name, ", ", (required ? "true" : "false"), ");");
-		}
-
-		for (auto& field : klass.Fields)
-		{
-			auto type = string_view{ field.Type };
-			if (type.starts_with("ChildVector<"))
-			{
-				type = type.substr(strlen("ChildVector<"));
-				auto child_type = ConsumeUntil(type, '>');
-				output.WriteLine("for (auto& child: ", field.Name, ") child->SetParent(this);");
-			}
-		}
-	}
-	output.WriteLine("}");
 
 	/// Field parameter getters
 	for (auto& field : klass.Fields)
@@ -981,40 +925,6 @@ bool BuildStructEntry(FileWriter& output, const FileMirror& mirror, const Class&
 	output.WriteLine("static std::function<void*(const ::", options.MacroPrefix, "::Framework::RClass*)> StaticGetConstructor() noexcept {");
 	output.WriteLine("\treturn [](const ::", options.MacroPrefix, "::Framework::RClass* klass){ return (void*)new self_type; };");
 	output.WriteLine("}");
-
-	if (klass.Parameters.value("Serialize", true))
-	{
-		/// - SerializeWrite
-		output.WriteLine("void SerializeWrite(class ::", options.MacroPrefix, "::Framework::SerializationSystem* ser) const {");
-		for (auto& field : klass.Fields)
-		{
-			auto indent = output.Indent();
-			if (field.Flags.IsSet(Field::CommonFlags::NoSerialize))
-				continue;
-
-			if (field.Parameters.value("Serialize", "") == "Custom")
-				output.WriteLine("this->SerializeWrite_", field.DisplayName, "(ser);");
-			else
-				output.WriteLine("ser->WriteField(\"", field.DisplayName, "\", this->", field.Name, ");");
-		}
-		output.WriteLine("}");
-
-		/// - SerializeRead
-		output.WriteLine("void SerializeRead(::Reflector::Serializer::ValueHandle handle) {");
-		for (auto& field : klass.Fields)
-		{
-			auto indent = output.Indent();
-			if (field.Flags.IsSet(Field::CommonFlags::NoSerialize))
-				continue;
-
-			bool required = field.Parameters.value("Required", false);
-			if (field.Parameters.value("Serialize", "") == "Custom")
-				output.WriteLine("this->SerializeRead_", field.DisplayName, "(handle);");
-			else
-				output.WriteLine("handle->ReadField(\"", field.DisplayName, "\", this->", field.Name, ", ", (required ? "true" : "false"), ");");
-		}
-		output.WriteLine("}");
-	}
 
 	/// - Push
 	output.WriteLine("template <typename SS> void Push(SS* sys) const {");
