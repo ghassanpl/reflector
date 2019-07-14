@@ -288,7 +288,6 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 
 	line_num--;
 	henum.DeclarationLine = line_num + 1;
-	//Parse", options.MacroPrefix, "EnumDecl();
 
 	auto line = TrimWhitespace(lines[line_num]);
 	line.remove_prefix(options.EnumPrefix.size());
@@ -319,7 +318,6 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 		if (Consume(rest, '='))
 		{
 			rest = TrimWhitespace(rest);
-			//enumerator_value = ghlib::StringToLongLong(rest);
 			std::from_chars(rest.begin(), rest.end(), enumerator_value);
 			/// TODO: Non-integer enumerator values (like 1<<5 and constexpr function calls/expression)
 		}
@@ -436,10 +434,6 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 	else
 		field.DisplayName = field.Name;
 
-	//field.Properties["#Type"] = field.Type;
-	//field.Properties["#Name"] = field.DisplayName;
-	//field.Properties["#Initializer"] = field.InitializingExpression;
-
 	/// Disable if explictly stated
 	if (field.Properties.value("Getter", true) == false)
 		field.Flags.Set(Field::CommonFlags::NoGetter);
@@ -530,10 +524,6 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	method.DeclarationLine = line_num;
 	ParseMethodDecl(next_line, method);
 
-	//method.Properties["#Type"] = method.Type;
-	//method.Properties["#Name"] = method.Name;
-	//method.Properties["#Parameters"] = method.Parameters;
-
 	method.Comments = std::move(comments);
 
 	return method;
@@ -555,12 +545,10 @@ Class ParseClassDecl(string_view line, string_view next_line, size_t line_num, s
 	if (klass.Flags.IsSet(ClassFlags::Struct) || klass.Properties.value("Abstract", false) == true || klass.Properties.value("Singleton", false) == true)
 		klass.Flags += ClassFlags::NoConstructors;
 
-	//klass.Properties["#Name"] = header.first;
-	//klass.Properties["#Parent"] = OnlyType(header.second);
-
 	return klass;
 }
 
+uint64_t ChangeTime = 0;
 std::vector<FileMirror> Mirrors;
 
 bool ParseClassFile(std::filesystem::path path, Options const& options)
@@ -684,12 +672,11 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 }
 
 #define TIMESTAMP_TEXT "/// TIMESTAMP: "
-/*
+
 uint64_t FileNeedsUpdating(const std::filesystem::path& target_path, const std::filesystem::path& source_path, const Options& opts)
 {
-#define TIMESTAMP_TEXT "/// TIMESTAMP: "
 	auto stat = std::filesystem::status(target_path);
-	uint64_t file_change_time = std::max(hbs_change_time, (uint64_t)std::filesystem::last_write_time(source_path).time_since_epoch().count());
+	uint64_t file_change_time = std::max(ChangeTime, (uint64_t)std::filesystem::last_write_time(source_path).time_since_epoch().count());
 	if (stat.type() != std::filesystem::file_type::not_found)
 	{
 		/// Open file and get first line
@@ -697,14 +684,15 @@ uint64_t FileNeedsUpdating(const std::filesystem::path& target_path, const std::
 		std::string line;
 		std::getline(f, line);
 
-		auto stored_change_time = string_view{ line }.substr(sizeof(TIMESTAMP_TEXT) - 1).ToUInt();
-		if (!opts.Force && file_change_time == stored_change_time)
+		uint64_t stored_change_time = 0;
+		const auto time = string_view{ string_view{ line }.substr(sizeof(TIMESTAMP_TEXT) - 1) };
+		const auto result = std::from_chars(time.begin(), time.end(), stored_change_time);
+		if (!opts.Force && result.ec == std::errc{} && file_change_time == stored_change_time)
 			return 0;
 	}
 
 	return file_change_time;
 }
-*/
 
 struct FileWriter
 {
@@ -1076,6 +1064,9 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 
 int main(int argc, const char* argv[])
 {
+	/// If executable changed, it's newer than the files it created in the past, so they need to be rebuild
+	ChangeTime = std::filesystem::last_write_time(argv[0]).time_since_epoch().count();
+
 	args::ArgumentParser parser{ "Reflector Tool" };
 	parser.helpParams.addChoices = true;
 	parser.helpParams.addDefault = true;
@@ -1158,9 +1149,8 @@ int main(int argc, const char* argv[])
 			file_path.replace_extension(".mirror.h");
 
 			/// TOOD: Check if we actually need to update the file
-			uint64_t file_change_time = 0;
-			//auto file_change_time = FileNeedsUpdating(file_path, file.SourceFilePath, opts);
-			//if (file_change_time == 0) continue;
+			auto file_change_time = FileNeedsUpdating(file_path, file.SourceFilePath, options);
+			if (file_change_time == 0) continue;
 
 			modified_files++;
 
