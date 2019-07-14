@@ -796,9 +796,11 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 
 	/// Visitor macros
 	output.StartDefine("#define ", options.MacroPrefix, "_VISIT_", klass.Name, "_FIELDS(", options.MacroPrefix, "_VISITOR)");
-	for (auto& field : klass.Fields)
+	//for (auto& field : klass.Fields)
+	for (size_t i=0; i<klass.Fields.size(); i++)
 	{
-		output.WriteLine("", options.MacroPrefix, "_VISITOR(\"", field.DisplayName, "\", &", klass.Name, "::", field.Name, ", &", klass.Name, "::GetFieldReflectionData_", field.DisplayName, ", ",
+		const auto& field = klass.Fields[i];
+		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Fields[", i, "], &", klass.Name, "::", field.Name, ", ",
 			(field.Flags.IsSet(Field::CommonFlags::NoEdit) ? "std::false_type{}" : "std::true_type{}"),
 			");");
 	}
@@ -806,10 +808,11 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 
 	/// [Note] we are a struct, all methods are NoCallable
 	output.StartDefine("#define ", options.MacroPrefix, "_VISIT_", klass.Name, "_METHODS(", options.MacroPrefix, "_VISITOR)");
-	for (auto& method : klass.Methods)
+	for (size_t i = 0; i < klass.Methods.size(); i++)
 	{
+		const auto& method = klass.Methods[i];
 		if (!method.Flags.IsSet(MethodFlags::NoCallable))
-			output.WriteLine("", options.MacroPrefix, "_VISITOR(\"", method.Name, "\", &", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, ");");
+			output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], &", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, ");");
 	}
 	output.EndDefine("");
 
@@ -842,7 +845,7 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 	output.CurrentIndent++;
 	output.WriteLine("static const ::Reflector::ClassReflectionData _data = {");
 	output.CurrentIndent++;
-	output.WriteLine(".ClassName = \"", klass.Name, "\",");
+	output.WriteLine(".Name = \"", klass.Name, "\",");
 	output.WriteLine(".ParentClassName = \"", OnlyType(klass.ParentClass), "\",");
 
 	if (!klass.Properties.empty())
@@ -861,7 +864,7 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 	{
 		output.WriteLine("::Reflector::FieldReflectionData {");
 		output.CurrentIndent++;
-		output.WriteLine(".FieldName = \"", field.Name, "\",");
+		output.WriteLine(".Name = \"", field.Name, "\",");
 		output.WriteLine(".FieldType = \"", field.Type, "\",");
 		if (!field.Properties.empty())
 		{
@@ -883,7 +886,7 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 	{
 		output.WriteLine("::Reflector::MethodReflectionData {");
 		output.CurrentIndent++;
-		output.WriteLine(".MethodName = \"", method.Name, "\",");
+		output.WriteLine(".Name = \"", method.Name, "\",");
 		output.WriteLine(".ReturnType = \"", method.Type, "\",");
 		if (!method.Parameters.empty())
 			output.WriteLine(".Parameters = \"", method.Parameters, "\",");
@@ -893,7 +896,8 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 			if (options.UseJSON)
 				output.WriteLine(".PropertiesJSON = ::nlohmann::json::parse(R\"_REFLECT_(", method.Properties.dump(), ")_REFLECT_\"),");
 		}
-		output.WriteLine(".ReturnTypeIndex = typeid(", method.Type, ")");
+		output.WriteLine(".ReturnTypeIndex = typeid(", method.Type, "),");
+		output.WriteLine(".ParentClass = &_data");
 		output.CurrentIndent--;
 		output.WriteLine("},");
 	}
@@ -1009,8 +1013,40 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 
 	output.WriteLine("enum class ", henum.Name, ";"); /// forward decl;
 
-	output.WriteLine("inline const char* GetEnumName(", henum.Name, ") { return \"", henum.Name, "\"; }");
-	output.WriteLine("inline const char* GetEnumeratorName(", henum.Name, " v) {");
+
+	output.WriteLine("inline ::Reflector::EnumReflectionData const& StaticGetReflectionData(", henum.Name, ") {");
+	output.CurrentIndent++;
+	output.WriteLine("static const ::Reflector::EnumReflectionData _data = {");
+	output.CurrentIndent++;
+
+	output.WriteLine(".Name = \"", henum.Name, "\",");
+	if (!henum.Properties.empty())
+	{
+		output.WriteLine(".Properties = R\"_REFLECT_(", henum.Properties.dump(), ")_REFLECT_\",");
+		if (options.UseJSON)
+			output.WriteLine(".PropertiesJSON = ::nlohmann::json::parse(R\"_REFLECT_(", henum.Properties.dump(), ")_REFLECT_\"),");
+	}
+	output.WriteLine(".Enumerators = {");
+	output.CurrentIndent++;
+	for (auto& enumerator : henum.Enumerators)
+	{
+		output.WriteLine("::Reflector::EnumeratorReflectionData {");
+		output.CurrentIndent++;
+		output.WriteLine(".Name = \"", enumerator.Name, "\",");
+		output.WriteLine(".Value = ", enumerator.Value);
+		output.CurrentIndent--;
+		output.WriteLine("},");
+	}
+	output.CurrentIndent--;
+	output.WriteLine("},");
+	output.WriteLine(".TypeIndex = typeid(", henum.Name, ")");
+	output.CurrentIndent--;
+	output.WriteLine("}; return _data;");
+	output.CurrentIndent--;
+	output.WriteLine("}");
+
+	output.WriteLine("inline std::string_view GetEnumName(", henum.Name, ") { return \"", henum.Name, "\"; }");
+	output.WriteLine("inline std::string_view GetEnumeratorName(", henum.Name, " v) {");
 	{
 		auto indent = output.Indent();
 
@@ -1019,43 +1055,11 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 		{
 			output.WriteLine("case ", enumerator.Value, ": return \"", enumerator.Name, "\";");
 		}
-		output.WriteLine("default: return\"<Unknown>\";");
+		output.WriteLine("default: return \"<Unknown>\";");
 		output.WriteLine("}");
 	}
 	output.WriteLine("}");
-	output.WriteLine("inline ArrayView<std::pair<const char*, int64_t>> GetEnumerators(", henum.Name, ") {");
-	{
-		auto indent = output.Indent();
-		output.WriteLine("static const std::pair<const char*, int64_t> enumerators[] = {");
-		for (auto& enumerator : henum.Enumerators)
-		{
-			auto indent2 = output.Indent();
-			output.WriteLine("std::make_pair(\"", enumerator.Name, "\", int64_t(", enumerator.Value, ")),");
-		}
-		output.WriteLine("};");
-		output.WriteLine("return ArrayView<std::pair<const char*, int64_t>>{enumerators}; ");
-	}
-	output.WriteLine("}");
-
 	output.WriteLine("inline std::ostream& operator<<(std::ostream& strm, ", henum.Name, " v) { strm << GetEnumeratorName(v); return strm; }");
-	output.WriteLine("inline std::ostream& operator<<(std::ostream& strm, ghlib::EnumFlags<", henum.Name, "> v) {");
-	{
-		auto indent = output.Indent();
-		output.WriteLine("strm << \"{ \";");
-		for (auto& enumerator : henum.Enumerators)
-		{
-			output.WriteLine("if (v.IsSet((", henum.Name, ")", enumerator.Value, ")) strm << \"", enumerator.Name, ", \";");
-		}
-		output.WriteLine("strm << '}';");
-		output.WriteLine("return strm;");
-	}
-	output.WriteLine("}");
-
-	output.WriteLine("inline const char* GetEnumProperties(", henum.Name, ") {");
-	output.WriteJSON(henum.Properties);
-	output.WriteLine("}");
-	if (options.UseJSON)
-		output.WriteLine("inline ::nlohmann::json const& GetEnumPropertiesJSON(", henum.Name, ") { static const auto _json = ::nlohmann::json::parse(GetEnumProperties(", henum.Name, "{})); return _json; }");
 
 	output.WriteLine();
 
@@ -1238,46 +1242,7 @@ int main(int argc, const char* argv[])
 			if (!options.Quiet)
 				fmt::print("No mirror files changed\n");
 		}
-		/*
-		size_t files_changed = 0;
-		for (auto& builder : ReflectionBuilders)
-		{
-			builder->ModifiedFiles = 0;
-			builder->StartBuilding(options);
-			for (auto& mirror : Mirrors)
-			{
-				if (!builder->Build(mirror, options))
-					return;
-			}
-			files_changed += builder->ModifiedFiles;
-			builder->FinishBuilding(options);
-		}
 
-		if (files_changed)
-		{
-			auto cwd = fs::current_path();
-			std::ofstream classes_file(cwd / "Classes.hbs.h", std::ios_base::openmode{ std::ios_base::trunc });
-			std::ofstream includes_file(cwd / "Includes.hbs.h", std::ios_base::openmode{ std::ios_base::trunc });
-
-			for (auto& mirror : Mirrors)
-			{
-				includes_file << "#include " << mirror.SourceFilePath << "" << std::endl;
-
-				for (auto& klass : mirror.Classes)
-				{
-					if (!klass.Flags.IsSet(ClassFlags::Struct))
-						classes_file << "ReflectClass(" << klass.Name << ");" << std::endl;
-				}
-				for (auto& henum : mirror.Enums)
-					classes_file << "ReflectEnum(" << henum.Name << ");" << std::endl;
-			}
-
-			includes_file.close();
-			classes_file.close();
-		}
-		else
-			ghlib::PrintLn("\tNo mirror files changed");
-			*/
 	}
 	catch (args::Help)
 	{

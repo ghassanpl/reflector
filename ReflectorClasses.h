@@ -6,19 +6,13 @@
 
 namespace Reflector
 {
-	struct Class
-	{
-
-	};
-
-
 	struct ClassReflectionData;
 	struct FieldReflectionData;
 	struct MethodReflectionData;
 
 	struct ClassReflectionData
 	{
-		std::string_view ClassName;
+		std::string_view Name;
 		std::string_view ParentClassName;
 		std::string_view Properties = "{}";
 #ifdef NLOHMANN_JSON_VERSION_MAJOR
@@ -35,7 +29,7 @@ namespace Reflector
 
 	struct FieldReflectionData
 	{
-		std::string_view FieldName;
+		std::string_view Name;
 		std::string_view FieldType;
 		std::string_view Initializer;
 		std::string_view Properties = "{}";
@@ -43,11 +37,13 @@ namespace Reflector
 		nlohmann::json PropertiesJSON;
 #endif
 		std::type_index FieldTypeIndex;
+
+		ClassReflectionData const* ParentClass = nullptr;
 	};
 
 	struct MethodReflectionData
 	{
-		std::string_view MethodName;
+		std::string_view Name;
 		std::string_view ReturnType;
 		std::string_view Parameters;
 		std::string_view Properties = "{}";
@@ -55,6 +51,22 @@ namespace Reflector
 		nlohmann::json PropertiesJSON;
 #endif
 		std::type_index ReturnTypeIndex;
+
+		ClassReflectionData const* ParentClass = nullptr;
+	};
+
+	struct EnumeratorReflectionData
+	{
+		std::string_view Name;
+		int64_t Value;
+	};
+
+	struct EnumReflectionData
+	{
+		std::string_view Name;
+		std::string_view Properties = "{}";
+		std::vector<EnumeratorReflectionData> Enumerators;
+		std::type_index TypeIndex;
 	};
 
 	struct Reflectable
@@ -62,7 +74,7 @@ namespace Reflector
 		virtual ClassReflectionData const& GetReflectionData() const
 		{
 			static const ClassReflectionData data = { 
-				.ClassName = "Reflectable",
+				.Name = "Reflectable",
 				.ParentClassName = "",
 				.Properties = "",
 #ifdef NLOHMANN_JSON_VERSION_MAJOR

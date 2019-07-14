@@ -20,7 +20,7 @@ namespace Ass
 
 		/// Sets the name of this component; it must be unique within the owning Object
 		RMethod()
-		auto SetName(std::string_view name) -> void;
+		auto SetName(std::string_view name) -> void {}
 
 		///************************************************************************/
 		/// Object passthrough methods
@@ -28,43 +28,43 @@ namespace Ass
 
 		/// Gets the position of the owning Object
 		RMethod()
-		auto GetPosition() -> Point;
+		auto GetPosition() -> Point { return {}; }
 
 		/// Sets the position of the owning Object
 		RMethod()
-		auto SetPosition(Point pos) -> void;
+		auto SetPosition(Point pos) -> void {}
 
 		/// Gets the scale of the owning Object
 		RMethod()
-		auto GetScale() -> Point;
+		auto GetScale() -> Point { return {}; }
 
 		/// Sets the scale of the owning Object
 		RMethod()
-		auto SetScale(Point scale) -> void;
+		auto SetScale(Point scale) -> void {}
 
 		/// Gets the rotation of the owning Object
 		RMethod()
-		auto GetRotation() -> float;
+		auto GetRotation() -> float { return {}; }
 
 		/// Sets the rotation of the owning Object
 		RMethod()
-		auto SetRotation(float rot) -> void;
+		auto SetRotation(float rot) -> void {}
 
 		/// Gets the local transform of the owning Object
 		RMethod()
-		auto GetLocalTransform() -> float;
+		auto GetLocalTransform() -> float { return {}; }
 
 		/// Gets the global transform of the owning Object
 		RMethod()
-		auto GetGlobalTransform() -> float;
+		auto GetGlobalTransform() -> float { return {}; }
 
 		/// Checks whether a component of the given name exists in the owning Object
 		RMethod()
-		auto ComponentNameExists(std::string_view name) -> bool;
+		auto ComponentNameExists(std::string_view name) -> bool { return {}; }
 
 		/// Returns the component of the owning Object with the given name, or null otherwise
 		RMethod()
-		auto GetComponentByName(std::string_view name) -> Component*;
+		auto GetComponentByName(std::string_view name) -> Component* { return {}; }
 
 		///************************************************************************/
 		/// Events
@@ -72,7 +72,7 @@ namespace Ass
 
 		/// Calls the method with the given name in this Component
 		RMethod()
-		auto CallEvent(std::string_view event_name) -> void;
+		auto CallEvent(std::string_view event_name) -> void {}
 
 		///************************************************************************/
 		/// Game Events
