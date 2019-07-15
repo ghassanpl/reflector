@@ -19,7 +19,9 @@ class Component : public Reflector::Reflectable
 
 	RMethod()
 	void SetName(std::string_view name) { Name = name; }
+	
 protected:
+
 	RField({"ParentPointer": true})
 	class Object* mParentObject = nullptr;
 };
@@ -27,7 +29,9 @@ protected:
 REnum()
 enum class TestEnum
 {
-	A = 5, B, C
+	A = 5,
+	B,
+	C
 };
 ```
 
