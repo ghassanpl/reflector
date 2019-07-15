@@ -545,7 +545,8 @@ void ParseMethodDecl(string_view line, Method& method)
 		else break;
 	}
 	//line = Expect(line, "auto");
-	auto pre_type = ParseType(line);
+	auto pre_typestr = ParseType(line);
+	auto pre_type = (std::string)TrimWhitespace(pre_typestr);
 	line = TrimWhitespace(line);
 
 	auto name_start = line.begin();
@@ -581,7 +582,7 @@ void ParseMethodDecl(string_view line, Method& method)
 		auto end_line = line.find_first_of("{;");
 		if (end_line != std::string::npos)
 			line = line.substr(0, end_line);
-		method.Type = (std::string)line;
+		method.Type = (std::string)TrimWhitespace(line);
 	}
 	else
 	{
@@ -904,7 +905,13 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 	for (auto& prop: klass.Properties)
 	{
 		auto& property = prop.second;
-		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData(), \"", property.Name,"\", &", klass.Name, "::", property.GetterName, ", &", klass.Name, "::", property.SetterName, ", std::type_identity<std::remove_cvref_t<", property.Type, ">>{});");
+		std::string getter_name = "nullptr";
+		if (!property.GetterName.empty())
+			getter_name = baselib::Stringify("&", klass.Name, "::", property.GetterName);
+		std::string setter_name = "nullptr";
+		if (!property.SetterName.empty())
+			setter_name = baselib::Stringify("&", klass.Name, "::", property.SetterName);
+		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData(), \"", property.Name,"\", ", getter_name, ", ", setter_name, ", ::Reflector::CompileTimeFieldData<", property.Type, ", ", klass.Name, ", 0ULL>{});");
 	}
 	output.EndDefine("");
 

@@ -26,6 +26,25 @@ namespace Reflector
 		std::type_index TypeIndex;
 	};
 
+	enum class FieldFlags
+	{
+		NoSetter,
+		NoGetter,
+		NoEdit,
+		NoScript,
+		NoSave,
+		NoLoad,
+		NoDebug
+	};
+
+	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS>
+	struct CompileTimeFieldData
+	{
+		using type = std::remove_cvref_t<FIELD_TYPE>;
+		using parent_type = PARENT_TYPE;
+		static constexpr uint64_t flags = FLAGS;
+	};
+
 	struct FieldReflectionData
 	{
 		const char* Name = "";
