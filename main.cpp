@@ -260,6 +260,36 @@ std::string ParseIdentifier(string_view& str)
 	return result;
 }
 
+std::string ParseType(string_view& str)
+{
+	/// TODO
+	//return ParseIdentifier(str);
+	int brackets = 0, tris = 0, parens = 0;
+	auto p = str.begin();
+	for (; p != str.end(); p++)
+	{
+		switch (*p)
+		{
+		case '[': brackets++; continue;
+		case ']': brackets--; continue;
+		case '(': parens++; continue;
+		case ')': parens--; continue;
+		case '<': tris++; continue;
+		case '>': tris--; continue;
+		}
+
+		if (baselib::isblank(*p))
+		{
+			if (parens == 0 && tris == 0 && brackets == 0)
+				break;
+		}
+	}
+
+	std::string result = { str.begin(), p };
+	str = { p, str.end() };
+	return result;
+}
+
 inline std::string OnlyType(std::string str)
 {
 	auto last = str.find_last_of(':');
@@ -504,7 +534,7 @@ void ParseMethodDecl(string_view line, Method& method)
 		else break;
 	}
 	//line = Expect(line, "auto");
-	auto pre_type = ParseIdentifier(line);
+	auto pre_type = ParseType(line);
 	line = TrimWhitespace(line);
 
 	auto name_start = line.begin();
