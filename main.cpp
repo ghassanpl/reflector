@@ -75,7 +75,7 @@ int main(int argc, const char* argv[])
 
 		std::cout << final_files.size() << " reflectable files found\n";
 
-		/// Create all classes
+		/// Parse all types
 		for (auto& file : final_files)
 		{
 			try

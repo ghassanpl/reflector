@@ -396,7 +396,7 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	{
 		auto& property = klass.Properties[getter.value()];
 		if (!property.GetterName.empty())
-			ReportError("?", line_num, "Getter for this property already declared at line ", property.GetterLine);
+			throw std::exception(baselib::Stringify("Getter for this property already declared at line ", property.GetterLine).c_str());
 		property.GetterName = method.Name;
 		property.GetterLine = line_num;
 		/// TODO: Match getter/setter types
@@ -408,7 +408,7 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	{
 		auto& property = klass.Properties[setter.value()];
 		if (!property.SetterName.empty())
-			ReportError("?", line_num, "Setter for this property already declared at line ", property.SetterLine);
+			throw std::exception(baselib::Stringify("Setter for this property already declared at line ", property.SetterLine).c_str());
 		property.SetterName = method.Name;
 		property.SetterLine = line_num;
 		/// TODO: Match getter/setter types
@@ -416,7 +416,7 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 		{
 			auto args = SplitArgs(string_view{ method.Parameters });
 			if (args.empty())
-				ReportError("?", line_num, "Setter must have at least 1 argument");
+				throw std::exception(baselib::Stringify("Setter must have at least 1 argument").c_str());
 			property.Type = TypeFromVar(args[0]);
 		}
 		if (property.Name.empty()) property.Name = setter.value();
