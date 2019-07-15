@@ -233,7 +233,9 @@ using baselib::string_view;
 string_view Expect(string_view str, string_view value)
 {
 	if (!str.starts_with(value))
+	{
 		throw std::exception(baselib::Stringify("Expected `", value, "`").c_str());
+	}
 	str.remove_prefix(value.size());
 	return TrimWhitespace(str);
 }
@@ -269,7 +271,7 @@ inline std::string OnlyType(std::string str)
 template <typename... ARGS>
 void ReportError(std::filesystem::path path, size_t line_num, ARGS&&... args)
 {
-	std::cerr << "[ERROR] in file "<< path << " at line " << line_num;
+	std::cerr <<  path.string() << "(" << line_num << ",1): error: ";
 	((std::cerr << std::forward<ARGS>(args)), ...);
 	std::cerr << "\n";
 }
@@ -586,93 +588,76 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 		auto line = TrimWhitespace(lines[line_num - 1]);
 		auto next_line = TrimWhitespace(lines[line_num]);
 
-		if (line.starts_with("public:"))
-			current_access = AccessMode::Public;
-		else if (line.starts_with("protected:"))
-			current_access = AccessMode::Protected;
-		else if (line.starts_with("private:"))
-			current_access = AccessMode::Private;
-		else if (line.starts_with(options.EnumPrefix))
+		try
 		{
-			mirror.Enums.push_back(ParseEnum(lines, line_num, options));
-			mirror.Enums.back().Comments = std::move(comments);
-		}
-		else if (line.starts_with(options.ClassPrefix))
-		{
-			current_access = AccessMode::Private;
-			try
+			if (line.starts_with("public:"))
+				current_access = AccessMode::Public;
+			else if (line.starts_with("protected:"))
+				current_access = AccessMode::Protected;
+			else if (line.starts_with("private:"))
+				current_access = AccessMode::Private;
+			else if (line.starts_with(options.EnumPrefix))
 			{
+				mirror.Enums.push_back(ParseEnum(lines, line_num, options));
+				mirror.Enums.back().Comments = std::move(comments);
+			}
+			else if (line.starts_with(options.ClassPrefix))
+			{
+				current_access = AccessMode::Private;
 				mirror.Classes.push_back(ParseClassDecl(line, next_line, line_num, std::move(comments), options));
+				if (options.Verbose)
+				{
+					std::cout << "Found class " << mirror.Classes.back().Name << "\n";
+				}
 			}
-			catch (std::exception& e)
+			else if (line.starts_with(options.FieldPrefix))
 			{
-				ReportError(path, line_num + 1, e.what());
-				return false;
-			}
-			if (options.Verbose)
-			{
-				std::cout << "Found class " << mirror.Classes.back().Name << "\n";
-			}
-		}
-		else if (line.starts_with(options.FieldPrefix))
-		{
-			if (mirror.Classes.size() == 0)
-			{
-				ReportError(path, line_num + 1, options.FieldPrefix, "() not in class");
-				return false;
-			}
+				if (mirror.Classes.size() == 0)
+				{
+					ReportError(path, line_num + 1, options.FieldPrefix, "() not in class");
+					return false;
+				}
 
-			try
-			{
 				auto& klass = mirror.Classes.back();
 				klass.Fields.push_back(ParseFieldDecl(mirror, klass, line, next_line, line_num, current_access, std::move(comments), options));
 			}
-			catch (std::exception& e)
+			else if (line.starts_with(options.MethodPrefix))
 			{
-				ReportError(path, line_num + 1, e.what());
-				return false;
-			}
-		}
-		else if (line.starts_with(options.MethodPrefix))
-		{
-			if (mirror.Classes.size() == 0)
-			{
-				ReportError(path, line_num + 1, options.MethodPrefix, "() not in class");
-				return false;
-			}
+				if (mirror.Classes.size() == 0)
+				{
+					ReportError(path, line_num + 1, options.MethodPrefix, "() not in class");
+					return false;
+				}
 
-			try
-			{
 				auto& klass = mirror.Classes.back();
 				klass.Methods.push_back(ParseMethodDecl(klass, line, next_line, line_num, current_access, std::move(comments), options));
 			}
-			catch (std::exception& e)
+			else if (line.starts_with(options.BodyPrefix))
 			{
-				ReportError(path, line_num + 1, e.what());
-				return false;
+				if (mirror.Classes.size() == 0)
+				{
+					ReportError(path, line_num + 1, options.BodyPrefix, "() not in class");
+					return false;
+				}
+
+				current_access = AccessMode::Public;
+
+				mirror.Classes.back().BodyLine = line_num;
 			}
-		}
-		else if (line.starts_with(options.BodyPrefix))
-		{
-			if (mirror.Classes.size() == 0)
+
+			if (line.starts_with("///"))
 			{
-				ReportError(path, line_num + 1, options.BodyPrefix, "() not in class");
-				return false;
+				comments.push_back((std::string)TrimWhitespace(line.substr(3)));
 			}
-
-			current_access = AccessMode::Public;
-
-			mirror.Classes.back().BodyLine = line_num;
-		}
-
-		if (line.starts_with("///"))
-		{
-			comments.push_back((std::string)TrimWhitespace(line.substr(3)));
-		}
-		else
-			comments.clear();
+			else
+				comments.clear();
 	}
-
+		catch (std::exception& e)
+		{
+			ReportError(path, line_num + 1, e.what());
+			return false;
+		}
+	}
 
 	if (mirror.Classes.size() > 0 || mirror.Enums.size() > 0)
 		Mirrors.push_back(std::move(mirror));
@@ -1014,7 +999,7 @@ bool BuildStructEntry(FileWriter& output, const FileMirror& mirror, const Class&
 
 bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& henum, const Options& options)
 {
-	output.WriteLine("/// From class: ", henum.Name);
+	output.WriteLine("/// From enum: ", henum.Name);
 	output.WriteLine("#undef ", options.MacroPrefix, "_ENUM_", henum.DeclarationLine);
 	output.StartDefine("#define ", options.MacroPrefix, "_ENUM_", henum.DeclarationLine);
 
@@ -1068,7 +1053,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.WriteLine("}");
 	output.WriteLine("inline std::ostream& operator<<(std::ostream& strm, ", henum.Name, " v) { strm << GetEnumeratorName(v); return strm; }");
 
-	output.WriteLine();
+	output.EndDefine();
 
 	return true;
 }
@@ -1146,8 +1131,16 @@ int main(int argc, const char* argv[])
 		/// Create all classes
 		for (auto& file : final_files)
 		{
-			if (!ParseClassFile(std::filesystem::path(file), options))
+			try
+			{
+				if (!ParseClassFile(std::filesystem::path(file), options))
+					return -1;
+			}
+			catch (std::exception& e)
+			{
+				ReportError(file, 0, e.what());
 				return -1;
+			}
 		}
 
 
