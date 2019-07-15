@@ -13,9 +13,9 @@ namespace Reflector
 	{
 		const char* Name = "";
 		const char* ParentClassName = "";
-		const char* Properties = "{}";
+		const char* Attributes = "{}";
 #ifdef NLOHMANN_JSON_VERSION_MAJOR
-		nlohmann::json PropertiesJSON;
+		nlohmann::json AttributesJSON;
 #endif
 		void* (*Constructor)(const ::Reflector::ClassReflectionData&) = {};
 
@@ -31,9 +31,9 @@ namespace Reflector
 		const char* Name = "";
 		const char* FieldType = "";
 		const char* Initializer = "";
-		const char* Properties = "{}";
+		const char* Attributes = "{}";
 #ifdef NLOHMANN_JSON_VERSION_MAJOR
-		nlohmann::json PropertiesJSON;
+		nlohmann::json AttributesJSON;
 #endif
 		std::type_index FieldTypeIndex;
 
@@ -45,9 +45,9 @@ namespace Reflector
 		const char* Name = "";
 		const char* ReturnType = "";
 		const char* Parameters = "";
-		const char* Properties = "{}";
+		const char* Attributes = "{}";
 #ifdef NLOHMANN_JSON_VERSION_MAJOR
-		nlohmann::json PropertiesJSON;
+		nlohmann::json AttributesJSON;
 #endif
 		std::type_index ReturnTypeIndex;
 
@@ -63,7 +63,7 @@ namespace Reflector
 	struct EnumReflectionData
 	{
 		const char* Name = "";
-		const char* Properties = "{}";
+		const char* Attributes = "{}";
 		std::vector<EnumeratorReflectionData> Enumerators;
 		std::type_index TypeIndex;
 	};
@@ -75,9 +75,9 @@ namespace Reflector
 			static const ClassReflectionData data = { 
 				.Name = "Reflectable",
 				.ParentClassName = "",
-				.Properties = "",
+				.Attributes = "",
 #ifdef NLOHMANN_JSON_VERSION_MAJOR
-				.PropertiesJSON = ::nlohmann::json::object(),
+				.AttributesJSON = ::nlohmann::json::object(),
 #endif
 				.TypeIndex = typeid(Reflectable)
 			}; 
