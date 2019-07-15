@@ -33,7 +33,7 @@ enum class TestEnum
 
 ## How to use
 
-TODO
+See [Usage in the wiki](https://github.com/ghassanpl/reflector/wiki/Usage).
 
 ## Example
 
@@ -56,7 +56,7 @@ See the [example in the wiki](https://github.com/ghassanpl/reflector/wiki/Exampl
 		-q, --quiet          Don't print out created file names
 		-f, --force          Ignore timestamps, regenerate all files
 		-v, --verbose        Print additional information
-		-j, --json           Output code that uses nlohmann::json to store class properties
+		-j, --json           Output code that uses nlohmann::json to store class attributes
 		-d, --database       Create a JSON database with reflection data
 		files...             Files or directories to scan
 		"--" can be used to terminate flag options and force all following arguments to be treated as positional options
