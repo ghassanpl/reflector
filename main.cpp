@@ -484,6 +484,7 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 
 void ParseMethodDecl(string_view line, Method& method)
 {
+	/*
 	while (!line.starts_with("auto"))
 	{
 		if (SwallowOptional(line, "virtual")) method.Flags += MethodFlags::Virtual;
@@ -493,6 +494,18 @@ void ParseMethodDecl(string_view line, Method& method)
 		else throw std::exception{ "Method declaration does not start with 'auto'" };
 	}
 	line = Expect(line, "auto");
+	*/
+	while (true)
+	{
+		if (SwallowOptional(line, "virtual")) method.Flags += MethodFlags::Virtual;
+		else if (SwallowOptional(line, "static")) method.Flags += MethodFlags::Static;
+		else if (SwallowOptional(line, "inline")) method.Flags += MethodFlags::Inline;
+		else if (SwallowOptional(line, "explicit")) method.Flags += MethodFlags::Explicit;
+		else break;
+	}
+	//line = Expect(line, "auto");
+	auto pre_type = ParseIdentifier(line);
+	line = TrimWhitespace(line);
 
 	auto name_start = line.begin();
 	auto name_end = std::find_if_not(line.begin(), line.end(), baselib::isident);
@@ -512,18 +525,27 @@ void ParseMethodDecl(string_view line, Method& method)
 
 	line = TrimWhitespace(line);
 
-	while (!line.starts_with("->"))
+	while (true)
 	{
 		if (SwallowOptional(line, "const")) method.Flags += MethodFlags::Const;
 		else if (SwallowOptional(line, "final")) method.Flags += MethodFlags::Final;
 		else if (SwallowOptional(line, "noexcept")) method.Flags += MethodFlags::Noexcept;
-		else throw std::exception{ "Method does not have -> result" };
+		else break;
 	}
-	line = Expect(line, "->");
-	auto end_line = line.find_first_of("{;");
-	if (end_line != std::string::npos)
-		line = line.substr(0, end_line);
-	method.Type = (std::string)line;
+
+	if (pre_type == "auto")
+	{
+		line = Expect(line, "->");
+
+		auto end_line = line.find_first_of("{;");
+		if (end_line != std::string::npos)
+			line = line.substr(0, end_line);
+		method.Type = (std::string)line;
+	}
+	else
+	{
+		method.Type = pre_type;
+	}
 }
 
 Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, size_t line_num, AccessMode mode, std::vector<std::string> comments, Options const& options)
