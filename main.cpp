@@ -838,7 +838,8 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 		/// Constructors
 		if (!klass.Flags.IsSet(ClassFlags::NoConstructors))
 		{
-			output.WriteLine(klass.Name, "() : ", klass.ParentClass, "(StaticGetReflectionData()) {}");
+			output.WriteLine("static self_type* Construct(){ return new self_type{StaticGetReflectionData()}; }");
+			//output.WriteLine("static self_type* Construct(const ::Reflector::ClassReflectionData& klass){ return new self_type{klass}; }");
 			output.WriteLine(klass.Name, "(::Reflector::ClassReflectionData const& klass) : ", klass.ParentClass, "(klass) {}");
 		}
 	}
@@ -1169,7 +1170,7 @@ int main(int argc, const char* argv[])
 			f.WriteLine(TIMESTAMP_TEXT, file_change_time);
 			f.WriteLine("/// Source file: ", file.SourceFilePath);
 			f.WriteLine("#pragma once");
-			f.WriteLine("#include <Reflector.h>");
+			//f.WriteLine("#include <Reflector.h>");
 
 			for (auto& klass : file.Classes)
 			{
