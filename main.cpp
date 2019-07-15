@@ -14,12 +14,17 @@
 #include "../../baselib/Include/ASCII.h"
 #include "../../baselib/Include/Strings.h"
 #include "../../baselib/Include/EnumFlags.h"
+#include "ReflectorClasses.h"
 
 using nlohmann::json;
+using baselib::string_view;
 
 enum class AccessMode { Unspecified, Public, Private, Protected };
 
 static constexpr const char* AMStrings[] = { "Unspecified", "Public", "Private", "Protected" };
+
+struct FileMirror;
+struct Class;
 
 struct Declaration
 {
@@ -46,16 +51,12 @@ struct Declaration
 
 struct Field : public Declaration
 {
-	enum class CommonFlags
-	{
-		NoGetter,
-		NoSetter,
-		NoEdit
-	};
-	baselib::EnumFlags<CommonFlags> Flags;
+	baselib::EnumFlags<Reflector::FieldFlags> Flags;
 	std::string Type;
 	std::string InitializingExpression;
 	std::string DisplayName;
+
+	void CreateArtificialMethods(FileMirror& mirror, Class& klass);
 
 	json ToJSON() const
 	{
@@ -65,7 +66,7 @@ struct Field : public Declaration
 			result["InitializingExpression"] = InitializingExpression;
 		if (DisplayName != Name)
 			result["DisplayName"] = DisplayName;
-		#define ADDFLAG(n) if (Flags.IsSet(CommonFlags::n)) result[#n] = true
+		#define ADDFLAG(n) if (Flags.IsSet(Reflector::FieldFlags::n)) result[#n] = true
 		ADDFLAG(NoGetter);
 		ADDFLAG(NoSetter);
 		ADDFLAG(NoEdit);
@@ -95,6 +96,10 @@ struct Method : public Declaration
 	std::string Parameters;
 	std::string Body;
 	size_t SourceFieldDeclarationLine = 0;
+
+	void CreateArtificialMethods(FileMirror& mirror, Class& klass)
+	{
+	}
 
 	json ToJSON() const
 	{
@@ -135,6 +140,10 @@ struct Property
 	std::string GetterName;
 	size_t GetterLine = 0;
 	std::string Type;
+
+	void CreateArtificialMethods(FileMirror& mirror, Class& klass)
+	{
+	}
 };
 
 struct Class : public Declaration
@@ -148,6 +157,33 @@ struct Class : public Declaration
 	baselib::EnumFlags<ClassFlags> Flags;
 
 	size_t BodyLine = 0;
+
+	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, baselib::EnumFlags<MethodFlags> additional_flags = {})
+	{
+		Method method;
+		method.Flags += MethodFlags::Artificial;
+		method.Flags += additional_flags;
+		method.Type = std::move(results);
+		method.Name = std::move(name);
+		method.Parameters = std::move(parameters);
+		method.Body = std::move(body);
+		if (!method.Body.empty())
+			method.Flags += MethodFlags::HasBody;
+		method.DeclarationLine = 0;
+		method.Access = AccessMode::Public;
+		method.Comments = std::move(comments);
+		Methods.push_back(std::move(method));
+	}
+
+	void CreateArtificialMethods(FileMirror& mirror)
+	{
+		for (auto& field : Fields)
+			field.CreateArtificialMethods(mirror, *this);
+		for (auto& method : Methods)
+			method.CreateArtificialMethods(mirror, *this);
+		for (auto& property : Properties)
+			property.second.CreateArtificialMethods(mirror, *this);
+	}
 
 	json ToJSON() const
 	{
@@ -183,10 +219,16 @@ struct Class : public Declaration
 	}
 };
 
-struct Enumerator
+struct Enumerator : Declaration
 {
-	std::string Name;
 	int64_t Value = 0;
+
+	json ToJSON() const
+	{
+		json result = Declaration::ToJSON();
+		result["Value"] = Value;
+		return result;
+	}
 };
 
 struct Enum : public Declaration
@@ -198,7 +240,7 @@ struct Enum : public Declaration
 		json result = Declaration::ToJSON();
 		auto& enumerators = result["Enumerators"] = json::object();
 		for (auto& enumerator : Enumerators)
-			enumerators[enumerator.Name] = enumerator.Value;
+			enumerators[enumerator.Name] = enumerator.ToJSON();
 		return result;
 	}
 };
@@ -221,6 +263,14 @@ struct FileMirror
 			enums[enum_.Name] = enum_.ToJSON();
 		return result;
 	}
+
+	void CreateArtificialMethods()
+	{
+		for (auto& klass : Classes)
+		{
+			klass.CreateArtificialMethods(*this);
+		}
+	}
 };
 
 struct Options
@@ -232,6 +282,7 @@ struct Options
 	bool UseJSON = true;
 
 	std::string_view EnumPrefix = "REnum";
+	std::string_view EnumeratorPrefix = "REnumerator";
 	std::string_view ClassPrefix = "RClass";
 	std::string_view FieldPrefix = "RField";
 	std::string_view MethodPrefix = "RMethod";
@@ -239,7 +290,8 @@ struct Options
 	std::string_view MacroPrefix = "REFLECT";
 };
 
-using baselib::string_view;
+uint64_t ChangeTime = 0;
+std::vector<FileMirror> Mirrors;
 
 string_view Expect(string_view str, string_view value)
 {
@@ -367,6 +419,12 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 	while (TrimWhitespace(lines[line_num]) != "};")
 	{
 		auto enumerator_line = TrimWhitespace(lines[line_num]);
+		if (enumerator_line.empty() || enumerator_line.starts_with("//") || enumerator_line.starts_with("/*") || enumerator_line.starts_with(options.EnumeratorPrefix))
+		{
+			line_num++;
+			continue;
+		}
+
 		auto name_start = enumerator_line.begin();
 		auto name_end = std::find_if_not(enumerator_line.begin(), enumerator_line.end(), baselib::isident);
 
@@ -381,7 +439,13 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 		auto name = string_view{ name_start, name_end };
 		if (!name.empty())
 		{
-			henum.Enumerators.push_back({ (std::string)TrimWhitespace(name), enumerator_value });
+			Enumerator enumerator;
+			enumerator.Name = TrimWhitespace(name);
+			enumerator.Value = enumerator_value;
+			enumerator.DeclarationLine = line_num;
+			/// TODO: enumerator.Attributes = {};
+			/// TODO: enumerator.Comments = "";
+			henum.Enumerators.push_back(std::move(enumerator));
 			enumerator_value++;
 		}
 		line_num++;
@@ -492,39 +556,33 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 
 	/// Disable if explictly stated
 	if (field.Attributes.value("Getter", true) == false)
-		field.Flags.Set(Field::CommonFlags::NoGetter);
+		field.Flags.Set(Reflector::FieldFlags::NoGetter);
 	if (field.Attributes.value("Setter", true) == false)
-		field.Flags.Set(Field::CommonFlags::NoSetter);
+		field.Flags.Set(Reflector::FieldFlags::NoSetter);
 	if (field.Attributes.value("Editor", true) == false || field.Attributes.value("Edit", true) == false)
-		field.Flags.Set(Field::CommonFlags::NoEdit);
+		field.Flags.Set(Reflector::FieldFlags::NoEdit);
 
 	/// Private implies Getter = false, Setter = false, Editor = false
 	if (field.Attributes.value("Private", false))
-		field.Flags.Set(Field::CommonFlags::NoEdit, Field::CommonFlags::NoSetter, Field::CommonFlags::NoGetter);
+		field.Flags.Set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
 
 	/// ParentPointer implies Editor = false, Setter = false
 	if (field.Attributes.value("ParentPointer", false))
-		field.Flags.Set(Field::CommonFlags::NoEdit, Field::CommonFlags::NoSetter);
+		field.Flags.Set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter);
 
 	/// ChildVector implies Setter = false
 	auto type = string_view{ field.Type };
 	if (type.starts_with("ChildVector<"))
-		field.Flags.Set(Field::CommonFlags::NoSetter);
+		field.Flags.Set(Reflector::FieldFlags::NoSetter);
 
 	/// Enable if explictly stated
 	if (field.Attributes.value("Getter", false) == true)
-		field.Flags.Unset(Field::CommonFlags::NoGetter);
+		field.Flags.Unset(Reflector::FieldFlags::NoGetter);
 	if (field.Attributes.value("Setter", false) == true)
-		field.Flags.Unset(Field::CommonFlags::NoSetter);
+		field.Flags.Unset(Reflector::FieldFlags::NoSetter);
 	if (field.Attributes.value("Editor", false) == true || field.Attributes.value("Edit", false) == true)
-		field.Flags.Unset(Field::CommonFlags::NoEdit);
-
-	if (!klass.Flags.IsSet(ClassFlags::Struct))
-	{
-		/// TODO:
-		///CreateArtificialMethods(mirror, field, klass, std::move(comments));
-	}
-
+		field.Flags.Unset(Reflector::FieldFlags::NoEdit);
+	
 	return field;
 }
 
@@ -687,9 +745,6 @@ Class ParseClassDecl(string_view line, string_view next_line, size_t line_num, s
 
 	return klass;
 }
-
-uint64_t ChangeTime = 0;
-std::vector<FileMirror> Mirrors;
 
 bool ParseClassFile(std::filesystem::path path, Options const& options)
 {
@@ -927,7 +982,7 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 	{
 		const auto& field = klass.Fields[i];
 		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Fields[", i, "], &", klass.Name, "::", field.Name, ", ",
-			(field.Flags.IsSet(Field::CommonFlags::NoEdit) ? "std::false_type{}" : "std::true_type{}"),
+			(field.Flags.IsSet(Reflector::FieldFlags::NoEdit) ? "std::false_type{}" : "std::true_type{}"),
 			");");
 	}
 	output.EndDefine("");
@@ -1097,7 +1152,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 			output.WriteLine("", options.MacroPrefix, "_CALLABLE((", func.Type, "), ", func.Name, ", (", func.Parameters, "))");
 		if (func.Flags.IsSet(MethodFlags::Artificial))
 		{
-			output.WriteLine(func.Type, " ", func.Name, "(", func.Parameters, ") { ", func.Body, " }");
+			output.WriteLine(func.Type, " ", func.Name, "(", func.Parameters, ")", (func.Flags.IsSet(MethodFlags::Const) ? " const" : ""), " { ", func.Body, " }");
 		}
 	}
 
@@ -1220,6 +1275,12 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 
 	output.EndDefine();
 
+	for (auto& enumerator : henum.Enumerators)
+	{
+		output.WriteLine("#undef ", options.MacroPrefix, "_ENUMERATOR_", enumerator.DeclarationLine);
+		output.WriteLine("#define ", options.MacroPrefix, "_ENUMERATOR_", enumerator.DeclarationLine);
+	}
+
 	return true;
 }
 
@@ -1308,6 +1369,9 @@ int main(int argc, const char* argv[])
 			}
 		}
 
+		/// Create artificial methods, knowing all the reflected classes
+		for (auto& mirror : Mirrors)
+			mirror.CreateArtificialMethods();
 
 		/// Output mirror files
 		size_t modified_files = 0;
@@ -1353,10 +1417,10 @@ int main(int argc, const char* argv[])
 			f.Close();
 		}
 
+		auto cwd = std::filesystem::current_path();
 		if (modified_files)
 		{
 			/// Output JSON db
-			auto cwd = std::filesystem::current_path();
 			std::ofstream classes_file(cwd / "Classes.reflect.h", std::ios_base::openmode{ std::ios_base::trunc });
 			std::ofstream includes_file(cwd / "Includes.reflect.h", std::ios_base::openmode{ std::ios_base::trunc });
 
@@ -1388,32 +1452,36 @@ int main(int argc, const char* argv[])
 				jsondb.close();
 			}
 
-			if (!std::filesystem::exists(cwd / "Reflector.h") || options.Force)
-			{
-				FileWriter reflect_file{ cwd / "Reflector.h" };
-				reflect_file.WriteLine("#pragma once");
-				reflect_file.WriteLine("#include <ReflectorClasses.h>");
-				reflect_file.WriteLine("#define TOKENPASTE2_IMPL(x, y) x ## y");
-				reflect_file.WriteLine("#define TOKENPASTE2(x, y) TOKENPASTE2_IMPL(x, y)");
-				reflect_file.WriteLine("");
-				reflect_file.WriteLine("#define ", options.ClassPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_CLASS_DECL_LINE_, __LINE__)");
-				reflect_file.WriteLine("#define ", options.FieldPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_FIELD_DECL_LINE_, __LINE__)");
-				reflect_file.WriteLine("#define ", options.MethodPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_METHOD_DECL_LINE_, __LINE__)");
-				reflect_file.WriteLine("#define ", options.BodyPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_GENERATED_CLASS_BODY_, __LINE__)");
-				reflect_file.WriteLine("#define ", options.EnumPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_ENUM_, __LINE__)");
-				reflect_file.WriteLine("");
-				reflect_file.WriteLine("#define ", options.MacroPrefix, "_CALLABLE(ret, name, args) static int ScriptFunction_##name(struct lua_State* thread) { return 0; }");
-				reflect_file.Close();
-				if (options.Verbose)
-					std::cout << "Created " << cwd / "Reflector.h" << "\n";
-			}
-			else
-			{
-				if (options.Verbose)
-					std::cout << cwd / "Reflector.h" << " exists, skipping\n";
-			}
+		}
 
+		if (!std::filesystem::exists(cwd / "Reflector.h") || options.Force)
+		{
+			FileWriter reflect_file{ cwd / "Reflector.h" };
+			reflect_file.WriteLine("#pragma once");
+			reflect_file.WriteLine("#include <ReflectorClasses.h>");
+			reflect_file.WriteLine("#define TOKENPASTE2_IMPL(x, y) x ## y");
+			reflect_file.WriteLine("#define TOKENPASTE2(x, y) TOKENPASTE2_IMPL(x, y)");
+			reflect_file.WriteLine("");
+			reflect_file.WriteLine("#define ", options.ClassPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_CLASS_DECL_LINE_, __LINE__)");
+			reflect_file.WriteLine("#define ", options.FieldPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_FIELD_DECL_LINE_, __LINE__)");
+			reflect_file.WriteLine("#define ", options.MethodPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_METHOD_DECL_LINE_, __LINE__)");
+			reflect_file.WriteLine("#define ", options.BodyPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_GENERATED_CLASS_BODY_, __LINE__)");
+			reflect_file.WriteLine("#define ", options.EnumPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_ENUM_, __LINE__)");
+			reflect_file.WriteLine("#define ", options.EnumeratorPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_ENUMERATOR_, __LINE__)");
+			reflect_file.WriteLine("");
+			reflect_file.WriteLine("#define ", options.MacroPrefix, "_CALLABLE(ret, name, args) static int ScriptFunction_##name(struct lua_State* thread) { return 0; }");
+			reflect_file.Close();
+			if (options.Verbose)
+				std::cout << "Created " << cwd / "Reflector.h" << "\n";
+		}
+		else
+		{
+			if (options.Verbose)
+				std::cout << cwd / "Reflector.h" << " exists, skipping\n";
+		}
 
+		if (modified_files)
+		{
 			if (!options.Quiet)
 				std::cout << modified_files << " mirror files changed\n";
 		}
@@ -1422,7 +1490,6 @@ int main(int argc, const char* argv[])
 			if (!options.Quiet)
 				std::cout << "No mirror files changed\n";
 		}
-
 	}
 	catch (args::Help)
 	{
@@ -1435,4 +1502,83 @@ int main(int argc, const char* argv[])
 	}
 
 	return 0;
+}
+
+Enum const* FindEnum(string_view name)
+{
+	for (auto& mirror : Mirrors)
+		for (auto& henum : mirror.Enums)
+			if (henum.Name == name)
+				return &henum;
+	return nullptr;
+}
+
+void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
+{
+	/// Create comments string
+	auto field_comments = baselib::Join(Comments, " ");
+	if (field_comments.size())
+		field_comments[0] = (char)baselib::tolower(field_comments[0]);
+	else
+		field_comments = baselib::Stringify("the `", DisplayName, "` field of this object");
+
+	/// Getters and Setters
+	if (!Flags.IsSet(Reflector::FieldFlags::NoGetter))
+	{
+		klass.AddArtificialMethod(Type + "&", "Get" + DisplayName, "", "return " + Name + ";", { "Gets " + field_comments });
+	}
+
+	if (!Flags.IsSet(Reflector::FieldFlags::NoSetter))
+	{
+		auto on_change = Attributes.value("OnChange", "");
+		if (!on_change.empty())
+			on_change = on_change + "(); ";
+		klass.AddArtificialMethod("void", "Set" + DisplayName, Type + " const & value", Name + " = value; " + on_change, { "Sets " + field_comments });
+	}
+
+	auto flag_getters = Attributes.value("FlagGetters", "");
+	auto flag_setters = Attributes.value("Flags", "");
+	if (!flag_getters.empty() && !flag_setters.empty())
+	{
+		ReportError(mirror.SourceFilePath, DeclarationLine, "Only one of `FlagGetters' and `Flags' can be declared");
+		return;
+	}
+	bool do_flags = !flag_getters.empty() || !flag_setters.empty();
+	bool do_setters = !flag_setters.empty();
+	auto& enum_name = do_setters ? flag_setters : flag_getters;
+
+	if (do_flags)
+	{
+		auto henum = FindEnum(string_view{ enum_name });
+		if (!henum)
+		{
+			ReportError(mirror.SourceFilePath, DeclarationLine, "Enum `", enum_name, "' not reflected");
+			return;
+		}
+
+		for (auto& enumerator : henum->Enumerators)
+		{
+			klass.AddArtificialMethod("bool", "Is" + enumerator.Name, "", baselib::Stringify("return (", Name, " & ", Type, "{", 1ULL << enumerator.Value, "}) != 0;"),
+				{ "Checks whether the `" + enumerator.Name + "` flag is set in " + field_comments }, MethodFlags::Const);
+		}
+
+		if (do_setters)
+		{
+			for (auto& enumerator : henum->Enumerators)
+			{
+				klass.AddArtificialMethod("void", "Set" + enumerator.Name, "", baselib::Stringify(Name, " |= ", Type, "{", 1ULL<<enumerator.Value, "};"),
+					{ "Sets the `" + enumerator.Name + "` flag in " + field_comments });
+			}
+			for (auto& enumerator : henum->Enumerators)
+			{
+				klass.AddArtificialMethod("void", "Unset" + enumerator.Name, "", baselib::Stringify(Name, " &= ~", Type, "{", 1ULL << enumerator.Value, "};"),
+					{ "Clears the `" + enumerator.Name + "` flag in " + field_comments });
+			}
+			for (auto& enumerator : henum->Enumerators)
+			{
+				klass.AddArtificialMethod("void", "Toggle" + enumerator.Name, "", baselib::Stringify(Name, " ^= ", Type, "{", 1ULL << enumerator.Value, "};"),
+					{ "Toggles the `" + enumerator.Name + "` flag in " + field_comments });
+			}
+		}
+	}
 }
