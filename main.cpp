@@ -871,6 +871,8 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 		output.CurrentIndent++;
 		output.WriteLine(".Name = \"", field.Name, "\",");
 		output.WriteLine(".FieldType = \"", field.Type, "\",");
+		if (!field.InitializingExpression.empty())
+			output.WriteLine(".Initializer = \"", field.InitializingExpression, "\",");
 		if (!field.Properties.empty())
 		{
 			output.WriteLine(".Properties = R\"_REFLECT_(", field.Properties.dump(), ")_REFLECT_\",");
@@ -1050,8 +1052,8 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.CurrentIndent--;
 	output.WriteLine("}");
 
-	output.WriteLine("inline std::string_view GetEnumName(", henum.Name, ") { return \"", henum.Name, "\"; }");
-	output.WriteLine("inline std::string_view GetEnumeratorName(", henum.Name, " v) {");
+	output.WriteLine("inline const char* GetEnumName(", henum.Name, ") { return \"", henum.Name, "\"; }");
+	output.WriteLine("inline const char* GetEnumeratorName(", henum.Name, " v) {");
 	{
 		auto indent = output.Indent();
 

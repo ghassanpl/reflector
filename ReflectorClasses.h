@@ -2,7 +2,6 @@
 
 #include <typeindex>
 #include <vector>
-#include <string_view>
 
 namespace Reflector
 {
@@ -12,9 +11,9 @@ namespace Reflector
 
 	struct ClassReflectionData
 	{
-		std::string_view Name;
-		std::string_view ParentClassName;
-		std::string_view Properties = "{}";
+		const char* Name = "";
+		const char* ParentClassName = "";
+		const char* Properties = "{}";
 #ifdef NLOHMANN_JSON_VERSION_MAJOR
 		nlohmann::json PropertiesJSON;
 #endif
@@ -29,10 +28,10 @@ namespace Reflector
 
 	struct FieldReflectionData
 	{
-		std::string_view Name;
-		std::string_view FieldType;
-		std::string_view Initializer;
-		std::string_view Properties = "{}";
+		const char* Name = "";
+		const char* FieldType = "";
+		const char* Initializer = "";
+		const char* Properties = "{}";
 #ifdef NLOHMANN_JSON_VERSION_MAJOR
 		nlohmann::json PropertiesJSON;
 #endif
@@ -43,10 +42,10 @@ namespace Reflector
 
 	struct MethodReflectionData
 	{
-		std::string_view Name;
-		std::string_view ReturnType;
-		std::string_view Parameters;
-		std::string_view Properties = "{}";
+		const char* Name = "";
+		const char* ReturnType = "";
+		const char* Parameters = "";
+		const char* Properties = "{}";
 #ifdef NLOHMANN_JSON_VERSION_MAJOR
 		nlohmann::json PropertiesJSON;
 #endif
@@ -57,14 +56,14 @@ namespace Reflector
 
 	struct EnumeratorReflectionData
 	{
-		std::string_view Name;
+		const char* Name = "";
 		int64_t Value;
 	};
 
 	struct EnumReflectionData
 	{
-		std::string_view Name;
-		std::string_view Properties = "{}";
+		const char* Name = "";
+		const char* Properties = "{}";
 		std::vector<EnumeratorReflectionData> Enumerators;
 		std::type_index TypeIndex;
 	};
