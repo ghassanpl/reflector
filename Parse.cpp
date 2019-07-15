@@ -451,7 +451,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 	path = path.lexically_normal();
 
 	if (options.Verbose)
-		std::cout << "Analyzing file " << path << "\n";
+		PrintLine("Analyzing file ", path);
 
 	std::vector<std::string> lines;
 	std::string line;
@@ -491,7 +491,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				mirror.Classes.push_back(ParseClassDecl(line, next_line, line_num, std::move(comments), options));
 				if (options.Verbose)
 				{
-					std::cout << "Found class " << mirror.Classes.back().Name << "\n";
+					PrintLine("Found class ", mirror.Classes.back().Name);
 				}
 			}
 			else if (line.starts_with(options.FieldPrefix))
@@ -544,7 +544,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 	}
 
 	if (mirror.Classes.size() > 0 || mirror.Enums.size() > 0)
-		Mirrors.push_back(std::move(mirror));
+		AddMirror(std::move(mirror));
 
 	return true;
 }

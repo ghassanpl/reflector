@@ -17,12 +17,18 @@ using baselib::string_view;
 
 using nlohmann::json;
 
+void PrintSafe(std::ostream& strm, std::string val);
+
 template <typename... ARGS>
 void ReportError(std::filesystem::path path, size_t line_num, ARGS&& ... args)
 {
-	std::cerr << path.string() << "(" << line_num << ",1): error: ";
-	((std::cerr << std::forward<ARGS>(args)), ...);
-	std::cerr << "\n";
+	PrintSafe(std::cerr, baselib::Stringify(path.string(), "(", line_num, ",1): error: ", std::forward<ARGS>(args)..., "\n"));
+}
+
+template <typename... ARGS>
+void PrintLine(ARGS&&... args)
+{
+	PrintSafe(std::cout, baselib::Stringify(std::forward<ARGS>(args)..., "\n"));
 }
 
 enum class AccessMode { Unspecified, Public, Private, Protected };
@@ -145,7 +151,9 @@ struct FileMirror
 };
 
 extern uint64_t ChangeTime;
-extern std::vector<FileMirror> Mirrors;
+std::vector<FileMirror> const& GetMirrors();
+void AddMirror(FileMirror mirror);
+void CreateArtificialMethods();
 
 struct Options
 {

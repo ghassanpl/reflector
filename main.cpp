@@ -8,6 +8,9 @@
 #include "ReflectionDataBuilding.h"
 #include <args.hxx>
 #include <sstream>
+#include <vector>
+#include <thread>
+#include <future>
 
 int main(int argc, const char* argv[])
 {
@@ -73,65 +76,68 @@ int main(int argc, const char* argv[])
 				final_files.push_back(std::move(path));
 		}
 
-		std::cout << final_files.size() << " reflectable files found\n";
+		PrintLine(final_files.size(), " reflectable files found");
 
+		std::vector<std::future<bool>> parsers;
 		/// Parse all types
 		for (auto& file : final_files)
 		{
-			try
-			{
-				if (!ParseClassFile(std::filesystem::path(file), options))
-					return -1;
-			}
-			catch (std::exception& e)
-			{
-				ReportError(file, 0, e.what());
+			parsers.push_back(std::async(ParseClassFile, std::filesystem::path(file), options));
+		}
+
+		for (auto& done : parsers)
+		{
+			if (!done.get())
 				return -1;
-			}
 		}
 
 		/// Create artificial methods, knowing all the reflected classes
-		for (auto& mirror : Mirrors)
-			mirror.CreateArtificialMethods();
+		CreateArtificialMethods();
 
 		/// Output artifacts
-		size_t modified_files = 0;
+		std::atomic<size_t> modified_files = 0;
 
-		for (auto& file : Mirrors)
+		std::vector<std::future<void>> futures;
+		for (auto& file : GetMirrors())
 		{
-			BuildMirrorFile(file, modified_files, options);
+			futures.push_back(std::async([&]() {
+				size_t mod = 0;
+				BuildMirrorFile(file, mod, options);
+				modified_files += mod;
+			}));
 		}
+		futures.clear();
 
 		auto cwd = std::filesystem::current_path();
 		if (modified_files)
 		{
-			CreateTypeListArtifact(cwd);
-			CreateIncludeListArtifact(cwd);
+			futures.push_back(std::async(CreateTypeListArtifact, cwd));
+			futures.push_back(std::async(CreateIncludeListArtifact, cwd));
 			if (create_db)
-				CreateJSONDBArtifact(cwd);
+				futures.push_back(std::async(CreateJSONDBArtifact, cwd));
 		}
 
-		if (!std::filesystem::exists(cwd / "Reflector.h") || options.Force)
+		bool create_reflector = !std::filesystem::exists(cwd / "Reflector.h") || options.Force;
+
+		if (create_reflector)
+			futures.push_back(std::async(CreateReflectorHeaderArtifact, cwd, options));
+
+		futures.clear();
+
+		if (options.Verbose)
 		{
-			CreateReflectorHeaderArtifact(cwd, options);
-			if (options.Verbose)
-				std::cout << "Created " << cwd / "Reflector.h" << "\n";
-		}
-		else
-		{
-			if (options.Verbose)
-				std::cout << cwd / "Reflector.h" << " exists, skipping\n";
+			if (create_reflector)
+				PrintLine("Created ", cwd / "Reflector.h");
+			else
+				PrintLine(cwd / "Reflector.h", " exists, skipping");
 		}
 
-		if (modified_files)
+		if (!options.Quiet)
 		{
-			if (!options.Quiet)
-				std::cout << modified_files << " mirror files changed\n";
-		}
-		else
-		{
-			if (!options.Quiet)
-				std::cout << "No mirror files changed\n";
+			if (modified_files)
+				PrintLine(modified_files, " mirror files changed");
+			else
+				PrintLine("No mirror files changed");
 		}
 	}
 	catch (args::Help)

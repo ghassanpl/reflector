@@ -31,7 +31,7 @@ void CreateJSONDBArtifact(std::filesystem::path const& cwd)
 {
 	json db;
 
-	for (auto& mirror : Mirrors)
+	for (auto& mirror : GetMirrors())
 	{
 		db[mirror.SourceFilePath.string()] = mirror.ToJSON();
 	}
@@ -63,7 +63,7 @@ void CreateReflectorHeaderArtifact(std::filesystem::path const& cwd, const Optio
 void CreateIncludeListArtifact(std::filesystem::path const& cwd)
 {
 	std::ofstream includes_file(cwd / "Includes.reflect.h", std::ios_base::openmode{ std::ios_base::trunc });
-	for (auto& mirror : Mirrors)
+	for (auto& mirror : GetMirrors())
 	{
 		includes_file << "#include " << mirror.SourceFilePath << "" << std::endl;
 	}
@@ -73,7 +73,7 @@ void CreateTypeListArtifact(std::filesystem::path const& cwd)
 {
 	std::ofstream classes_file(cwd / "Classes.reflect.h", std::ios_base::openmode{ std::ios_base::trunc });
 
-	for (auto& mirror : Mirrors)
+	for (auto& mirror : GetMirrors())
 	{
 		for (auto& klass : mirror.Classes)
 		{
@@ -465,7 +465,7 @@ void BuildMirrorFile(FileMirror const& file, size_t& modified_files, const Optio
 	modified_files++;
 
 	if (!options.Quiet)
-		std::cout << "Building class file " << file_path << "\n";
+		PrintLine("Building class file ", file_path);
 
 	FileWriter f(file_path);
 	f.WriteLine(TIMESTAMP_TEXT, file_change_time);

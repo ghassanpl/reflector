@@ -5,6 +5,9 @@
 
 #include "Common.h"
 #include "../../baselib/Include/ASCII.h"
+#include <mutex>
+#include <future>
+#include <thread>
 
 uint64_t ChangeTime = 0;
 std::vector<FileMirror> Mirrors;
@@ -256,4 +259,30 @@ Options::Options(bool recursive, bool quiet, bool force, bool verbose, bool use_
 	FieldPrefix = AnnotationPrefix + "Field";
 	MethodPrefix = AnnotationPrefix + "Method";
 	BodyPrefix = AnnotationPrefix + "Body";
+}
+
+void PrintSafe(std::ostream& strm, std::string val)
+{
+	static std::mutex print_mutex;
+	std::unique_lock locl{ print_mutex };
+	strm << val;
+}
+
+std::vector<FileMirror> const& GetMirrors()
+{
+	return Mirrors;
+}
+
+void AddMirror(FileMirror mirror)
+{
+	static std::mutex mirror_mutex;
+	std::unique_lock lock{ mirror_mutex };
+	Mirrors.push_back(std::move(mirror));
+}
+
+void CreateArtificialMethods()
+{
+	std::vector<std::future<void>> futures;
+	for (auto& mirror : Mirrors)
+		futures.push_back(std::async([&]() {mirror.CreateArtificialMethods(); }));
 }
