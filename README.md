@@ -18,7 +18,7 @@ class Component : public Reflector::Reflectable
 	std::string Name;
 
 	RMethod()
-	auto SetName(std::string_view name) -> void { Name = name; }
+	void SetName(std::string_view name) { Name = name; }
 protected:
 	RField({"ParentPointer": true})
 	class Object* mParentObject = nullptr;
