@@ -309,6 +309,11 @@ inline std::string OnlyType(std::string str)
 	return str;
 }
 
+inline std::string TypeFromVar(string_view str)
+{
+	return (std::string)baselib::TrimWhitespace({ str.begin(), std::find_if(str.rbegin(), str.rend(), [](char32_t cp) { return !(baselib::isalnum(cp) || cp == '_'); }).base() });
+}
+
 template <typename... ARGS>
 void ReportError(std::filesystem::path path, size_t line_num, ARGS&&... args)
 {
@@ -590,6 +595,36 @@ void ParseMethodDecl(string_view line, Method& method)
 	}
 }
 
+auto SplitArgs(string_view argstring)
+{
+	std::vector<string_view> args;
+	int brackets = 0, tris = 0, parens = 0;
+	auto begin = argstring.begin();
+	while (!argstring.empty())
+	{
+		switch (argstring[0])
+		{
+		case '(': parens++; break;
+		case ')': parens--; break;
+		case '<': tris++; break;
+		case '>': tris--; break;
+		case '[': brackets++; break;
+		case ']': brackets--; break;
+		case ',': if (parens == 0 && tris == 0 && brackets == 0) { args.push_back({ begin, argstring.begin() }); argstring.remove_prefix(1); begin = argstring.begin(); } break;
+		}
+
+		argstring.remove_prefix(1);
+
+		if (argstring.empty())
+		{
+			args.push_back({ begin, argstring.begin() });
+			break;
+		}
+	}
+
+	return args;
+}
+
 Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, size_t line_num, AccessMode mode, std::vector<std::string> comments, Options const& options)
 {
 	Method method;
@@ -619,6 +654,13 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 		property.SetterName = method.Name;
 		property.SetterLine = line_num;
 		/// TODO: Match getter/setter types
+		if (property.Type.empty())
+		{
+			auto args = SplitArgs(string_view{ method.Parameters });
+			if (args.empty())
+				ReportError("?", line_num, "Setter must have at least 1 argument");
+			property.Type = TypeFromVar(args[0]);
+		}
 		if (property.Name.empty()) property.Name = setter.value();
 	}
 
