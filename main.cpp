@@ -80,6 +80,7 @@ enum class MethodFlags
 	Virtual,
 	Static,
 	Const,
+	Noexcept,
 	Final,
 	Explicit,
 	Artificial,
@@ -109,6 +110,7 @@ struct Method : public Declaration
 		ADDFLAG(Virtual);
 		ADDFLAG(Static);
 		ADDFLAG(Const);
+		ADDFLAG(Noexcept);
 		ADDFLAG(Final);
 		ADDFLAG(Explicit);
 		ADDFLAG(Artificial);
@@ -512,6 +514,7 @@ void ParseMethodDecl(string_view line, Method& method)
 	{
 		if (SwallowOptional(line, "const")) method.Flags += MethodFlags::Const;
 		else if (SwallowOptional(line, "final")) method.Flags += MethodFlags::Final;
+		else if (SwallowOptional(line, "noexcept")) method.Flags += MethodFlags::Noexcept;
 		else throw std::exception{ "Method does not have -> result" };
 	}
 	line = Expect(line, "->");
@@ -561,7 +564,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 {
 	path = path.lexically_normal();
 
-	if (!options.Quiet)
+	if (options.Verbose)
 		std::cout << "Analyzing file " << path << "\n";
 
 	std::vector<std::string> lines;
@@ -1166,7 +1169,7 @@ int main(int argc, const char* argv[])
 			f.WriteLine(TIMESTAMP_TEXT, file_change_time);
 			f.WriteLine("/// Source file: ", file.SourceFilePath);
 			f.WriteLine("#pragma once");
-			f.WriteLine("#include \"Reflector.h\"");
+			f.WriteLine("#include <Reflector.h>");
 
 			for (auto& klass : file.Classes)
 			{
@@ -1228,7 +1231,7 @@ int main(int argc, const char* argv[])
 			{
 				FileWriter reflect_file{ cwd / "Reflector.h" };
 				reflect_file.WriteLine("#pragma once");
-				reflect_file.WriteLine("#include \"ReflectorClasses.h\"");
+				reflect_file.WriteLine("#include <ReflectorClasses.h>");
 				reflect_file.WriteLine("#define TOKENPASTE2_IMPL(x, y) x ## y");
 				reflect_file.WriteLine("#define TOKENPASTE2(x, y) TOKENPASTE2_IMPL(x, y)");
 				reflect_file.WriteLine("");
@@ -1240,7 +1243,15 @@ int main(int argc, const char* argv[])
 				reflect_file.WriteLine("");
 				reflect_file.WriteLine("#define ", options.MacroPrefix, "_CALLABLE(ret, name, args) static int ScriptFunction_##name(struct lua_State* thread) { return 0; }");
 				reflect_file.Close();
+				if (options.Verbose)
+					std::cout << "Created " << cwd / "Reflector.h" << "\n";
 			}
+			else
+			{
+				if (options.Verbose)
+					std::cout << cwd / "Reflector.h" << " exists, skipping\n";
+			}
+
 
 			if (!options.Quiet)
 				std::cout << modified_files << " mirror files changed\n";
