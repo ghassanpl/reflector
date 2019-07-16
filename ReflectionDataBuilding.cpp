@@ -86,10 +86,10 @@ void CreateTypeListArtifact(std::filesystem::path const& cwd, Options const& opt
 		for (auto& klass : mirror.Classes)
 		{
 			if (!klass.Flags.IsSet(ClassFlags::Struct))
-				classes_file << "ReflectClass(" << klass.Name << ");" << std::endl;
+				classes_file << "ReflectClass(" << klass.Name << ")" << std::endl;
 		}
 		for (auto& henum : mirror.Enums)
-			classes_file << "ReflectEnum(" << henum.Name << ");" << std::endl;
+			classes_file << "ReflectEnum(" << henum.Name << ")" << std::endl;
 	}
 
 	if (options.Verbose)
