@@ -45,8 +45,7 @@ std::string ParseIdentifier(string_view& str)
 
 std::string ParseType(string_view& str)
 {
-	/// TODO
-	//return ParseIdentifier(str);
+	/// TODO: Unify all type parsing from entire codebase
 	int brackets = 0, tris = 0, parens = 0;
 	auto p = str.begin();
 	for (; p != str.end(); p++)
@@ -451,7 +450,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 	path = path.lexically_normal();
 
 	if (options.Verbose)
-		PrintLine("Analyzing file ", path);
+		PrintLine("Analyzing file ", path.string());
 
 	std::vector<std::string> lines;
 	std::string line;

@@ -27,7 +27,7 @@ uint64_t FileNeedsUpdating(const std::filesystem::path& target_path, const std::
 	return file_change_time;
 }
 
-void CreateJSONDBArtifact(std::filesystem::path const& cwd)
+void CreateJSONDBArtifact(std::filesystem::path const& cwd, Options const& options)
 {
 	json db;
 
@@ -39,6 +39,9 @@ void CreateJSONDBArtifact(std::filesystem::path const& cwd)
 	std::ofstream jsondb{ cwd / "ReflectDatabase.json", std::ios_base::openmode{ std::ios_base::trunc } };
 	jsondb << db.dump(1, '\t');
 	jsondb.close();
+
+	if (options.Verbose)
+		PrintLine("Created ", (cwd / "ReflectDatabase.json").string());
 }
 
 void CreateReflectorHeaderArtifact(std::filesystem::path const& cwd, const Options& options)
@@ -58,18 +61,23 @@ void CreateReflectorHeaderArtifact(std::filesystem::path const& cwd, const Optio
 	reflect_file.WriteLine("");
 	reflect_file.WriteLine("#define ", options.MacroPrefix, "_CALLABLE(ret, name, args) static int ScriptFunction_##name(struct lua_State* thread) { return 0; }");
 	reflect_file.Close();
+	
+	if (options.Verbose)
+		PrintLine("Created ", (cwd / "Reflector.h").string());
 }
 
-void CreateIncludeListArtifact(std::filesystem::path const& cwd)
+void CreateIncludeListArtifact(std::filesystem::path const& cwd, Options const& options)
 {
 	std::ofstream includes_file(cwd / "Includes.reflect.h", std::ios_base::openmode{ std::ios_base::trunc });
 	for (auto& mirror : GetMirrors())
 	{
 		includes_file << "#include " << mirror.SourceFilePath << "" << std::endl;
 	}
+	if (options.Verbose)
+		PrintLine("Created ", (cwd / "Includes.reflect.h").string());
 }
 
-void CreateTypeListArtifact(std::filesystem::path const& cwd)
+void CreateTypeListArtifact(std::filesystem::path const& cwd, Options const& options)
 {
 	std::ofstream classes_file(cwd / "Classes.reflect.h", std::ios_base::openmode{ std::ios_base::trunc });
 
@@ -83,6 +91,9 @@ void CreateTypeListArtifact(std::filesystem::path const& cwd)
 		for (auto& henum : mirror.Enums)
 			classes_file << "ReflectEnum(" << henum.Name << ");" << std::endl;
 	}
+
+	if (options.Verbose)
+		PrintLine("Created ", (cwd / "Classes.reflect.h").string());
 }
 
 bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
@@ -465,7 +476,7 @@ void BuildMirrorFile(FileMirror const& file, size_t& modified_files, const Optio
 	modified_files++;
 
 	if (!options.Quiet)
-		PrintLine("Building class file ", file_path);
+		PrintLine("Building class file ", file_path.string());
 
 	FileWriter f(file_path);
 	f.WriteLine(TIMESTAMP_TEXT, file_change_time);

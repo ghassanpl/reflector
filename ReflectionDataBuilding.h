@@ -14,9 +14,9 @@ uint64_t FileNeedsUpdating(const std::filesystem::path& target_path, const std::
 
 void BuildMirrorFile(FileMirror const& file, size_t& modified_files, const Options& opts);
 
-void CreateTypeListArtifact(std::filesystem::path const& cwd);
-void CreateIncludeListArtifact(std::filesystem::path const& cwd);
-void CreateJSONDBArtifact(std::filesystem::path const& cwd);
+void CreateTypeListArtifact(std::filesystem::path const& cwd, Options const& options);
+void CreateIncludeListArtifact(std::filesystem::path const& cwd, Options const& options);
+void CreateJSONDBArtifact(std::filesystem::path const& cwd, Options const& options);
 void CreateReflectorHeaderArtifact(std::filesystem::path const& cwd, const Options& opts);
 
 struct FileWriter

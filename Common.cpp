@@ -282,7 +282,8 @@ void AddMirror(FileMirror mirror)
 
 void CreateArtificialMethods()
 {
+	/// TODO: Not sure if these are safe to be multithreaded, we ARE adding new methods to the mirrors after all...
 	std::vector<std::future<void>> futures;
 	for (auto& mirror : Mirrors)
-		futures.push_back(std::async([&]() {mirror.CreateArtificialMethods(); }));
+		futures.push_back(std::async([&]() { mirror.CreateArtificialMethods(); }));
 }
