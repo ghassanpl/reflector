@@ -2,6 +2,8 @@
 
 > **NOTE**: This is still a major work in progress. Right now the tool mostly works, but is ugly, generates crappy code, and has bugs. Use at your own risk.
 
+> Pull requests welcome and encouraged and begged for!
+
 ## What is it?
 
 Reflector is a tool similar to the Unreal Header Tool. It will scan the headers in you codebase for types/methods/fields annotated with a [special reflection syntax](https://github.com/ghassanpl/reflector/wiki/Usage#code-requirements). It will then create files containing reflection information about those entities. The main type of file it will create is the [`*.mirror.h`](https://github.com/ghassanpl/reflector/wiki/Artifacts#mirrorh) file, which you are meant to include in the files Reflector is scanning. This will inject reflection information straight into your files, allowing for compile-time reflection of these entities.
