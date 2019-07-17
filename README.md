@@ -2,7 +2,7 @@
 
 > **NOTE**: This is still a major work in progress. Right now the tool mostly works, but is ugly, generates crappy code, and has bugs. Use at your own risk.
 
-> Pull requests welcome and encouraged and begged for!
+> Pull requests welcomed and encouraged and begged for!
 
 ## What is it?
 
