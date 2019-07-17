@@ -47,7 +47,7 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 	/// Getters and Setters
 	if (!Flags.IsSet(Reflector::FieldFlags::NoGetter))
 	{
-		klass.AddArtificialMethod(Type + "&", "Get" + DisplayName, "", "return " + Name + ";", { "Gets " + field_comments });
+		klass.AddArtificialMethod(Type + "&", "Get" + DisplayName, "", "return " + Name + ";", { "Gets " + field_comments }, {}, DeclarationLine);
 	}
 
 	if (!Flags.IsSet(Reflector::FieldFlags::NoSetter))
@@ -55,7 +55,7 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 		auto on_change = Attributes.value("OnChange", "");
 		if (!on_change.empty())
 			on_change = on_change + "(); ";
-		klass.AddArtificialMethod("void", "Set" + DisplayName, Type + " const & value", Name + " = value; " + on_change, { "Sets " + field_comments });
+		klass.AddArtificialMethod("void", "Set" + DisplayName, Type + " const & value", Name + " = value; " + on_change, { "Sets " + field_comments }, {}, DeclarationLine);
 	}
 
 	auto flag_getters = Attributes.value("FlagGetters", "");
@@ -81,7 +81,7 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 		for (auto& enumerator : henum->Enumerators)
 		{
 			klass.AddArtificialMethod("bool", "Is" + enumerator.Name, "", baselib::Stringify("return (", Name, " & ", Type, "{", 1ULL << enumerator.Value, "}) != 0;"),
-				{ "Checks whether the `" + enumerator.Name + "` flag is set in " + field_comments }, MethodFlags::Const);
+				{ "Checks whether the `" + enumerator.Name + "` flag is set in " + field_comments }, MethodFlags::Const, DeclarationLine);
 		}
 
 		if (do_setters)
@@ -89,17 +89,17 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 			for (auto& enumerator : henum->Enumerators)
 			{
 				klass.AddArtificialMethod("void", "Set" + enumerator.Name, "", baselib::Stringify(Name, " |= ", Type, "{", 1ULL << enumerator.Value, "};"),
-					{ "Sets the `" + enumerator.Name + "` flag in " + field_comments });
+					{ "Sets the `" + enumerator.Name + "` flag in " + field_comments }, {}, DeclarationLine);
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
 				klass.AddArtificialMethod("void", "Unset" + enumerator.Name, "", baselib::Stringify(Name, " &= ~", Type, "{", 1ULL << enumerator.Value, "};"),
-					{ "Clears the `" + enumerator.Name + "` flag in " + field_comments });
+					{ "Clears the `" + enumerator.Name + "` flag in " + field_comments }, {}, DeclarationLine);
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
 				klass.AddArtificialMethod("void", "Toggle" + enumerator.Name, "", baselib::Stringify(Name, " ^= ", Type, "{", 1ULL << enumerator.Value, "};"),
-					{ "Toggles the `" + enumerator.Name + "` flag in " + field_comments });
+					{ "Toggles the `" + enumerator.Name + "` flag in " + field_comments }, {}, DeclarationLine);
 			}
 		}
 	}
@@ -119,6 +119,11 @@ json Field::ToJSON() const
 	ADDFLAG(NoEdit);
 #undef ADDFLAG
 	return result;
+}
+
+std::string Method::GetSignature(Class const& parent_class) const
+{
+	return baselib::Stringify(Type, " (", parent_class.Name, "::*)(", Parameters, ")");
 }
 
 void Method::CreateArtificialMethods(FileMirror& mirror, Class& klass)
@@ -153,7 +158,7 @@ void Property::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 {
 }
 
-void Class::AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, baselib::EnumFlags<MethodFlags> additional_flags)
+void Class::AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, baselib::EnumFlags<MethodFlags> additional_flags, size_t source_field_declaration_line)
 {
 	Method method;
 	method.Flags += MethodFlags::Artificial;
@@ -167,6 +172,7 @@ void Class::AddArtificialMethod(std::string results, std::string name, std::stri
 	method.DeclarationLine = 0;
 	method.Access = AccessMode::Public;
 	method.Comments = std::move(comments);
+	method.SourceFieldDeclarationLine = source_field_declaration_line;
 	Methods.push_back(std::move(method));
 }
 
@@ -178,6 +184,22 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 		method.CreateArtificialMethods(mirror, *this);
 	for (auto& property : Properties)
 		property.second.CreateArtificialMethods(mirror, *this);
+
+	MethodCounts.clear();
+	for (auto& method : Methods)
+	{
+		if (++MethodCounts[method.Name] > 1)
+		{
+			/// We make sure that no methods with this name have default arguments,
+			/// as we cannot differentiate between them in the visitors, as we need to cast them to their appropriate types, and
+			/// we cannot create a valid signature for a function with default arguments (stupid undecidable C++ syntax)
+			for (auto& other_method : Methods)
+			{
+				if (method.Name == other_method.Name && other_method.Parameters.find('=') != std::string::npos)
+					throw std::exception{ baselib::Stringify(mirror.SourceFilePath.string(), "(", other_method.DeclarationLine + 1, ",0): limitation: methods that have overloads cannot have default arguments").c_str() };
+			}
+		}
+	}
 }
 
 json Class::ToJSON() const
@@ -286,4 +308,7 @@ void CreateArtificialMethods()
 	std::vector<std::future<void>> futures;
 	for (auto& mirror : Mirrors)
 		futures.push_back(std::async([&]() { mirror.CreateArtificialMethods(); }));
+	
+	for (auto& future : futures)
+		future.get(); /// to propagate exceptions
 }

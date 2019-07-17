@@ -16,6 +16,8 @@ uint64_t FileNeedsUpdating(const std::filesystem::path& target_path, const std::
 		std::ifstream f(target_path);
 		std::string line;
 		std::getline(f, line);
+		if (line.empty() || line.size() < sizeof(TIMESTAMP_TEXT))
+			return 1; /// corrupted file, regenerate
 
 		uint64_t stored_change_time = 0;
 		const auto time = string_view{ string_view{ line }.substr(sizeof(TIMESTAMP_TEXT) - 1) };
@@ -49,6 +51,8 @@ void CreateReflectorHeaderArtifact(std::filesystem::path const& cwd, const Optio
 	FileWriter reflect_file{ cwd / "Reflector.h" };
 	reflect_file.WriteLine("#pragma once");
 	reflect_file.WriteLine("#include <ReflectorClasses.h>");
+	reflect_file.WriteLine("#define TOKENPASTE3_IMPL(x, y, z) x ## y ## z");
+	reflect_file.WriteLine("#define TOKENPASTE3(x, y, z) TOKENPASTE3_IMPL(x, y, z)");
 	reflect_file.WriteLine("#define TOKENPASTE2_IMPL(x, y) x ## y");
 	reflect_file.WriteLine("#define TOKENPASTE2(x, y) TOKENPASTE2_IMPL(x, y)");
 	reflect_file.WriteLine("");
@@ -59,7 +63,7 @@ void CreateReflectorHeaderArtifact(std::filesystem::path const& cwd, const Optio
 	reflect_file.WriteLine("#define ", options.EnumPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_ENUM_, __LINE__)");
 	reflect_file.WriteLine("#define ", options.EnumeratorPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_ENUMERATOR_, __LINE__)");
 	reflect_file.WriteLine("");
-	reflect_file.WriteLine("#define ", options.MacroPrefix, "_CALLABLE(ret, name, args) static int ScriptFunction_##name(struct lua_State* thread) { return 0; }");
+	reflect_file.WriteLine("#define ", options.MacroPrefix, "_CALLABLE(ret, name, args, id) static int TOKENPASTE3(ScriptFunction_, name, id)(struct lua_State* thread) { return 0; }");
 	reflect_file.Close();
 	
 	if (options.Verbose)
@@ -135,8 +139,7 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 	{
 		const auto& field = klass.Fields[i];
 		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Fields[", i, "], &", klass.Name, "::", field.Name, ", ",
-			(field.Flags.IsSet(Reflector::FieldFlags::NoEdit) ? "std::false_type{}" : "std::true_type{}"),
-			");");
+			(field.Flags.IsSet(Reflector::FieldFlags::NoEdit) ? "std::false_type{}" : "std::true_type{}"), ");");
 	}
 	output.EndDefine("");
 
@@ -146,7 +149,12 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 	{
 		const auto& method = klass.Methods[i];
 		if (!method.Flags.IsSet(MethodFlags::NoCallable))
-			output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], &", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, ");");
+		{
+			if (klass.MethodCounts.at(method.Name) > 1)
+				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], (", method.GetSignature(klass), ")&", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ");");
+			else
+				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], &", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ");");
+		}
 	}
 	output.EndDefine("");
 
@@ -254,6 +262,10 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 			if (options.UseJSON)
 				output.WriteLine(".AttributesJSON = ::nlohmann::json::parse(R\"_REFLECT_(", method.Attributes.dump(), ")_REFLECT_\"),");
 		}
+		if (!method.UniqueName.empty())
+			output.WriteLine(".UniqueName = \"", method.UniqueName, "\",");
+		if (!method.Body.empty())
+			output.WriteLine(".Body = \"", method.Body, "\",");
 		output.WriteLine(".ReturnTypeIndex = typeid(", method.Type, "),");
 		output.WriteLine(".ParentClass = &_data");
 		output.CurrentIndent--;
@@ -302,7 +314,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	{
 		/// Callables for all methods
 		if (!func.Flags.IsSet(MethodFlags::NoCallable))
-			output.WriteLine("", options.MacroPrefix, "_CALLABLE((", func.Type, "), ", func.Name, ", (", func.Parameters, "))");
+			output.WriteLine("", options.MacroPrefix, "_CALLABLE((", func.Type, "), ", func.Name, ", (", func.Parameters, "), ", func.ActualDeclarationLine(), ")");
 		if (func.Flags.IsSet(MethodFlags::Artificial))
 		{
 			output.WriteLine(func.Type, " ", func.Name, "(", func.Parameters, ")", (func.Flags.IsSet(MethodFlags::Const) ? " const" : ""), " { ", func.Body, " }");

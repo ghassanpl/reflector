@@ -107,6 +107,8 @@ int main(int argc, const char* argv[])
 				modified_files += mod;
 			}));
 		}
+		for (auto& future : futures)
+			future.get(); /// to propagate exceptions
 		futures.clear();
 
 		auto cwd = std::filesystem::absolute(artifact_path.Matched() ? std::filesystem::path{ artifact_path.Get() } : std::filesystem::current_path());
@@ -124,6 +126,8 @@ int main(int argc, const char* argv[])
 		if (create_reflector)
 			futures.push_back(std::async(CreateReflectorHeaderArtifact, cwd, options));
 
+		for (auto& future : futures)
+			future.get(); /// to propagate exceptions
 		futures.clear();
 
 		if (options.Verbose)
@@ -147,6 +151,11 @@ int main(int argc, const char* argv[])
 	catch (args::Error& e)
 	{
 		std::cerr << e.what() << std::endl << parser;
+		return 1;
+	}
+	catch (std::exception& e)
+	{
+		std::cerr << e.what() << "\n";
 		return 1;
 	}
 

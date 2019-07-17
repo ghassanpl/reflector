@@ -82,6 +82,14 @@ struct Method : public Declaration
 	std::string Parameters;
 	std::string Body;
 	size_t SourceFieldDeclarationLine = 0;
+	std::string UniqueName;
+
+	size_t ActualDeclarationLine() const
+	{
+		return DeclarationLine ? DeclarationLine : SourceFieldDeclarationLine;
+	}
+
+	std::string GetSignature(Class const& parent_class) const;
 
 	void CreateArtificialMethods(FileMirror& mirror, Class& klass);
 
@@ -118,9 +126,10 @@ struct Class : public Declaration
 
 	size_t BodyLine = 0;
 
-	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, baselib::EnumFlags<MethodFlags> additional_flags = {});
-
+	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, baselib::EnumFlags<MethodFlags> additional_flags = {}, size_t source_field_declaration_line = 0);
 	void CreateArtificialMethods(FileMirror& mirror);
+
+	std::map<std::string, size_t> MethodCounts;
 
 	json ToJSON() const;
 };

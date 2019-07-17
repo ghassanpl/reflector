@@ -72,6 +72,51 @@ std::string ParseType(string_view& str)
 	return result;
 }
 
+std::string ParseExpression(string_view& str)
+{
+	int brackets = 0, tris = 0, parens = 0;
+	auto p = str.begin();
+	for (; p != str.end(); p++)
+	{
+		switch (*p)
+		{
+		case '[': brackets++; continue;
+		case ']': if (brackets > 0) { brackets--; continue; } else break;
+		case '(': parens++; continue;
+		case ')': if (parens > 0) { parens--; continue; } else break;
+		case '<': tris++; continue;
+		case '>': tris--; continue;
+		}
+
+		if (*p == ',' || *p == ')')
+		{
+			if (parens == 0 && tris == 0 && brackets == 0)
+				break;
+		}
+	}
+
+	std::string result = { str.begin(), p };
+	str = { p, str.end() };
+	return result;
+}
+
+/*
+std::tuple<std::string, std::string> ParseParameter(string_view& str)
+{
+	/// TODO: Function pointers, arrays, etc.
+	auto type = ParseType(str);
+	auto name = ParseIdentifier(str);
+	str = baselib::TrimWhitespaceLeft(str);
+	if (str[0] == '=')
+	{
+	}
+		auto initializer = ParseExpression(str);
+		return { std::move(type), std::move(name), std::move(initializer) };
+	}
+	else
+		return { std::move(type), std::move(name), {} };
+}
+*/
 
 json ParseAttributeList(string_view line)
 {
@@ -390,6 +435,9 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	method.Attributes = ParseAttributeList(line);
 	method.DeclarationLine = line_num;
 	ParseMethodDecl(next_line, method);
+
+	if (auto getter = method.Attributes.find("UniqueName"); getter != method.Attributes.end())
+		method.UniqueName = getter->get<std::string>();
 
 	if (auto getter = method.Attributes.find("GetterFor"); getter != method.Attributes.end())
 	{

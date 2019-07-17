@@ -68,6 +68,8 @@ namespace Reflector
 #ifdef NLOHMANN_JSON_VERSION_MAJOR
 		nlohmann::json AttributesJSON;
 #endif
+		const char* UniqueName = "";
+		const char* Body = "";
 		std::type_index ReturnTypeIndex;
 
 		ClassReflectionData const* ParentClass = nullptr;
