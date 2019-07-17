@@ -150,7 +150,7 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 		const auto& method = klass.Methods[i];
 		if (!method.Flags.IsSet(MethodFlags::NoCallable))
 		{
-			if (klass.MethodCounts.at(method.Name) > 1)
+			if (klass.MethodsByName.at(method.Name).size() > 1)
 				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], (", method.GetSignature(klass), ")&", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ");");
 			else
 				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], &", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ");");

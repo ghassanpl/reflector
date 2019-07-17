@@ -129,7 +129,7 @@ struct Class : public Declaration
 	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, baselib::EnumFlags<MethodFlags> additional_flags = {}, size_t source_field_declaration_line = 0);
 	void CreateArtificialMethods(FileMirror& mirror);
 
-	std::map<std::string, size_t> MethodCounts;
+	std::map<std::string, std::vector<Method const*>> MethodsByName;
 
 	json ToJSON() const;
 };

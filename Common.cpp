@@ -185,18 +185,45 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 	for (auto& property : Properties)
 		property.second.CreateArtificialMethods(mirror, *this);
 
-	MethodCounts.clear();
+	/// First check unique method names
+	MethodsByName.clear();
+
 	for (auto& method : Methods)
 	{
-		if (++MethodCounts[method.Name] > 1)
+		MethodsByName[method.Name].push_back(&method);
+		if (!method.UniqueName.empty() && method.Name != method.UniqueName)
+			MethodsByName[method.UniqueName].push_back(&method);
+	}
+	
+	for (auto& method : Methods)
+	{
+		if (method.UniqueName.empty())
+			continue;
+		if (MethodsByName[method.UniqueName].size() > 1)
+		{
+			std::string message;
+			message += baselib::Stringify(mirror.SourceFilePath.string(), "(", method.DeclarationLine + 1, ",0): method with unique name not unique");
+			for (auto& conflicting_method : MethodsByName[method.UniqueName])
+			{
+				if (conflicting_method != &method)
+					message += baselib::Stringify("\n", mirror.SourceFilePath.string(), "(", conflicting_method->DeclarationLine + 1, ",0):   conflicts with this declaration");
+			}
+			throw std::exception{ message.c_str() };
+		}
+	}
+
+	/// Check for same-name methods
+	for (auto& method_names : MethodsByName)
+	{
+		if (method_names.second.size() > 1)
 		{
 			/// We make sure that no methods with this name have default arguments,
 			/// as we cannot differentiate between them in the visitors, as we need to cast them to their appropriate types, and
 			/// we cannot create a valid signature for a function with default arguments (stupid undecidable C++ syntax)
-			for (auto& other_method : Methods)
+			for (auto& other_method : method_names.second)
 			{
-				if (method.Name == other_method.Name && other_method.Parameters.find('=') != std::string::npos)
-					throw std::exception{ baselib::Stringify(mirror.SourceFilePath.string(), "(", other_method.DeclarationLine + 1, ",0): limitation: methods that have overloads cannot have default arguments").c_str() };
+				if (other_method->Parameters.find('=') != std::string::npos)
+					throw std::exception{ baselib::Stringify(mirror.SourceFilePath.string(), "(", other_method->DeclarationLine + 1, ",0): limitation: methods that have overloads cannot have default arguments").c_str() };
 			}
 		}
 	}
