@@ -100,7 +100,7 @@ void CreateTypeListArtifact(std::filesystem::path const& cwd, Options const& opt
 		PrintLine("Created ", (cwd / "Classes.reflect.h").string());
 }
 
-bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
+bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
 {
 	output.WriteLine("/// From class: ", klass.Name);
 
@@ -302,13 +302,9 @@ bool BuildCommonClassEntry(FileWriter& output, const FileMirror& mirror, const C
 	output.WriteLine("\t", options.MacroPrefix, "_VISIT_", klass.Name, "_PROPERTIES(visitor);");
 	output.WriteLine("}");
 
-	return true;
-}
-
-bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
-{
-	if (!BuildCommonClassEntry(output, mirror, klass, options))
-		return false;
+	/// ///////////////////////////////////// ///
+	/// All methods
+	/// ///////////////////////////////////// ///
 
 	for (auto& func : klass.Methods)
 	{
@@ -327,6 +323,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	return true;
 }
 
+/*
 bool BuildStructEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
 {
 	if (!BuildCommonClassEntry(output, mirror, klass, options))
@@ -381,6 +378,7 @@ bool BuildStructEntry(FileWriter& output, const FileMirror& mirror, const Class&
 
 	return true;
 }
+*/
 
 bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& henum, const Options& options)
 {
@@ -498,11 +496,7 @@ void BuildMirrorFile(FileMirror const& file, size_t& modified_files, const Optio
 
 	for (auto& klass : file.Classes)
 	{
-		const bool is_struct = klass.Flags.IsSet(ClassFlags::Struct);
-		const bool build_result = is_struct ?
-			BuildStructEntry(f, file, klass, options) :
-			BuildClassEntry(f, file, klass, options);
-		if (!build_result)
+		if (!BuildClassEntry(f, file, klass, options))
 			continue;
 		f.WriteLine();
 	}

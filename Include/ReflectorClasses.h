@@ -26,6 +26,7 @@ namespace Reflector
 		std::type_index TypeIndex;
 	};
 
+	/// TODO: Actually add these
 	enum class FieldFlags
 	{
 		NoSetter,
