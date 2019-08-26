@@ -56,12 +56,12 @@ void CreateReflectorHeaderArtifact(std::filesystem::path const& cwd, const Optio
 	reflect_file.WriteLine("#define TOKENPASTE2_IMPL(x, y) x ## y");
 	reflect_file.WriteLine("#define TOKENPASTE2(x, y) TOKENPASTE2_IMPL(x, y)");
 	reflect_file.WriteLine("");
-	reflect_file.WriteLine("#define ", options.ClassPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_CLASS_DECL_LINE_, __LINE__)");
-	reflect_file.WriteLine("#define ", options.FieldPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_FIELD_DECL_LINE_, __LINE__)");
-	reflect_file.WriteLine("#define ", options.MethodPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_METHOD_DECL_LINE_, __LINE__)");
+	reflect_file.WriteLine("#define ", options.ClassPrefix, "(...)");
+	reflect_file.WriteLine("#define ", options.FieldPrefix, "(...)");
+	reflect_file.WriteLine("#define ", options.MethodPrefix, "(...)");
 	reflect_file.WriteLine("#define ", options.BodyPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_GENERATED_CLASS_BODY_, __LINE__)");
 	reflect_file.WriteLine("#define ", options.EnumPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_ENUM_, __LINE__)");
-	reflect_file.WriteLine("#define ", options.EnumeratorPrefix, "(...) TOKENPASTE2(", options.MacroPrefix, "_ENUMERATOR_, __LINE__)");
+	reflect_file.WriteLine("#define ", options.EnumeratorPrefix, "(...)");
 	reflect_file.WriteLine("");
 	reflect_file.WriteLine("#define ", options.MacroPrefix, "_CALLABLE(ret, name, args, id) static int TOKENPASTE3(ScriptFunction_, name, id)(struct lua_State* thread) { return 0; }");
 	reflect_file.Close();
@@ -108,6 +108,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	/// RClass, RMethod and RField macro expansions
 	/// ///////////////////////////////////// ///
 
+	/*
 	output.WriteLine("#undef ", options.MacroPrefix, "_CLASS_DECL_LINE_", klass.DeclarationLine);
 	output.WriteLine("#define ", options.MacroPrefix, "_CLASS_DECL_LINE_", klass.DeclarationLine);
 
@@ -127,6 +128,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		output.WriteLine("#undef ", options.MacroPrefix, "_FIELD_DECL_LINE_", field.DeclarationLine);
 		output.WriteLine("#define ", options.MacroPrefix, "_FIELD_DECL_LINE_", field.DeclarationLine);
 	}
+	*/
 
 	/// ///////////////////////////////////// ///
 	/// Visitor macros
@@ -138,8 +140,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (size_t i = 0; i < klass.Fields.size(); i++)
 	{
 		const auto& field = klass.Fields[i];
-		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Fields[", i, "], &", klass.Name, "::", field.Name, ", ",
-			(field.Flags.IsSet(Reflector::FieldFlags::NoEdit) ? "std::false_type{}" : "std::true_type{}"), ");");
+		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Fields[", i, "], &", klass.Name, "::", field.Name, ", ::Reflector::CompileTimeFieldData<", field.Type, ", ", klass.Name, ", ", field.Flags.Bits, ">{});");
 	}
 	output.EndDefine("");
 
@@ -231,7 +232,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		output.WriteLine(".Name = \"", field.Name, "\",");
 		output.WriteLine(".FieldType = \"", field.Type, "\",");
 		if (!field.InitializingExpression.empty())
-			output.WriteLine(".Initializer = \"", field.InitializingExpression, "\",");
+			output.WriteLine(".Initializer = ", json(field.InitializingExpression).dump(), ",");
 		if (!field.Attributes.empty())
 		{
 			output.WriteLine(".Attributes = R\"_REFLECT_(", field.Attributes.dump(), ")_REFLECT_\",");
@@ -420,29 +421,47 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.CurrentIndent--;
 	output.WriteLine("}");
 
-	output.WriteLine("inline const char* GetEnumName(", henum.Name, ") { return \"", henum.Name, "\"; }");
-	output.WriteLine("inline const char* GetEnumeratorName(", henum.Name, " v) {");
+	output.WriteLine("inline constexpr const char* GetEnumName(", henum.Name, ") { return \"", henum.Name, "\"; }");
+	output.WriteLine("inline constexpr const char* GetEnumeratorName(", henum.Name, " v) {");
 	{
 		auto indent = output.Indent();
 
-		output.WriteLine("switch (int64_t(v)) {");
-		for (auto& enumerator : henum.Enumerators)
+		if (henum.Enumerators.size())
 		{
-			output.WriteLine("case ", enumerator.Value, ": return \"", enumerator.Name, "\";");
+			output.WriteLine("switch (int64_t(v)) {");
+			for (auto& enumerator : henum.Enumerators)
+			{
+				output.WriteLine("case ", enumerator.Value, ": return \"", enumerator.Name, "\";");
+			}
+			output.WriteLine("}");
 		}
-		output.WriteLine("default: return \"<Unknown>\";");
-		output.WriteLine("}");
+		output.WriteLine("return \"<Unknown>\";");	
 	}
 	output.WriteLine("}");
 	output.WriteLine("inline std::ostream& operator<<(std::ostream& strm, ", henum.Name, " v) { strm << GetEnumeratorName(v); return strm; }");
+	output.WriteLine("template <typename T>");
+	output.WriteLine("void OutputFlagsFor(std::ostream& strm, ", henum.Name, ", T flags) { ");
+	output.CurrentIndent++;
+	output.WriteLine("const char* comma = \"\";");
+	output.WriteLine("strm << '(';");
+	for (auto& enumerator : henum.Enumerators)
+	{
+		output.WriteLine("if (flags & (T(1) << ", enumerator.Value, "ULL)) { strm << comma << \"", enumerator.Name, "\"; comma = \", \"; }");
+	}
+	output.WriteLine("strm << ')';");
+	output.CurrentIndent--;
+	output.WriteLine("}");
 
 	output.EndDefine();
 
-	for (auto& enumerator : henum.Enumerators)
+
+	output.StartDefine("#define ", options.MacroPrefix, "_VISIT_", henum.Name, "_ENUMERATORS(", options.MacroPrefix, "_VISITOR)");
+	for (size_t i = 0; i < henum.Enumerators.size(); i++)
 	{
-		output.WriteLine("#undef ", options.MacroPrefix, "_ENUMERATOR_", enumerator.DeclarationLine);
-		output.WriteLine("#define ", options.MacroPrefix, "_ENUMERATOR_", enumerator.DeclarationLine);
+		const auto& enumerator = henum.Enumerators[i];
+		output.WriteLine("", options.MacroPrefix, "_VISITOR(&StaticGetReflectionData(", henum.Name, "{}).Enumerators[", i, "], ", henum.Name, "::", enumerator.Name, ", \"", enumerator.Name, "\");");
 	}
+	output.EndDefine("");
 
 	return true;
 }

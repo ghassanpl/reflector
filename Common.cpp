@@ -4,7 +4,7 @@
 /// DISCLAIMER: THE WORKS ARE WITHOUT WARRANTY.
 
 #include "Common.h"
-#include "../baselib/Include/baselib/ASCII.h"
+#include <baselib/ASCII.h>
 #include <mutex>
 #include <future>
 #include <thread>
@@ -47,7 +47,7 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 	/// Getters and Setters
 	if (!Flags.IsSet(Reflector::FieldFlags::NoGetter))
 	{
-		klass.AddArtificialMethod(Type + "&", "Get" + DisplayName, "", "return " + Name + ";", { "Gets " + field_comments }, {}, DeclarationLine);
+		klass.AddArtificialMethod(Type + " const &", "Get" + DisplayName, "", "return " + Name + ";", { "Gets " + field_comments }, { MethodFlags::Const }, DeclarationLine);
 	}
 
 	if (!Flags.IsSet(Reflector::FieldFlags::NoSetter))

@@ -10,8 +10,8 @@
 #include <string_view>
 #include <vector>
 #include <nlohmann/json.hpp>
-#include "../baselib/Include/baselib/EnumFlags.h"
-#include "../baselib/Include/baselib/Strings.h"
+#include <baselib/EnumFlags.h>
+#include <baselib/Strings.h>
 using baselib::string_view;
 #include "Include/ReflectorClasses.h"
 

@@ -4,7 +4,7 @@
 /// DISCLAIMER: THE WORKS ARE WITHOUT WARRANTY.
 
 #include "Parse.h"
-#include "../baselib/Include/baselib/ASCII.h"
+#include <baselib/ASCII.h>
 #include <charconv>
 #include <fstream>
 
@@ -250,6 +250,8 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 
 	line = TrimWhitespace(line);
 
+	SwallowOptional(line, "mutable");
+
 	string_view eq = "=", colon = ";";
 	string_view type_and_name = "";
 	auto eq_start = std::find_first_of(line.begin(), line.end(), eq.begin(), eq.end());
@@ -300,11 +302,19 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 
 	/// Disable if explictly stated
 	if (field.Attributes.value("Getter", true) == false)
-		field.Flags.Set(Reflector::FieldFlags::NoGetter);
+		field.Flags.Set(Reflector::FieldFlags:: NoGetter);
 	if (field.Attributes.value("Setter", true) == false)
 		field.Flags.Set(Reflector::FieldFlags::NoSetter);
 	if (field.Attributes.value("Editor", true) == false || field.Attributes.value("Edit", true) == false)
 		field.Flags.Set(Reflector::FieldFlags::NoEdit);
+	if (field.Attributes.value("Save", true) == false)
+		field.Flags.Set(Reflector::FieldFlags::NoSave);
+	if (field.Attributes.value("Load", true) == false)
+		field.Flags.Set(Reflector::FieldFlags::NoLoad);
+
+	/// Serialize = false implies Save = false, Load = false
+	if (field.Attributes.value("Serialize", true) == false)
+		field.Flags.Set(Reflector::FieldFlags::NoSave, Reflector::FieldFlags::NoLoad);
 
 	/// Private implies Getter = false, Setter = false, Editor = false
 	if (field.Attributes.value("Private", false))
@@ -326,6 +336,10 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 		field.Flags.Unset(Reflector::FieldFlags::NoSetter);
 	if (field.Attributes.value("Editor", false) == true || field.Attributes.value("Edit", false) == true)
 		field.Flags.Unset(Reflector::FieldFlags::NoEdit);
+	if (field.Attributes.value("Save", false) == true)
+		field.Flags.Unset(Reflector::FieldFlags::NoSave);
+	if (field.Attributes.value("Load", false) == true)
+		field.Flags.Unset(Reflector::FieldFlags::NoLoad);
 
 	return field;
 }
@@ -388,7 +402,9 @@ void ParseMethodDecl(string_view line, Method& method)
 
 		auto end_line = line.find_first_of("{;");
 		if (end_line != std::string::npos)
-			line = line.substr(0, end_line);
+			line = TrimWhitespace(line.substr(0, end_line));
+		if (line.ends_with("override"))
+			line.remove_suffix(sizeof("override") - 1);
 		method.Type = (std::string)TrimWhitespace(line);
 	}
 	else
