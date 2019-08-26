@@ -38,12 +38,38 @@ namespace Reflector
 		NoDebug
 	};
 
-	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS>
+	enum class MethodFlags
+	{
+		Inline,
+		Virtual,
+		Static,
+		Const,
+		Noexcept,
+		Final,
+		Explicit,
+		Artificial,
+		HasBody,
+		NoCallable
+	};
+
+	template <char... CHARS>
+	struct CompileTimeLiteral
+	{
+		static constexpr const char value[] = { CHARS... };
+	};
+	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, typename NAME_CTL>
 	struct CompileTimeFieldData
 	{
 		using type = std::remove_cvref_t<FIELD_TYPE>;
 		using parent_type = PARENT_TYPE;
 		static constexpr uint64_t flags = FLAGS;
+		static constexpr const char* name = NAME_CTL::value;
+	};
+	template <uint64_t FLAGS, typename NAME_CTL>
+	struct CompileTimeMethodData
+	{
+		static constexpr uint64_t flags = FLAGS;
+		static constexpr const char* name = NAME_CTL::value;
 	};
 
 	struct FieldReflectionData

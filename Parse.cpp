@@ -359,10 +359,10 @@ void ParseMethodDecl(string_view line, Method& method)
 	*/
 	while (true)
 	{
-		if (SwallowOptional(line, "virtual")) method.Flags += MethodFlags::Virtual;
-		else if (SwallowOptional(line, "static")) method.Flags += MethodFlags::Static;
-		else if (SwallowOptional(line, "inline")) method.Flags += MethodFlags::Inline;
-		else if (SwallowOptional(line, "explicit")) method.Flags += MethodFlags::Explicit;
+		if (SwallowOptional(line, "virtual")) method.Flags += Reflector::MethodFlags::Virtual;
+		else if (SwallowOptional(line, "static")) method.Flags += Reflector::MethodFlags::Static;
+		else if (SwallowOptional(line, "inline")) method.Flags += Reflector::MethodFlags::Inline;
+		else if (SwallowOptional(line, "explicit")) method.Flags += Reflector::MethodFlags::Explicit;
 		else break;
 	}
 	//line = Expect(line, "auto");
@@ -390,9 +390,9 @@ void ParseMethodDecl(string_view line, Method& method)
 
 	while (true)
 	{
-		if (SwallowOptional(line, "const")) method.Flags += MethodFlags::Const;
-		else if (SwallowOptional(line, "final")) method.Flags += MethodFlags::Final;
-		else if (SwallowOptional(line, "noexcept")) method.Flags += MethodFlags::Noexcept;
+		if (SwallowOptional(line, "const")) method.Flags += Reflector::MethodFlags::Const;
+		else if (SwallowOptional(line, "final")) method.Flags += Reflector::MethodFlags::Final;
+		else if (SwallowOptional(line, "noexcept")) method.Flags += Reflector::MethodFlags::Noexcept;
 		else break;
 	}
 

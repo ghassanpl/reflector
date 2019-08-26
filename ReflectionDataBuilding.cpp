@@ -100,6 +100,19 @@ void CreateTypeListArtifact(std::filesystem::path const& cwd, Options const& opt
 		PrintLine("Created ", (cwd / "Classes.reflect.h").string());
 }
 
+std::string BuildCompileTimeLiteral(std::string_view str)
+{
+	std::string result;
+	for (auto c : str)
+	{
+		result += "'";
+		result += c;
+		result += "',";
+	}
+	result += "0";
+	return result;
+}
+
 bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
 {
 	output.WriteLine("/// From class: ", klass.Name);
@@ -140,7 +153,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (size_t i = 0; i < klass.Fields.size(); i++)
 	{
 		const auto& field = klass.Fields[i];
-		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Fields[", i, "], &", klass.Name, "::", field.Name, ", ::Reflector::CompileTimeFieldData<", field.Type, ", ", klass.Name, ", ", field.Flags.Bits, ">{});");
+		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Fields[", i, "], &", klass.Name, "::", field.Name, ", ::Reflector::CompileTimeFieldData<", field.Type, ", ", klass.Name, ", ", field.Flags.Bits, ", ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(field.Name),">>{});");
 	}
 	output.EndDefine("");
 
@@ -149,12 +162,12 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (size_t i = 0; i < klass.Methods.size(); i++)
 	{
 		const auto& method = klass.Methods[i];
-		if (!method.Flags.IsSet(MethodFlags::NoCallable))
+		if (!method.Flags.IsSet(Reflector::MethodFlags::NoCallable))
 		{
 			if (klass.MethodsByName.at(method.Name).size() > 1)
-				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], (", method.GetSignature(klass), ")&", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ");");
+				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], (", method.GetSignature(klass), ")&", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ", ::Reflector::CompileTimeMethodData<", method.Flags.Bits, ", ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(method.Name), ">>{});");
 			else
-				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], &", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ");");
+				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], &", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ", ::Reflector::CompileTimeMethodData<", method.Flags.Bits, ", ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(method.Name), ">>{});");
 		}
 	}
 	output.EndDefine("");
@@ -170,7 +183,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		std::string setter_name = "nullptr";
 		if (!property.SetterName.empty())
 			setter_name = baselib::Stringify("&", klass.Name, "::", property.SetterName);
-		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData(), \"", property.Name, "\", ", getter_name, ", ", setter_name, ", ::Reflector::CompileTimeFieldData<", property.Type, ", ", klass.Name, ", 0ULL>{});");
+		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData(), \"", property.Name, "\", ", getter_name, ", ", setter_name, ", ::Reflector::CompileTimeFieldData<", property.Type, ", ", klass.Name, ", 0ULL, ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(property.Name), ">>{});");
 	}
 	output.EndDefine("");
 
@@ -310,11 +323,11 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (auto& func : klass.Methods)
 	{
 		/// Callables for all methods
-		if (!func.Flags.IsSet(MethodFlags::NoCallable))
+		if (!func.Flags.IsSet(Reflector::MethodFlags::NoCallable))
 			output.WriteLine("", options.MacroPrefix, "_CALLABLE((", func.Type, "), ", func.Name, ", (", func.Parameters, "), ", func.ActualDeclarationLine(), ")");
-		if (func.Flags.IsSet(MethodFlags::Artificial))
+		if (func.Flags.IsSet(Reflector::MethodFlags::Artificial))
 		{
-			output.WriteLine(func.Type, " ", func.Name, "(", func.Parameters, ")", (func.Flags.IsSet(MethodFlags::Const) ? " const" : ""), " { ", func.Body, " }");
+			output.WriteLine(func.Type, " ", func.Name, "(", func.Parameters, ")", (func.Flags.IsSet(Reflector::MethodFlags::Const) ? " const" : ""), " { ", func.Body, " }");
 		}
 	}
 
@@ -480,6 +493,7 @@ void FileWriter::WriteLine()
 
 void FileWriter::Close()
 {
+	mOutFile.flush();
 	mOutFile.close();
 }
 

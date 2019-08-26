@@ -47,7 +47,7 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 	/// Getters and Setters
 	if (!Flags.IsSet(Reflector::FieldFlags::NoGetter))
 	{
-		klass.AddArtificialMethod(Type + " const &", "Get" + DisplayName, "", "return " + Name + ";", { "Gets " + field_comments }, { MethodFlags::Const }, DeclarationLine);
+		klass.AddArtificialMethod(Type + " const &", "Get" + DisplayName, "", "return " + Name + ";", { "Gets " + field_comments }, { Reflector::MethodFlags::Const }, DeclarationLine);
 	}
 
 	if (!Flags.IsSet(Reflector::FieldFlags::NoSetter))
@@ -81,7 +81,7 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 		for (auto& enumerator : henum->Enumerators)
 		{
 			klass.AddArtificialMethod("bool", "Is" + enumerator.Name, "", baselib::Stringify("return (", Name, " & ", Type, "{", 1ULL << enumerator.Value, "}) != 0;"),
-				{ "Checks whether the `" + enumerator.Name + "` flag is set in " + field_comments }, MethodFlags::Const, DeclarationLine);
+				{ "Checks whether the `" + enumerator.Name + "` flag is set in " + field_comments }, Reflector::MethodFlags::Const, DeclarationLine);
 		}
 
 		if (do_setters)
@@ -139,7 +139,7 @@ json Method::ToJSON() const
 		result["Body"] = Body;
 	if (SourceFieldDeclarationLine != 0)
 		result["SourceFieldDeclarationLine"] = SourceFieldDeclarationLine;
-#define ADDFLAG(n) if (Flags.IsSet(MethodFlags::n)) result[#n] = true
+#define ADDFLAG(n) if (Flags.IsSet(Reflector::MethodFlags::n)) result[#n] = true
 	ADDFLAG(Inline);
 	ADDFLAG(Virtual);
 	ADDFLAG(Static);
@@ -158,17 +158,17 @@ void Property::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 {
 }
 
-void Class::AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, baselib::EnumFlags<MethodFlags> additional_flags, size_t source_field_declaration_line)
+void Class::AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, baselib::EnumFlags<Reflector::MethodFlags> additional_flags, size_t source_field_declaration_line)
 {
 	Method method;
-	method.Flags += MethodFlags::Artificial;
+	method.Flags += Reflector::MethodFlags::Artificial;
 	method.Flags += additional_flags;
 	method.Type = std::move(results);
 	method.Name = std::move(name);
 	method.Parameters = std::move(parameters);
 	method.Body = std::move(body);
 	if (!method.Body.empty())
-		method.Flags += MethodFlags::HasBody;
+		method.Flags += Reflector::MethodFlags::HasBody;
 	method.DeclarationLine = 0;
 	method.Access = AccessMode::Public;
 	method.Comments = std::move(comments);

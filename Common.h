@@ -61,6 +61,7 @@ struct Field : public Declaration
 	json ToJSON() const;
 };
 
+/*
 enum class MethodFlags
 {
 	Inline,
@@ -73,12 +74,12 @@ enum class MethodFlags
 	Artificial,
 	HasBody,
 	NoCallable
-};
+};*/
 
 struct Method : public Declaration
 {
 	std::string Type;
-	baselib::EnumFlags<MethodFlags> Flags;
+	baselib::EnumFlags<Reflector::MethodFlags> Flags;
 	std::string Parameters;
 	std::string Body;
 	size_t SourceFieldDeclarationLine = 0;
@@ -126,7 +127,7 @@ struct Class : public Declaration
 
 	size_t BodyLine = 0;
 
-	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, baselib::EnumFlags<MethodFlags> additional_flags = {}, size_t source_field_declaration_line = 0);
+	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, baselib::EnumFlags<Reflector::MethodFlags> additional_flags = {}, size_t source_field_declaration_line = 0);
 	void CreateArtificialMethods(FileMirror& mirror);
 
 	std::map<std::string, std::vector<Method const*>> MethodsByName;
