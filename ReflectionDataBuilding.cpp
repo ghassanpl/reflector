@@ -453,15 +453,13 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.WriteLine("}");
 	output.WriteLine("inline std::ostream& operator<<(std::ostream& strm, ", henum.Name, " v) { strm << GetEnumeratorName(v); return strm; }");
 	output.WriteLine("template <typename T>");
-	output.WriteLine("void OutputFlagsFor(std::ostream& strm, ", henum.Name, ", T flags) { ");
+	output.WriteLine("void OutputFlagsFor(std::ostream& strm, ", henum.Name, ", T flags, std::string_view separator = \", \") { ");
 	output.CurrentIndent++;
-	output.WriteLine("const char* comma = \"\";");
-	output.WriteLine("strm << '(';");
+	output.WriteLine("std::string_view sep = \"\";");
 	for (auto& enumerator : henum.Enumerators)
 	{
-		output.WriteLine("if (flags & (T(1) << ", enumerator.Value, "ULL)) { strm << comma << \"", enumerator.Name, "\"; comma = \", \"; }");
+		output.WriteLine("if (flags & (T(", 1ULL<<enumerator.Value, "))) { strm << sep << \"", enumerator.Name, "\"; sep = separator; }");
 	}
-	output.WriteLine("strm << ')';");
 	output.CurrentIndent--;
 	output.WriteLine("}");
 
