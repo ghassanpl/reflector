@@ -78,9 +78,28 @@ enum class MethodFlags
 
 struct Method : public Declaration
 {
+	struct MethodParameter
+	{
+		std::string Name;
+		std::string Type;
+		//std::string DefaultValue;
+		json ToJSON() const
+		{
+			//return { {"Name", Name}, {"Type", Type}, {"DefaultValue", DefaultValue} };
+			return { {"Name", Name}, {"Type", Type} };
+		}
+	};
+
 	std::string Type;
 	enum_flags::enum_flags<Reflector::MethodFlags> Flags;
-	std::string Parameters;
+private:
+	std::string mParameters;
+	void Split();
+public:
+	void SetParameters(std::string params);
+	auto const& GetParameters() const { return mParameters; }
+	std::vector<MethodParameter> ParametersSplit;
+	std::string ParametersTypesOnly;
 	std::string Body;
 	size_t SourceFieldDeclarationLine = 0;
 	std::string UniqueName;

@@ -150,10 +150,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		const auto& method = klass.Methods[i];
 		if (!method.Flags.is_set(Reflector::MethodFlags::NoCallable))
 		{
-			if (klass.MethodsByName.at(method.Name).size() > 1)
-				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], (", method.GetSignature(klass), ")&", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ", ::Reflector::CompileTimeMethodData<", method.Flags.bits, ", ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(method.Name), ">>{});");
-			else
-				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], &", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ", ::Reflector::CompileTimeMethodData<", method.Flags.bits, ", ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(method.Name), ">>{});");
+			output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], (", method.GetSignature(klass), ")&", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ", ::Reflector::CompileTimeMethodData<", method.Flags.bits, ", ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(method.Name), ">>{});");
 		}
 	}
 	output.EndDefine("");
@@ -255,8 +252,8 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		output.CurrentIndent++;
 		output.WriteLine(".Name = \"", method.Name, "\",");
 		output.WriteLine(".ReturnType = \"", method.Type, "\",");
-		if (!method.Parameters.empty())
-			output.WriteLine(".Parameters = \"", method.Parameters, "\",");
+		if (!method.GetParameters().empty())
+			output.WriteLine(".Parameters = ", json(method.GetParameters()).dump(), ",");
 		if (!method.Attributes.empty())
 		{
 			output.WriteLine(".Attributes = R\"_REFLECT_(", method.Attributes.dump(), ")_REFLECT_\",");
@@ -311,10 +308,10 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	{
 		/// Callables for all methods
 		if (!func.Flags.is_set(Reflector::MethodFlags::NoCallable))
-			output.WriteLine("", options.MacroPrefix, "_CALLABLE((", func.Type, "), ", func.Name, ", (", func.Parameters, "), ", func.ActualDeclarationLine(), ")");
+			output.WriteLine("", options.MacroPrefix, "_CALLABLE((", func.Type, "), ", func.Name, ", (", func.GetParameters(), "), ", func.ActualDeclarationLine(), ")");
 		if (func.Flags.is_set(Reflector::MethodFlags::Artificial))
 		{
-			output.WriteLine(func.Type, " ", func.Name, "(", func.Parameters, ")", (func.Flags.is_set(Reflector::MethodFlags::Const) ? " const" : ""), " { ", func.Body, " }");
+			output.WriteLine(func.Type, " ", func.Name, "(", func.GetParameters(), ")", (func.Flags.is_set(Reflector::MethodFlags::Const) ? " const" : ""), " { ", func.Body, " }");
 		}
 	}
 

@@ -8,3 +8,10 @@
 #include "Common.h"
 
 bool ParseClassFile(std::filesystem::path path, Options const& options);
+
+std::vector<string_view> SplitArgs(string_view argstring);
+
+std::string ParseIdentifier(string_view& str);
+std::string ParseType(string_view& str);
+bool SwallowOptional(string_view& str, string_view swallow);
+string_view Expect(string_view str, string_view value);

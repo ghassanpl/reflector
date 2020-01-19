@@ -350,76 +350,7 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 	return field;
 }
 
-void ParseMethodDecl(string_view line, Method& method)
-{
-	/*
-	while (!line.starts_with("auto"))
-	{
-		if (SwallowOptional(line, "virtual")) method.Flags += MethodFlags::Virtual;
-		else if (SwallowOptional(line, "static")) method.Flags += MethodFlags::Static;
-		else if (SwallowOptional(line, "inline")) method.Flags += MethodFlags::Inline;
-		else if (SwallowOptional(line, "explicit")) method.Flags += MethodFlags::Explicit;
-		else throw std::exception{ "Method declaration does not start with 'auto'" };
-	}
-	line = Expect(line, "auto");
-	*/
-	while (true)
-	{
-		if (SwallowOptional(line, "virtual")) method.Flags += Reflector::MethodFlags::Virtual;
-		else if (SwallowOptional(line, "static")) method.Flags += Reflector::MethodFlags::Static;
-		else if (SwallowOptional(line, "inline")) method.Flags += Reflector::MethodFlags::Inline;
-		else if (SwallowOptional(line, "explicit")) method.Flags += Reflector::MethodFlags::Explicit;
-		else break;
-	}
-	//line = Expect(line, "auto");
-	auto pre_typestr = ParseType(line);
-	auto pre_type = (std::string)TrimWhitespace(pre_typestr);
-	line = TrimWhitespace(line);
-
-	auto name_start = line.begin();
-	auto name_end = std::find_if_not(line.begin(), line.end(), baselib::isident);
-	method.Name = TrimWhitespace(string_view{ name_start, name_end });
-	int num_pars = 0;
-	auto start_args = name_end;
-	line = { name_end, line.end() };
-	do
-	{
-		if (line.starts_with("("))
-			num_pars++;
-		else if (line.starts_with(")"))
-			num_pars--;
-		line.remove_prefix(1);
-	} while (num_pars);
-	method.Parameters = string_view{ start_args + 1, line.begin() - 1 };
-
-	line = TrimWhitespace(line);
-
-	while (true)
-	{
-		if (SwallowOptional(line, "const")) method.Flags += Reflector::MethodFlags::Const;
-		else if (SwallowOptional(line, "final")) method.Flags += Reflector::MethodFlags::Final;
-		else if (SwallowOptional(line, "noexcept")) method.Flags += Reflector::MethodFlags::Noexcept;
-		else break;
-	}
-
-	if (pre_type == "auto")
-	{
-		line = Expect(line, "->");
-
-		auto end_line = line.find_first_of("{;");
-		if (end_line != std::string::npos)
-			line = TrimWhitespace(line.substr(0, end_line));
-		if (line.ends_with("override"))
-			line.remove_suffix(sizeof("override") - 1);
-		method.Type = (std::string)TrimWhitespace(line);
-	}
-	else
-	{
-		method.Type = pre_type;
-	}
-}
-
-auto SplitArgs(string_view argstring)
+std::vector<string_view> SplitArgs(string_view argstring)
 {
 	std::vector<string_view> args;
 	int brackets = 0, tris = 0, parens = 0;
@@ -456,7 +387,61 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	method.Access = mode;
 	method.Attributes = ParseAttributeList(line);
 	method.DeclarationLine = line_num;
-	ParseMethodDecl(next_line, method);
+	
+	while (true)
+	{
+		if (SwallowOptional(next_line, "virtual")) method.Flags += Reflector::MethodFlags::Virtual;
+		else if (SwallowOptional(next_line, "static")) method.Flags += Reflector::MethodFlags::Static;
+		else if (SwallowOptional(next_line, "inline")) method.Flags += Reflector::MethodFlags::Inline;
+		else if (SwallowOptional(next_line, "explicit")) method.Flags += Reflector::MethodFlags::Explicit;
+		else break;
+	}
+
+	auto pre_typestr = ParseType(next_line);
+	auto pre_type = (std::string)TrimWhitespace(pre_typestr);
+	next_line = TrimWhitespace(next_line);
+
+	auto name_start = next_line.begin();
+	auto name_end = std::find_if_not(next_line.begin(), next_line.end(), baselib::isident);
+	method.Name = TrimWhitespace(string_view{ name_start, name_end });
+	int num_pars = 0;
+	auto start_args = name_end;
+	next_line = { name_end, next_line.end() };
+	do
+	{
+		if (next_line.starts_with("("))
+			num_pars++;
+		else if (next_line.starts_with(")"))
+			num_pars--;
+		next_line.remove_prefix(1);
+	} while (num_pars);
+	method.SetParameters(std::string{ start_args + 1, next_line.begin() - 1 });
+
+	next_line = TrimWhitespace(next_line);
+
+	while (true)
+	{
+		if (SwallowOptional(next_line, "const")) method.Flags += Reflector::MethodFlags::Const;
+		else if (SwallowOptional(next_line, "final")) method.Flags += Reflector::MethodFlags::Final;
+		else if (SwallowOptional(next_line, "noexcept")) method.Flags += Reflector::MethodFlags::Noexcept;
+		else break;
+	}
+
+	if (pre_type == "auto")
+	{
+		next_line = Expect(next_line, "->");
+
+		auto end_line = next_line.find_first_of("{;");
+		if (end_line != std::string::npos)
+			next_line = TrimWhitespace(next_line.substr(0, end_line));
+		if (next_line.ends_with("override"))
+			next_line.remove_suffix(sizeof("override") - 1);
+		method.Type = (std::string)TrimWhitespace(next_line);
+	}
+	else
+	{
+		method.Type = pre_type;
+	}
 
 	if (auto getter = method.Attributes.find("UniqueName"); getter != method.Attributes.end())
 		method.UniqueName = getter->get<std::string>();
@@ -483,10 +468,9 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 		/// TODO: Match getter/setter types
 		if (property.Type.empty())
 		{
-			auto args = SplitArgs(string_view{ method.Parameters });
-			if (args.empty())
+			if (method.ParametersSplit.empty())
 				throw std::exception(baselib::Stringify("Setter must have at least 1 argument").c_str());
-			property.Type = TypeFromVar(args[0]);
+			property.Type = method.ParametersSplit[0].Type;
 		}
 		if (property.Name.empty()) property.Name = setter.value();
 	}

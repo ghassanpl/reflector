@@ -87,11 +87,9 @@ int main(int argc, const char* argv[])
 			parsers.push_back(std::async(ParseClassFile, std::filesystem::path(file), options));
 		}
 
-		for (auto& done : parsers)
-		{
-			if (!done.get())
-				return -1;
-		}
+		auto success = std::all_of(parsers.begin(), parsers.end(), [](auto& future) { return future.get(); });
+		if (!success)
+			return -1;
 
 		/// Create artificial methods, knowing all the reflected classes
 		CreateArtificialMethods();

@@ -4,6 +4,7 @@
 /// DISCLAIMER: THE WORKS ARE WITHOUT WARRANTY.
 
 #include "Common.h"
+#include "Parse.h"
 #include <baselib/ASCII.h>
 #include <mutex>
 #include <future>
@@ -121,9 +122,42 @@ json Field::ToJSON() const
 	return result;
 }
 
+void Method::Split()
+{
+	auto args = SplitArgs(string_view{ mParameters });
+	std::vector<std::string> parameters_split;
+	std::transform(args.begin(), args.end(), std::back_inserter(parameters_split), [](string_view param) { return std::string{ param }; });
+
+	ParametersSplit.clear();
+	for (auto& full_param : parameters_split)
+	{
+		auto& param = ParametersSplit.emplace_back();
+		auto start_of_id = std::find_if(full_param.rbegin(), full_param.rend(), std::not_fn(baselib::isident)).base();
+		param.Type = baselib::TrimWhitespace({std::to_address(full_param.begin()), std::to_address(start_of_id) });
+		param.Name = baselib::TrimWhitespace({ std::to_address(start_of_id), std::to_address(full_param.end()) });
+	}
+
+	ParametersTypesOnly = baselib::Join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Type; });
+}
+
+void Method::SetParameters(std::string params)
+{
+	mParameters = std::move(params);
+	if (mParameters.find('=') != std::string::npos)
+	{
+		throw std::exception{ "Default parameters not supported" };
+	}
+	Split();
+}
+
 std::string Method::GetSignature(Class const& parent_class) const
 {
-	return baselib::Stringify(Type, " (", parent_class.Name, "::*)(", Parameters, ")");
+	auto base = baselib::Stringify(Type, " (", parent_class.Name, "::*)(", ParametersTypesOnly, ")");
+	if (Flags.is_set(Reflector::MethodFlags::Const))
+		base += " const";
+	if (Flags.is_set(Reflector::MethodFlags::Noexcept))
+		base += " noexcept";
+	return base;
 }
 
 void Method::CreateArtificialMethods(FileMirror& mirror, Class& klass)
@@ -134,7 +168,7 @@ json Method::ToJSON() const
 {
 	json result = Declaration::ToJSON();
 	result["Type"] = Type;
-	result["Parameters"] = Parameters;
+	std::transform(ParametersSplit.begin(), ParametersSplit.end(), std::back_inserter(result["Parameters"]), std::function<json(MethodParameter const&)>{ &MethodParameter::ToJSON });
 	if (!Body.empty())
 		result["Body"] = Body;
 	if (SourceFieldDeclarationLine != 0)
@@ -165,7 +199,7 @@ void Class::AddArtificialMethod(std::string results, std::string name, std::stri
 	method.Flags += additional_flags;
 	method.Type = std::move(results);
 	method.Name = std::move(name);
-	method.Parameters = std::move(parameters);
+	method.SetParameters(std::move(parameters));
 	method.Body = std::move(body);
 	if (!method.Body.empty())
 		method.Flags += Reflector::MethodFlags::HasBody;
@@ -222,7 +256,7 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 			/// we cannot create a valid signature for a function with default arguments (stupid undecidable C++ syntax)
 			for (auto& other_method : method_names.second)
 			{
-				if (other_method->Parameters.find('=') != std::string::npos)
+				if (other_method->GetParameters().find('=') != std::string::npos)
 					throw std::exception{ baselib::Stringify(mirror.SourceFilePath.string(), "(", other_method->DeclarationLine + 1, ",0): limitation: methods that have overloads cannot have default arguments").c_str() };
 			}
 		}
@@ -250,10 +284,10 @@ json Class::ToJSON() const
 	}
 	if (!Methods.empty())
 	{
-		auto& methods = result["Methods"] = json::object();
+		auto& methods = result["Methods"] = json::array();
 		for (auto& method : Methods)
 		{
-			methods[method.Name] = method.ToJSON();
+			methods.push_back(method.ToJSON());
 		}
 	}
 
