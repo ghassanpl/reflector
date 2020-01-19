@@ -51,7 +51,7 @@ int main(int argc, const char* argv[])
 				auto add_files = [&](const std::filesystem::path& file) {
 					auto u8file = file.string();
 					auto full = string_view{ u8file };
-					if (full.ends_with(".mirror.h")) return;
+					if (full.ends_with(".mirror")) return;
 
 					auto ext = file.extension();
 					if (!std::filesystem::is_directory(file) && (ext == ".cpp" || ext == ".hpp" || ext == ".h"))
@@ -112,9 +112,15 @@ int main(int argc, const char* argv[])
 			future.get(); /// to propagate exceptions
 		futures.clear();
 
-		auto cwd = std::filesystem::absolute(artifact_path.Matched() ? std::filesystem::path{ artifact_path.Get() } : std::filesystem::current_path());
+		/// Check if 
+
+		const auto cwd = std::filesystem::absolute(artifact_path.Matched() ? std::filesystem::path{ artifact_path.Get() } : std::filesystem::current_path());
 		std::filesystem::create_directories(cwd);
-		if (!no_artifacts && modified_files)
+
+		const bool type_list_missing = !std::filesystem::exists(cwd / "Classes.reflect.h") || options.Force;
+		const bool include_list_missing = !std::filesystem::exists(cwd / "Includes.reflect.h") || options.Force;
+		const bool json_db_missing = create_db && (!std::filesystem::exists(cwd / "ReflectDatabase.json") || options.Force);
+		if (!no_artifacts && (modified_files || type_list_missing || include_list_missing || json_db_missing))
 		{
 			futures.push_back(std::async(CreateTypeListArtifact, cwd, options));
 			futures.push_back(std::async(CreateIncludeListArtifact, cwd, options));
@@ -122,7 +128,7 @@ int main(int argc, const char* argv[])
 				futures.push_back(std::async(CreateJSONDBArtifact, cwd, options));
 		}
 
-		bool create_reflector = !std::filesystem::exists(cwd / "Reflector.h") || options.Force;
+		const bool create_reflector = !std::filesystem::exists(cwd / "Reflector.h") || options.Force;
 
 		if (create_reflector)
 			futures.push_back(std::async(CreateReflectorHeaderArtifact, cwd, options));

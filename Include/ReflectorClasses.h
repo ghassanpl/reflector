@@ -58,12 +58,26 @@ namespace Reflector
 		static constexpr const char value[] = { CHARS... };
 	};
 	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, typename NAME_CTL>
-	struct CompileTimeFieldData
+	struct CompileTimePropertyData
 	{
 		using type = std::remove_cvref_t<FIELD_TYPE>;
 		using parent_type = PARENT_TYPE;
 		static constexpr uint64_t flags = FLAGS;
 		static constexpr const char* name = NAME_CTL::value;
+	};
+	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, typename NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER>
+	struct CompileTimeFieldData : CompileTimePropertyData<FIELD_TYPE, PARENT_TYPE, FLAGS, NAME_CTL>
+	{
+		static constexpr PTR_TYPE pointer = POINTER;
+
+		static auto Getter(PARENT_TYPE const* obj) -> FIELD_TYPE const& { return (obj->*(pointer)); }
+		template <typename VALUE>
+		static auto GenericSetter(PARENT_TYPE * obj, VALUE&& value) -> void { (obj->*(pointer)) = std::forward<VALUE>(value); };
+		static auto CopySetter(PARENT_TYPE* obj, FIELD_TYPE const& value) -> void { (obj->*(pointer)) = value; };
+		static auto MoveSetter(PARENT_TYPE* obj, FIELD_TYPE&& value) -> void { (obj->*(pointer)) = std::move(value); };
+
+		static auto VoidGetter(void const* obj) -> void const* { return &(obj->*(pointer)); }
+		static auto VoidSetter(void* obj, void const* value) -> void { (obj->*(pointer)) = reinterpret_cast<FIELD_TYPE const*>(value); };
 	};
 	template <uint64_t FLAGS, typename NAME_CTL>
 	struct CompileTimeMethodData

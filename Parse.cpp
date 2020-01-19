@@ -198,15 +198,21 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 	return henum;
 }
 
-std::pair<std::string, std::string> ParseClassDecl(string_view line)
+auto ParseClassDecl(string_view line)
 {
-	std::pair<std::string, std::string> result;
+	std::tuple<std::string, std::string, bool> result;
 
 	if (line.starts_with("struct"))
+	{
+		std::get<2>(result) = true;
 		line = Expect(line, "struct");
+	}
 	else
+	{
+		std::get<2>(result) = false;
 		line = Expect(line, "class");
-	result.first = ParseIdentifier(line);
+	}
+	std::get<0>(result) = ParseIdentifier(line);
 	line = TrimWhitespace(line);
 
 	if (line.starts_with(":"))
@@ -238,7 +244,7 @@ std::pair<std::string, std::string> ParseClassDecl(string_view line)
 			Consume(line);
 		}
 
-		result.second = { start.begin(), line.begin() };
+		std::get<1>(result) = { start.begin(), line.begin() };
 	}
 
 	return result;
@@ -302,44 +308,44 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 
 	/// Disable if explictly stated
 	if (field.Attributes.value("Getter", true) == false)
-		field.Flags.Set(Reflector::FieldFlags:: NoGetter);
+		field.Flags.set(Reflector::FieldFlags:: NoGetter);
 	if (field.Attributes.value("Setter", true) == false)
-		field.Flags.Set(Reflector::FieldFlags::NoSetter);
+		field.Flags.set(Reflector::FieldFlags::NoSetter);
 	if (field.Attributes.value("Editor", true) == false || field.Attributes.value("Edit", true) == false)
-		field.Flags.Set(Reflector::FieldFlags::NoEdit);
+		field.Flags.set(Reflector::FieldFlags::NoEdit);
 	if (field.Attributes.value("Save", true) == false)
-		field.Flags.Set(Reflector::FieldFlags::NoSave);
+		field.Flags.set(Reflector::FieldFlags::NoSave);
 	if (field.Attributes.value("Load", true) == false)
-		field.Flags.Set(Reflector::FieldFlags::NoLoad);
+		field.Flags.set(Reflector::FieldFlags::NoLoad);
 
 	/// Serialize = false implies Save = false, Load = false
 	if (field.Attributes.value("Serialize", true) == false)
-		field.Flags.Set(Reflector::FieldFlags::NoSave, Reflector::FieldFlags::NoLoad);
+		field.Flags.set(Reflector::FieldFlags::NoSave, Reflector::FieldFlags::NoLoad);
 
 	/// Private implies Getter = false, Setter = false, Editor = false
 	if (field.Attributes.value("Private", false))
-		field.Flags.Set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
+		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
 
 	/// ParentPointer implies Editor = false, Setter = false
 	if (field.Attributes.value("ParentPointer", false))
-		field.Flags.Set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter);
+		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter);
 
 	/// ChildVector implies Setter = false
 	auto type = string_view{ field.Type };
 	if (type.starts_with("ChildVector<"))
-		field.Flags.Set(Reflector::FieldFlags::NoSetter);
+		field.Flags.set(Reflector::FieldFlags::NoSetter);
 
 	/// Enable if explictly stated
 	if (field.Attributes.value("Getter", false) == true)
-		field.Flags.Unset(Reflector::FieldFlags::NoGetter);
+		field.Flags.unset(Reflector::FieldFlags::NoGetter);
 	if (field.Attributes.value("Setter", false) == true)
-		field.Flags.Unset(Reflector::FieldFlags::NoSetter);
+		field.Flags.unset(Reflector::FieldFlags::NoSetter);
 	if (field.Attributes.value("Editor", false) == true || field.Attributes.value("Edit", false) == true)
-		field.Flags.Unset(Reflector::FieldFlags::NoEdit);
+		field.Flags.unset(Reflector::FieldFlags::NoEdit);
 	if (field.Attributes.value("Save", false) == true)
-		field.Flags.Unset(Reflector::FieldFlags::NoSave);
+		field.Flags.unset(Reflector::FieldFlags::NoSave);
 	if (field.Attributes.value("Load", false) == true)
-		field.Flags.Unset(Reflector::FieldFlags::NoLoad);
+		field.Flags.unset(Reflector::FieldFlags::NoLoad);
 
 	return field;
 }
@@ -496,14 +502,16 @@ Class ParseClassDecl(string_view line, string_view next_line, size_t line_num, s
 	line.remove_prefix(options.ClassPrefix.size());
 	klass.Attributes = ParseAttributeList(line);
 	klass.DeclarationLine = line_num;
-	auto header = ParseClassDecl(next_line);
-	klass.Name = header.first;
-	klass.ParentClass = header.second;
+	auto [name, parent, is_struct] = ParseClassDecl(next_line);
+	klass.Name = name;
+	klass.ParentClass = parent;
 	klass.Comments = std::move(comments);
 	if (klass.ParentClass.empty())
 		klass.Flags += ClassFlags::Struct;
+	if (is_struct)
+		klass.Flags += ClassFlags::DeclaredStruct;
 
-	if (klass.Flags.IsSet(ClassFlags::Struct) || klass.Attributes.value("Abstract", false) == true || klass.Attributes.value("Singleton", false) == true)
+	if (klass.Flags.is_set(ClassFlags::Struct) || klass.Attributes.value("Abstract", false) == true || klass.Attributes.value("Singleton", false) == true)
 		klass.Flags += ClassFlags::NoConstructors;
 
 	return klass;

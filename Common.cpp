@@ -45,12 +45,12 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 		field_comments = baselib::Stringify("the `", DisplayName, "` field of this object");
 
 	/// Getters and Setters
-	if (!Flags.IsSet(Reflector::FieldFlags::NoGetter))
+	if (!Flags.is_set(Reflector::FieldFlags::NoGetter))
 	{
 		klass.AddArtificialMethod(Type + " const &", "Get" + DisplayName, "", "return " + Name + ";", { "Gets " + field_comments }, { Reflector::MethodFlags::Const }, DeclarationLine);
 	}
 
-	if (!Flags.IsSet(Reflector::FieldFlags::NoSetter))
+	if (!Flags.is_set(Reflector::FieldFlags::NoSetter))
 	{
 		auto on_change = Attributes.value("OnChange", "");
 		if (!on_change.empty())
@@ -113,7 +113,7 @@ json Field::ToJSON() const
 		result["InitializingExpression"] = InitializingExpression;
 	if (DisplayName != Name)
 		result["DisplayName"] = DisplayName;
-#define ADDFLAG(n) if (Flags.IsSet(Reflector::FieldFlags::n)) result[#n] = true
+#define ADDFLAG(n) if (Flags.is_set(Reflector::FieldFlags::n)) result[#n] = true
 	ADDFLAG(NoGetter);
 	ADDFLAG(NoSetter);
 	ADDFLAG(NoEdit);
@@ -139,7 +139,7 @@ json Method::ToJSON() const
 		result["Body"] = Body;
 	if (SourceFieldDeclarationLine != 0)
 		result["SourceFieldDeclarationLine"] = SourceFieldDeclarationLine;
-#define ADDFLAG(n) if (Flags.IsSet(Reflector::MethodFlags::n)) result[#n] = true
+#define ADDFLAG(n) if (Flags.is_set(Reflector::MethodFlags::n)) result[#n] = true
 	ADDFLAG(Inline);
 	ADDFLAG(Virtual);
 	ADDFLAG(Static);
@@ -158,7 +158,7 @@ void Property::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 {
 }
 
-void Class::AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, baselib::EnumFlags<Reflector::MethodFlags> additional_flags, size_t source_field_declaration_line)
+void Class::AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, enum_flags::enum_flags<Reflector::MethodFlags> additional_flags, size_t source_field_declaration_line)
 {
 	Method method;
 	method.Flags += Reflector::MethodFlags::Artificial;
@@ -235,9 +235,9 @@ json Class::ToJSON() const
 	if (!ParentClass.empty())
 		result["ParentClass"] = ParentClass;
 
-	if (Flags.IsSet(ClassFlags::Struct))
+	if (Flags.is_set(ClassFlags::Struct))
 		result["Struct"] = true;
-	if (Flags.IsSet(ClassFlags::NoConstructors))
+	if (Flags.is_set(ClassFlags::NoConstructors))
 		result["NoConstructors"] = true;
 
 	if (!Fields.empty())

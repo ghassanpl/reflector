@@ -89,7 +89,7 @@ void CreateTypeListArtifact(std::filesystem::path const& cwd, Options const& opt
 	{
 		for (auto& klass : mirror.Classes)
 		{
-			if (!klass.Flags.IsSet(ClassFlags::Struct))
+			if (!klass.Flags.is_set(ClassFlags::Struct))
 				classes_file << "ReflectClass(" << klass.Name << ")" << std::endl;
 		}
 		for (auto& henum : mirror.Enums)
@@ -118,30 +118,13 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	output.WriteLine("/// From class: ", klass.Name);
 
 	/// ///////////////////////////////////// ///
-	/// RClass, RMethod and RField macro expansions
+	/// Forward declare all classes
 	/// ///////////////////////////////////// ///
 
-	/*
-	output.WriteLine("#undef ", options.MacroPrefix, "_CLASS_DECL_LINE_", klass.DeclarationLine);
-	output.WriteLine("#define ", options.MacroPrefix, "_CLASS_DECL_LINE_", klass.DeclarationLine);
-
-	output.WriteLine("/// Methods");
-	for (auto& func : klass.Methods)
+	if (options.ForwardDeclare)
 	{
-		if (func.DeclarationLine != 0)
-		{
-			output.WriteLine("#undef ", options.MacroPrefix, "_METHOD_DECL_LINE_", func.DeclarationLine);
-			output.WriteLine("#define ", options.MacroPrefix, "_METHOD_DECL_LINE_", func.DeclarationLine);
-		}
+		output.WriteLine((klass.Flags.is_set(ClassFlags::DeclaredStruct) ? "struct" : "class"), " ", klass.Name, ";");
 	}
-
-	output.WriteLine("/// Fields");
-	for (auto& field : klass.Fields)
-	{
-		output.WriteLine("#undef ", options.MacroPrefix, "_FIELD_DECL_LINE_", field.DeclarationLine);
-		output.WriteLine("#define ", options.MacroPrefix, "_FIELD_DECL_LINE_", field.DeclarationLine);
-	}
-	*/
 
 	/// ///////////////////////////////////// ///
 	/// Visitor macros
@@ -153,7 +136,10 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (size_t i = 0; i < klass.Fields.size(); i++)
 	{
 		const auto& field = klass.Fields[i];
-		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Fields[", i, "], &", klass.Name, "::", field.Name, ", ::Reflector::CompileTimeFieldData<", field.Type, ", ", klass.Name, ", ", field.Flags.Bits, ", ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(field.Name),">>{});");
+		const auto ptr_str = "&" + klass.Name + "::" + field.Name;
+		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Fields[", i, "], ", ptr_str, 
+			", ::Reflector::CompileTimeFieldData<", field.Type, ", ", klass.Name, ", ", field.Flags.bits, 
+			", ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(field.Name),">, decltype(", ptr_str,"), ", ptr_str,">{});");
 	}
 	output.EndDefine("");
 
@@ -162,12 +148,12 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (size_t i = 0; i < klass.Methods.size(); i++)
 	{
 		const auto& method = klass.Methods[i];
-		if (!method.Flags.IsSet(Reflector::MethodFlags::NoCallable))
+		if (!method.Flags.is_set(Reflector::MethodFlags::NoCallable))
 		{
 			if (klass.MethodsByName.at(method.Name).size() > 1)
-				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], (", method.GetSignature(klass), ")&", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ", ::Reflector::CompileTimeMethodData<", method.Flags.Bits, ", ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(method.Name), ">>{});");
+				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], (", method.GetSignature(klass), ")&", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ", ::Reflector::CompileTimeMethodData<", method.Flags.bits, ", ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(method.Name), ">>{});");
 			else
-				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], &", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ", ::Reflector::CompileTimeMethodData<", method.Flags.Bits, ", ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(method.Name), ">>{});");
+				output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData().Methods[", i, "], &", klass.Name, "::", method.Name, ", ", "&", klass.Name, "::ScriptFunction_", method.Name, method.ActualDeclarationLine(), ", ::Reflector::CompileTimeMethodData<", method.Flags.bits, ", ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(method.Name), ">>{});");
 		}
 	}
 	output.EndDefine("");
@@ -183,7 +169,8 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		std::string setter_name = "nullptr";
 		if (!property.SetterName.empty())
 			setter_name = baselib::Stringify("&", klass.Name, "::", property.SetterName);
-		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData(), \"", property.Name, "\", ", getter_name, ", ", setter_name, ", ::Reflector::CompileTimeFieldData<", property.Type, ", ", klass.Name, ", 0ULL, ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(property.Name), ">>{});");
+		output.WriteLine("", options.MacroPrefix, "_VISITOR(&", klass.Name, "::StaticGetReflectionData(), \"", property.Name, "\", ", getter_name, ", ", setter_name, 
+			", ::Reflector::CompileTimePropertyData<", property.Type, ", ", klass.Name, ", 0ULL, ::Reflector::CompileTimeLiteral<", BuildCompileTimeLiteral(property.Name), ">>{});");
 	}
 	output.EndDefine("");
 
@@ -207,7 +194,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		output.WriteLine("using parent_type::parent_type;");
 
 		/// Constructors
-		if (!klass.Flags.IsSet(ClassFlags::NoConstructors))
+		if (!klass.Flags.is_set(ClassFlags::NoConstructors))
 		{
 			output.WriteLine("static self_type* Construct(){ return new self_type{StaticGetReflectionData()}; }");
 			//output.WriteLine("static self_type* Construct(const ::Reflector::ClassReflectionData& klass){ return new self_type{klass}; }");
@@ -232,7 +219,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		if (options.UseJSON)
 			output.WriteLine(".AttributesJSON = ::nlohmann::json::parse(R\"_REFLECT_(", klass.Attributes.dump(), ")_REFLECT_\"),");
 	}
-	if (!klass.Flags.IsSet(ClassFlags::NoConstructors))
+	if (!klass.Flags.is_set(ClassFlags::NoConstructors))
 		output.WriteLine(".Constructor = +[](const ::Reflector::ClassReflectionData& klass){ return (void*)new self_type{klass}; },");
 
 	/// Fields
@@ -323,11 +310,11 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (auto& func : klass.Methods)
 	{
 		/// Callables for all methods
-		if (!func.Flags.IsSet(Reflector::MethodFlags::NoCallable))
+		if (!func.Flags.is_set(Reflector::MethodFlags::NoCallable))
 			output.WriteLine("", options.MacroPrefix, "_CALLABLE((", func.Type, "), ", func.Name, ", (", func.Parameters, "), ", func.ActualDeclarationLine(), ")");
-		if (func.Flags.IsSet(Reflector::MethodFlags::Artificial))
+		if (func.Flags.is_set(Reflector::MethodFlags::Artificial))
 		{
-			output.WriteLine(func.Type, " ", func.Name, "(", func.Parameters, ")", (func.Flags.IsSet(Reflector::MethodFlags::Const) ? " const" : ""), " { ", func.Body, " }");
+			output.WriteLine(func.Type, " ", func.Name, "(", func.Parameters, ")", (func.Flags.is_set(Reflector::MethodFlags::Const) ? " const" : ""), " { ", func.Body, " }");
 		}
 	}
 
@@ -336,63 +323,6 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 
 	return true;
 }
-
-/*
-bool BuildStructEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
-{
-	if (!BuildCommonClassEntry(output, mirror, klass, options))
-		return false;
-
-	/// - StaticGetConstructor
-	output.WriteLine("static std::function<void*(const ::", options.MacroPrefix, "::Framework::RClass*)> StaticGetConstructor() noexcept {");
-	output.WriteLine("\treturn [](const ::", options.MacroPrefix, "::Framework::RClass* klass){ return (void*)new self_type; };");
-	output.WriteLine("}");
-
-	/// - Push
-	output.WriteLine("template <typename SS> void Push(SS* sys) const {");
-	{
-		auto indent = output.Indent();
-		output.WriteLine("sys->StartObject();");
-		for (auto& field : klass.Fields)
-		{
-			if (field.Attributes.value("Script", true) == false)
-				continue;
-			output.WriteLine("sys->Push(this->", field.Name, ");");
-			output.WriteLine("sys->SetField(\"", field.Name, "\");");
-		}
-	}
-	output.WriteLine("}");
-
-	/// - GetAs
-	output.WriteLine("template <typename SS> void GetAs(SS* sys, size_t index) {");
-	{
-		auto indent = output.Indent();
-		for (auto& field : klass.Fields)
-		{
-			if (field.Attributes.value("Script", true) == false)
-				continue;
-			output.WriteLine("sys->GetField(index, \"", field.Name, "\");");
-			output.WriteLine("sys->GetAs(sys->GetTop(), this->", field.Name, ");");
-			output.WriteLine("sys->Pop();");
-		}
-	}
-	output.WriteLine("}");
-
-	/// Field parameter getters
-	for (auto& field : klass.Fields)
-	{
-		output.WriteLine("static const char* GetFieldReflectionData_", field.DisplayName, "() noexcept {");
-		output.WriteJSON(field.Attributes);
-		output.WriteLine("}");
-		if (options.UseJSON)
-			output.WriteLine("static ::nlohmann::json const& GetFieldAttributesJSON_", field.DisplayName, "() { static const auto _json = ::nlohmann::json::parse(GetFieldAttributes_", field.DisplayName, "()); return _json; }");
-	}
-
-	output.EndDefine("");
-
-	return true;
-}
-*/
 
 bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& henum, const Options& options)
 {
@@ -451,6 +381,16 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 		output.WriteLine("return \"<Unknown>\";");	
 	}
 	output.WriteLine("}");
+	output.WriteLine("inline constexpr ", henum.Name, " GetEnumeratorFromName(", henum.Name, " v, std::string_view name) {");
+	{
+		auto indent = output.Indent();
+		for (auto& enumerator : henum.Enumerators)
+		{
+			output.WriteLine("if (name == \"", enumerator.Name, "\") return (", henum.Name, ")", enumerator.Value, ";");
+		}
+		output.WriteLine("return {};");
+	}
+	output.WriteLine("}");
 	output.WriteLine("inline std::ostream& operator<<(std::ostream& strm, ", henum.Name, " v) { strm << GetEnumeratorName(v); return strm; }");
 	output.WriteLine("template <typename T>");
 	output.WriteLine("void OutputFlagsFor(std::ostream& strm, ", henum.Name, ", T flags, std::string_view separator = \", \") { ");
@@ -462,6 +402,13 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	}
 	output.CurrentIndent--;
 	output.WriteLine("}");
+	
+	if (options.UseJSON)
+	{
+		output.WriteLine("inline void to_json(json& j, ", henum.Name, " const & p) { j = std::underlying_type_t<", henum.Name, ">(p); }");
+
+		output.WriteLine("inline void from_json(json const& j, ", henum.Name,"& p) { if (j.is_string()) p = GetEnumeratorFromName(", henum.Name, "{}, j); else p = (", henum.Name, ")(std::underlying_type_t<", henum.Name, ">)j; }");
+	}
 
 	output.EndDefine();
 
@@ -508,7 +455,7 @@ FileWriter::~FileWriter()
 void BuildMirrorFile(FileMirror const& file, size_t& modified_files, const Options& options)
 {
 	auto file_path = file.SourceFilePath;
-	file_path.replace_extension(".mirror.h");
+	file_path.concat(".mirror");
 
 	/// TOOD: Check if we actually need to update the file
 	auto file_change_time = FileNeedsUpdating(file_path, file.SourceFilePath, options);

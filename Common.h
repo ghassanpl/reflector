@@ -51,7 +51,7 @@ struct Declaration
 
 struct Field : public Declaration
 {
-	baselib::EnumFlags<Reflector::FieldFlags> Flags;
+	enum_flags::enum_flags<Reflector::FieldFlags> Flags;
 	std::string Type;
 	std::string InitializingExpression;
 	std::string DisplayName;
@@ -79,7 +79,7 @@ enum class MethodFlags
 struct Method : public Declaration
 {
 	std::string Type;
-	baselib::EnumFlags<Reflector::MethodFlags> Flags;
+	enum_flags::enum_flags<Reflector::MethodFlags> Flags;
 	std::string Parameters;
 	std::string Body;
 	size_t SourceFieldDeclarationLine = 0;
@@ -100,6 +100,7 @@ struct Method : public Declaration
 enum class ClassFlags
 {
 	Struct,
+	DeclaredStruct,
 	NoConstructors
 };
 
@@ -123,11 +124,11 @@ struct Class : public Declaration
 	std::vector<Method> Methods;
 	std::map<std::string, Property, std::less<>> Properties;
 
-	baselib::EnumFlags<ClassFlags> Flags;
+	enum_flags::enum_flags<ClassFlags> Flags;
 
 	size_t BodyLine = 0;
 
-	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, baselib::EnumFlags<Reflector::MethodFlags> additional_flags = {}, size_t source_field_declaration_line = 0);
+	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, enum_flags::enum_flags<Reflector::MethodFlags> additional_flags = {}, size_t source_field_declaration_line = 0);
 	void CreateArtificialMethods(FileMirror& mirror);
 
 	std::map<std::string, std::vector<Method const*>> MethodsByName;
@@ -174,6 +175,9 @@ struct Options
 	bool Force = false;
 	bool Verbose = false;
 	bool UseJSON = true;
+
+	/// TODO: Read this from cmdline
+	bool ForwardDeclare = true;
 
 	std::string AnnotationPrefix = "R";
 	std::string MacroPrefix = "REFLECT";
