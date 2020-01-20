@@ -192,19 +192,28 @@ void CreateArtificialMethods();
 
 struct Options
 {
-	Options(bool recursive, bool quiet, bool force, bool verbose, bool use_json, std::string_view annotation_prefix, std::string_view macro_prefix);
+	Options(json&& options_file);
 
 	bool Recursive = false;
 	bool Quiet = false;
 	bool Force = false;
 	bool Verbose = false;
 	bool UseJSON = true;
+	bool CreateArtifacts = true;
+	bool CreateDatabase = true;
 
 	/// TODO: Read this from cmdline
 	bool ForwardDeclare = true;
 
+	std::filesystem::path ArtifactPath;
+
+	std::vector<std::filesystem::path> PathsToScan;
+
 	std::string AnnotationPrefix = "R";
 	std::string MacroPrefix = "REFLECT";
+
+	std::string MirrorExtension = ".mirror";
+	std::vector<std::string> ExtensionsToScan = { ".h", ".hpp", ".cpp" };
 
 	std::string EnumPrefix;
 	std::string EnumeratorPrefix;
@@ -212,6 +221,8 @@ struct Options
 	std::string FieldPrefix;
 	std::string MethodPrefix;
 	std::string BodyPrefix;
+
+	json OptionsFile;
 };
 
 inline std::string OnlyType(std::string str)

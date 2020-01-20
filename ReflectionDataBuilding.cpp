@@ -465,7 +465,7 @@ FileWriter::~FileWriter()
 void BuildMirrorFile(FileMirror const& file, size_t& modified_files, const Options& options)
 {
 	auto file_path = file.SourceFilePath;
-	file_path.concat(".mirror");
+	file_path.concat(options.MirrorExtension);
 
 	/// TOOD: Check if we actually need to update the file
 	auto file_change_time = FileNeedsUpdating(file_path, file.SourceFilePath, options);
