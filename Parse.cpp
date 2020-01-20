@@ -17,10 +17,15 @@ string_view Expect(string_view str, string_view value)
 {
 	if (!str.starts_with(value))
 	{
-		throw std::exception(baselib::Stringify("Expected `", value, "`").c_str());
+		throw std::exception(fmt::format("Expected `{}`", value).c_str());
 	}
 	str.remove_prefix(value.size());
 	return TrimWhitespace(str);
+}
+
+std::string EscapeJSON(json const& json)
+{
+	return "R\"_REFLECT_(" + json.dump() + ")_REFLECT_\"";
 }
 
 bool SwallowOptional(string_view& str, string_view swallow)
@@ -450,7 +455,7 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	{
 		auto& property = klass.Properties[getter.value()];
 		if (!property.GetterName.empty())
-			throw std::exception(baselib::Stringify("Getter for this property already declared at line ", property.GetterLine).c_str());
+			throw std::exception(fmt::format("Getter for this property already declared at line {}", property.GetterLine).c_str());
 		property.GetterName = method.Name;
 		property.GetterLine = line_num;
 		/// TODO: Match getter/setter types
@@ -462,14 +467,14 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	{
 		auto& property = klass.Properties[setter.value()];
 		if (!property.SetterName.empty())
-			throw std::exception(baselib::Stringify("Setter for this property already declared at line ", property.SetterLine).c_str());
+			throw std::exception(fmt::format("Setter for this property already declared at line {}", property.SetterLine).c_str());
 		property.SetterName = method.Name;
 		property.SetterLine = line_num;
 		/// TODO: Match getter/setter types
 		if (property.Type.empty())
 		{
 			if (method.ParametersSplit.empty())
-				throw std::exception(baselib::Stringify("Setter must have at least 1 argument").c_str());
+				throw std::exception("Setter must have at least 1 argument");
 			property.Type = method.ParametersSplit[0].Type;
 		}
 		if (property.Name.empty()) property.Name = setter.value();
@@ -506,7 +511,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 	path = path.lexically_normal();
 
 	if (options.Verbose)
-		PrintLine("Analyzing file ", path.string());
+		PrintLine("Analyzing file {}", path.string());
 
 	std::vector<std::string> lines;
 	std::string line;
@@ -546,14 +551,14 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				mirror.Classes.push_back(ParseClassDecl(line, next_line, line_num, std::move(comments), options));
 				if (options.Verbose)
 				{
-					PrintLine("Found class ", mirror.Classes.back().Name);
+					PrintLine("Found class {}", mirror.Classes.back().Name);
 				}
 			}
 			else if (line.starts_with(options.FieldPrefix))
 			{
 				if (mirror.Classes.size() == 0)
 				{
-					ReportError(path, line_num + 1, options.FieldPrefix, "() not in class");
+					ReportError(path, line_num + 1, "{}() not in class", options.FieldPrefix);
 					return false;
 				}
 
@@ -564,7 +569,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 			{
 				if (mirror.Classes.size() == 0)
 				{
-					ReportError(path, line_num + 1, options.MethodPrefix, "() not in class");
+					ReportError(path, line_num + 1, "{}() not in class", options.MethodPrefix);
 					return false;
 				}
 
@@ -575,7 +580,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 			{
 				if (mirror.Classes.size() == 0)
 				{
-					ReportError(path, line_num + 1, options.BodyPrefix, "() not in class");
+					ReportError(path, line_num + 1, "{}() not in class", options.BodyPrefix);
 					return false;
 				}
 
@@ -593,7 +598,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 		}
 		catch (std::exception& e)
 		{
-			ReportError(path, line_num + 1, e.what());
+			ReportError(path, line_num + 1, "{}", e.what());
 			return false;
 		}
 	}

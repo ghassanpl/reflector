@@ -43,7 +43,7 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 	if (field_comments.size())
 		field_comments[0] = (char)baselib::tolower(field_comments[0]);
 	else
-		field_comments = baselib::Stringify("the `", DisplayName, "` field of this object");
+		field_comments = fmt::format("the `{}` field of this object", DisplayName);
 
 	/// Getters and Setters
 	if (!Flags.is_set(Reflector::FieldFlags::NoGetter))
@@ -75,13 +75,13 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 		auto henum = FindEnum(string_view{ enum_name });
 		if (!henum)
 		{
-			ReportError(mirror.SourceFilePath, DeclarationLine, "Enum `", enum_name, "' not reflected");
+			ReportError(mirror.SourceFilePath, DeclarationLine, "Enum `{}' not reflected", enum_name);
 			return;
 		}
 
 		for (auto& enumerator : henum->Enumerators)
 		{
-			klass.AddArtificialMethod("bool", "Is" + enumerator.Name, "", baselib::Stringify("return (", Name, " & ", Type, "{", 1ULL << enumerator.Value, "}) != 0;"),
+			klass.AddArtificialMethod("bool", "Is" + enumerator.Name, "", fmt::format("return ({} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator.Value),
 				{ "Checks whether the `" + enumerator.Name + "` flag is set in " + field_comments }, Reflector::MethodFlags::Const, DeclarationLine);
 		}
 
@@ -89,17 +89,17 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 		{
 			for (auto& enumerator : henum->Enumerators)
 			{
-				klass.AddArtificialMethod("void", "Set" + enumerator.Name, "", baselib::Stringify(Name, " |= ", Type, "{", 1ULL << enumerator.Value, "};"),
+				klass.AddArtificialMethod("void", "Set" + enumerator.Name, "", fmt::format("{} |= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
 					{ "Sets the `" + enumerator.Name + "` flag in " + field_comments }, {}, DeclarationLine);
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
-				klass.AddArtificialMethod("void", "Unset" + enumerator.Name, "", baselib::Stringify(Name, " &= ~", Type, "{", 1ULL << enumerator.Value, "};"),
+				klass.AddArtificialMethod("void", "Unset" + enumerator.Name, "", fmt::format("{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator.Value),
 					{ "Clears the `" + enumerator.Name + "` flag in " + field_comments }, {}, DeclarationLine);
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
-				klass.AddArtificialMethod("void", "Toggle" + enumerator.Name, "", baselib::Stringify(Name, " ^= ", Type, "{", 1ULL << enumerator.Value, "};"),
+				klass.AddArtificialMethod("void", "Toggle" + enumerator.Name, "", fmt::format("{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
 					{ "Toggles the `" + enumerator.Name + "` flag in " + field_comments }, {}, DeclarationLine);
 			}
 		}
@@ -135,6 +135,9 @@ void Method::Split()
 		auto start_of_id = std::find_if(full_param.rbegin(), full_param.rend(), std::not_fn(baselib::isident)).base();
 		param.Type = baselib::TrimWhitespace({std::to_address(full_param.begin()), std::to_address(start_of_id) });
 		param.Name = baselib::TrimWhitespace({ std::to_address(start_of_id), std::to_address(full_param.end()) });
+
+		if (param.Type.empty()) /// If we didn't specify a name, type was at the end, not name, so fix that
+			param.Type = param.Type + ' ' + param.Name;
 	}
 
 	ParametersTypesOnly = baselib::Join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Type; });
@@ -152,7 +155,7 @@ void Method::SetParameters(std::string params)
 
 std::string Method::GetSignature(Class const& parent_class) const
 {
-	auto base = baselib::Stringify(Type, " (", parent_class.Name, "::*)(", ParametersTypesOnly, ")");
+	auto base = fmt::format("{} ({}::*)({})", Type, parent_class.Name, ParametersTypesOnly);
 	if (Flags.is_set(Reflector::MethodFlags::Const))
 		base += " const";
 	if (Flags.is_set(Reflector::MethodFlags::Noexcept))
@@ -236,29 +239,32 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 		if (MethodsByName[method.UniqueName].size() > 1)
 		{
 			std::string message;
-			message += baselib::Stringify(mirror.SourceFilePath.string(), "(", method.DeclarationLine + 1, ",0): method with unique name not unique");
+			message += fmt::format("{}({},0): method with unique name not unique", mirror.SourceFilePath.string(), method.DeclarationLine + 1);
 			for (auto& conflicting_method : MethodsByName[method.UniqueName])
 			{
 				if (conflicting_method != &method)
-					message += baselib::Stringify("\n", mirror.SourceFilePath.string(), "(", conflicting_method->DeclarationLine + 1, ",0):   conflicts with this declaration");
+					message += fmt::format("\n{}({},0):   conflicts with this declaration", mirror.SourceFilePath.string(), conflicting_method->DeclarationLine + 1);
 			}
 			throw std::exception{ message.c_str() };
 		}
 	}
 
+	/// TODO: Remove this?
 	/// Check for same-name methods
 	for (auto& method_names : MethodsByName)
 	{
 		if (method_names.second.size() > 1)
 		{
+			/*
 			/// We make sure that no methods with this name have default arguments,
 			/// as we cannot differentiate between them in the visitors, as we need to cast them to their appropriate types, and
 			/// we cannot create a valid signature for a function with default arguments (stupid undecidable C++ syntax)
 			for (auto& other_method : method_names.second)
 			{
 				if (other_method->GetParameters().find('=') != std::string::npos)
-					throw std::exception{ baselib::Stringify(mirror.SourceFilePath.string(), "(", other_method->DeclarationLine + 1, ",0): limitation: methods that have overloads cannot have default arguments").c_str() };
+					throw std::exception{ NOSTRINGIFY(mirror.SourceFilePath.string(), "(", other_method->DeclarationLine + 1, ",0): limitation: methods that have overloads cannot have default arguments").c_str() };
 			}
+			*/
 		}
 	}
 }
