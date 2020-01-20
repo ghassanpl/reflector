@@ -12,6 +12,9 @@
 #include <nlohmann/json.hpp>
 #include <baselib/EnumFlags.h>
 #include <baselib/Strings.h>
+#define FMT_HEADER_ONLY 1
+#include <fmt/format.h>
+#include <fmt/ostream.h>
 using baselib::string_view;
 #include "Include/ReflectorClasses.h"
 
@@ -22,14 +25,16 @@ void PrintSafe(std::ostream& strm, std::string val);
 template <typename... ARGS>
 void ReportError(std::filesystem::path path, size_t line_num, ARGS&& ... args)
 {
-	PrintSafe(std::cerr, baselib::Stringify(path.string(), "(", line_num, ",1): error: ", std::forward<ARGS>(args)..., "\n"));
+	PrintSafe(std::cerr, fmt::format("{}({},1): error: {}\n", path.string(), line_num, fmt::format(std::forward<ARGS>(args)...)));
 }
 
 template <typename... ARGS>
 void PrintLine(ARGS&&... args)
 {
-	PrintSafe(std::cout, baselib::Stringify(std::forward<ARGS>(args)..., "\n"));
+	PrintSafe(std::cout, fmt::format(std::forward<ARGS>(args)...) + "\n");
 }
+
+std::string EscapeJSON(json const& json);
 
 enum class AccessMode { Unspecified, Public, Private, Protected };
 

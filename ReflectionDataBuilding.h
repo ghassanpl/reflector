@@ -41,13 +41,14 @@ struct FileWriter
 	void WriteLine(ARGS&& ... args)
 	{
 		mOutFile << std::string(CurrentIndent, '\t');
-		((mOutFile << std::forward<ARGS>(args)), ...);
+		//((mOutFile << std::forward<ARGS>(args)), ...);
+		fmt::print(mOutFile, std::forward<ARGS>(args)...);
 		if (InDefine)
 			mOutFile << " \\";
 		mOutFile << '\n';
 	}
 
-	void WriteJSON(json const& value);
+	//void WriteJSON(json const& value);
 
 	template <typename... ARGS>
 	void StartDefine(ARGS&& ... args)

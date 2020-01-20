@@ -78,7 +78,7 @@ int main(int argc, const char* argv[])
 				final_files.push_back(std::move(path));
 		}
 
-		PrintLine(final_files.size(), " reflectable files found");
+		PrintLine("{} reflectable files found", final_files.size());
 
 		std::vector<std::future<bool>> parsers;
 		/// Parse all types
@@ -138,13 +138,13 @@ int main(int argc, const char* argv[])
 		if (options.Verbose)
 		{
 			if (!create_reflector)
-				PrintLine((cwd / "Reflector.h").string(), " exists, skipping");
+				PrintLine("{} exists, skipping", (cwd / "Reflector.h").string());
 		}
 
 		if (!options.Quiet)
 		{
 			if (modified_files)
-				PrintLine(modified_files, " mirror files changed");
+				PrintLine("{} mirror files changed", modified_files);
 			else
 				PrintLine("No mirror files changed");
 		}

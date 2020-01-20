@@ -5,3 +5,9 @@ x64/
 *.pdb
 ReflectDatabase.json
 Reflector.h
+Classes.reflect.h
+Includes.reflect.h
+Reflector.exe
+Reflector.ilk
+Reflector.iobj
+Reflector.ipdb
