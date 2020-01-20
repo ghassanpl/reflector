@@ -135,6 +135,9 @@ void Method::Split()
 		auto start_of_id = std::find_if(full_param.rbegin(), full_param.rend(), std::not_fn(baselib::isident)).base();
 		param.Type = baselib::TrimWhitespace({std::to_address(full_param.begin()), std::to_address(start_of_id) });
 		param.Name = baselib::TrimWhitespace({ std::to_address(start_of_id), std::to_address(full_param.end()) });
+
+		if (param.Type.empty()) /// If we didn't specify a name, type was at the end, not name, so fix that
+			param.Type = param.Type + ' ' + param.Name;
 	}
 
 	ParametersTypesOnly = baselib::Join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Type; });
@@ -246,11 +249,13 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 		}
 	}
 
+	/// TODO: Remove this?
 	/// Check for same-name methods
 	for (auto& method_names : MethodsByName)
 	{
 		if (method_names.second.size() > 1)
 		{
+			/*
 			/// We make sure that no methods with this name have default arguments,
 			/// as we cannot differentiate between them in the visitors, as we need to cast them to their appropriate types, and
 			/// we cannot create a valid signature for a function with default arguments (stupid undecidable C++ syntax)
@@ -259,6 +264,7 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 				if (other_method->GetParameters().find('=') != std::string::npos)
 					throw std::exception{ baselib::Stringify(mirror.SourceFilePath.string(), "(", other_method->DeclarationLine + 1, ",0): limitation: methods that have overloads cannot have default arguments").c_str() };
 			}
+			*/
 		}
 	}
 }

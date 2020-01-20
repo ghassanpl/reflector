@@ -115,6 +115,8 @@ std::string BuildCompileTimeLiteral(std::string_view str)
 
 bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
 {
+	bool should_build_proxy = false;
+
 	output.WriteLine("/// From class: ", klass.Name);
 
 	/// ///////////////////////////////////// ///
@@ -306,6 +308,9 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 
 	for (auto& func : klass.Methods)
 	{
+		if (func.Flags.is_set(Reflector::MethodFlags::Virtual) && !func.Flags.is_set(Reflector::MethodFlags::Final))
+			should_build_proxy = true;
+
 		/// Callables for all methods
 		if (!func.Flags.is_set(Reflector::MethodFlags::NoCallable))
 			output.WriteLine("", options.MacroPrefix, "_CALLABLE((", func.Type, "), ", func.Name, ", (", func.GetParameters(), "), ", func.ActualDeclarationLine(), ")");
@@ -318,6 +323,12 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	/// Back to public
 	output.EndDefine("public:");
 
+	/// ///////////////////////////////////// ///
+	/// Proxy class
+	/// ///////////////////////////////////// ///
+
+	should_build_proxy = should_build_proxy && klass.Attributes.value("CreateProxy", true);
+	
 	return true;
 }
 
