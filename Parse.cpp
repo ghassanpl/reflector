@@ -506,7 +506,7 @@ Class ParseClassDecl(string_view line, string_view next_line, size_t line_num, s
 	return klass;
 }
 
-bool ParseClassFile(std::filesystem::path path, Options const& options)
+bool ParseClassFile(path path, Options const& options, FileMirror& mirror)
 {
 	path = path.lexically_normal();
 
@@ -520,7 +520,6 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 		lines.push_back(std::move(line));
 	infile.close();
 
-	FileMirror mirror;
 	mirror.SourceFilePath = std::filesystem::absolute(path);
 
 	AccessMode current_access = AccessMode::Unspecified;
@@ -604,7 +603,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 	}
 
 	if (mirror.Classes.size() > 0 || mirror.Enums.size() > 0)
-		AddMirror(std::move(mirror));
+		AddMirror(&mirror);
 
 	return true;
 }

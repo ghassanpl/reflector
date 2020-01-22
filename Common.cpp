@@ -9,9 +9,10 @@
 #include <mutex>
 #include <future>
 #include <thread>
+#include <fstream>
 
 uint64_t ChangeTime = 0;
-std::vector<FileMirror> Mirrors;
+std::vector<FileMirror*> Mirrors;
 
 json Declaration::ToJSON() const
 {
@@ -30,7 +31,7 @@ json Declaration::ToJSON() const
 Enum const* FindEnum(string_view name)
 {
 	for (auto& mirror : Mirrors)
-		for (auto& henum : mirror.Enums)
+		for (auto& henum : mirror->Enums)
 			if (henum.Name == name)
 				return &henum;
 	return nullptr;
@@ -339,10 +340,11 @@ void FileMirror::CreateArtificialMethods()
 	}
 }
 
-#define OPTION(name, default_value, description) name = OptionsFile.value(#name, default_value);
+#define OPTION(name, default_value, description) name = OptionsFile.value(#name, default_value); OptionsFile.erase(#name);
 
-Options::Options(json&& options_file)
-	: OptionsFile(std::move(options_file))
+Options::Options(path const& options_file_path)
+	: OptionsFilePath(std::filesystem::canonical(options_file_path))
+	, OptionsFile(json::parse(std::fstream{ options_file_path }))
 {
 	if (!OptionsFile.is_object())
 		throw std::exception{ "Options file must contain a JSON object" };
@@ -376,14 +378,24 @@ Options::Options(json&& options_file)
 		PathsToScan.push_back((std::string)OptionsFile["Files"]);
 	else
 		throw std::exception{ "`Files' entry must be an array of strings or a string" };
+
+	OptionsFile.erase("Files");
 	
 	/// Hidden options :)
-	EnumPrefix = OptionsFile.value("EnumPrefix", AnnotationPrefix + "Enum");
-	EnumeratorPrefix = OptionsFile.value("EnumeratorPrefix", AnnotationPrefix + "Enumerator");
-	ClassPrefix = OptionsFile.value("ClassPrefix", AnnotationPrefix + "Class");
-	FieldPrefix = OptionsFile.value("FieldPrefix", AnnotationPrefix + "Field");
-	MethodPrefix = OptionsFile.value("MethodPrefix", AnnotationPrefix + "Method");
-	BodyPrefix = OptionsFile.value("BodyPrefix", AnnotationPrefix + "Body");
+	OPTION(EnumPrefix, AnnotationPrefix + "Enum", "");
+	OPTION(EnumeratorPrefix, AnnotationPrefix + "Enumerator", "");
+	OPTION(ClassPrefix, AnnotationPrefix + "Class", "");
+	OPTION(FieldPrefix, AnnotationPrefix + "Field", "");
+	OPTION(MethodPrefix, AnnotationPrefix + "Method", "");
+	OPTION(BodyPrefix, AnnotationPrefix + "Body", "");
+
+	if (OptionsFile.size() > 0 && Verbose)
+	{
+		for (auto& opt : OptionsFile.items())
+		{
+			PrintLine("Warning: Unrecognized option: {}\n", opt.key());
+		}
+	}
 }
 
 void PrintSafe(std::ostream& strm, std::string val)
@@ -393,16 +405,16 @@ void PrintSafe(std::ostream& strm, std::string val)
 	strm << val;
 }
 
-std::vector<FileMirror> const& GetMirrors()
+std::vector<FileMirror*> const& GetMirrors()
 {
 	return Mirrors;
 }
 
-void AddMirror(FileMirror mirror)
+void AddMirror(FileMirror* mirror)
 {
 	static std::mutex mirror_mutex;
 	std::unique_lock lock{ mirror_mutex };
-	Mirrors.push_back(std::move(mirror));
+	Mirrors.push_back(mirror);
 }
 
 void CreateArtificialMethods()
@@ -410,7 +422,7 @@ void CreateArtificialMethods()
 	/// TODO: Not sure if these are safe to be multithreaded, we ARE adding new methods to the mirrors after all...
 	std::vector<std::future<void>> futures;
 	for (auto& mirror : Mirrors)
-		futures.push_back(std::async([&]() { mirror.CreateArtificialMethods(); }));
+		futures.push_back(std::async([&]() { mirror->CreateArtificialMethods(); }));
 	
 	for (auto& future : futures)
 		future.get(); /// to propagate exceptions

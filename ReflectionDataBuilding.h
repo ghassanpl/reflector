@@ -10,19 +10,19 @@
 
 #define TIMESTAMP_TEXT "/// TIMESTAMP: "
 
-uint64_t FileNeedsUpdating(const std::filesystem::path& target_path, const std::filesystem::path& source_path, const Options& opts);
+uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, const Options& opts);
 
-void BuildMirrorFile(FileMirror const& file, size_t& modified_files, const Options& opts);
+bool BuildMirrorFile(FileMirror const& file, const Options& opts);
 
-void CreateTypeListArtifact(std::filesystem::path const& cwd, Options const& options);
-void CreateIncludeListArtifact(std::filesystem::path const& cwd, Options const& options);
-void CreateJSONDBArtifact(std::filesystem::path const& cwd, Options const& options);
-void CreateReflectorHeaderArtifact(std::filesystem::path const& cwd, const Options& opts);
+bool CreateTypeListArtifact(path const& cwd, Options const& options);
+bool CreateIncludeListArtifact(path const& cwd, Options const& options);
+bool CreateJSONDBArtifact(path const& cwd, Options const& options);
+bool CreateReflectorHeaderArtifact(path const& cwd, const Options& opts);
 
 struct FileWriter
 {
 	std::ofstream mOutFile;
-	std::filesystem::path mPath;
+	path mPath;
 	size_t CurrentIndent = 0;
 	bool InDefine = false;
 
@@ -35,7 +35,7 @@ struct FileWriter
 
 	Indenter Indent() { return Indenter{ *this }; }
 
-	FileWriter(std::filesystem::path path) : mOutFile{ path }, mPath(path) {}
+	FileWriter(path path) : mOutFile{ path }, mPath(path) {}
 
 	template <typename... ARGS>
 	void WriteLine(ARGS&& ... args)

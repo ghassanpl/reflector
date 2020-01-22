@@ -7,7 +7,7 @@
 
 #include "Common.h"
 
-bool ParseClassFile(std::filesystem::path path, Options const& options);
+bool ParseClassFile(path path, Options const& options, FileMirror& mirror);
 
 std::vector<string_view> SplitArgs(string_view argstring);
 

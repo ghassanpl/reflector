@@ -6,7 +6,7 @@
 #include "ReflectionDataBuilding.h"
 #include <charconv>
 
-uint64_t FileNeedsUpdating(const std::filesystem::path& target_path, const std::filesystem::path& source_path, const Options& opts)
+uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, const Options& opts)
 {
 	auto stat = std::filesystem::status(target_path);
 	uint64_t file_change_time = std::max(ChangeTime, (uint64_t)std::filesystem::last_write_time(source_path).time_since_epoch().count());
@@ -29,26 +29,28 @@ uint64_t FileNeedsUpdating(const std::filesystem::path& target_path, const std::
 	return file_change_time;
 }
 
-void CreateJSONDBArtifact(std::filesystem::path const& cwd, Options const& options)
+bool CreateJSONDBArtifact(path const& path, Options const& options)
 {
 	json db;
 
 	for (auto& mirror : GetMirrors())
 	{
-		db[mirror.SourceFilePath.string()] = mirror.ToJSON();
+		db[mirror->SourceFilePath.string()] = mirror->ToJSON();
 	}
 
-	std::ofstream jsondb{ cwd / "ReflectDatabase.json", std::ios_base::openmode{ std::ios_base::trunc } };
+	std::ofstream jsondb{ path, std::ios_base::openmode{ std::ios_base::trunc } };
 	jsondb << db.dump(1, '\t');
 	jsondb.close();
 
 	if (options.Verbose)
-		PrintLine("Created {}", (cwd / "ReflectDatabase.json").string());
+		PrintLine("Created {}", path.string());
+
+	return true;
 }
 
-void CreateReflectorHeaderArtifact(std::filesystem::path const& cwd, const Options& options)
+bool CreateReflectorHeaderArtifact(path const& path, const Options& options)
 {
-	FileWriter reflect_file{ cwd / "Reflector.h" };
+	FileWriter reflect_file{ path };
 	reflect_file.WriteLine("#pragma once");
 	reflect_file.WriteLine("#include <ReflectorClasses.h>");
 	reflect_file.WriteLine("#define TOKENPASTE3_IMPL(x, y, z) x ## y ## z");
@@ -67,37 +69,41 @@ void CreateReflectorHeaderArtifact(std::filesystem::path const& cwd, const Optio
 	reflect_file.Close();
 	
 	if (options.Verbose)
-		PrintLine("Created {}", (cwd / "Reflector.h").string());
+		PrintLine("Created {}", path.string());
+
+	return true;
 }
 
-void CreateIncludeListArtifact(std::filesystem::path const& cwd, Options const& options)
+bool CreateIncludeListArtifact(path const& path, Options const& options)
 {
-	std::ofstream includes_file(cwd / "Includes.reflect.h", std::ios_base::openmode{ std::ios_base::trunc });
+	std::ofstream includes_file(path, std::ios_base::openmode{ std::ios_base::trunc });
 	for (auto& mirror : GetMirrors())
 	{
-		includes_file << "#include " << mirror.SourceFilePath << "" << std::endl;
+		includes_file << "#include " << mirror->SourceFilePath << "" << std::endl;
 	}
 	if (options.Verbose)
-		PrintLine("Created {}", (cwd / "Includes.reflect.h").string());
+		PrintLine("Created {}", path.string());
+	return true;
 }
 
-void CreateTypeListArtifact(std::filesystem::path const& cwd, Options const& options)
+bool CreateTypeListArtifact(path const& path, Options const& options)
 {
-	std::ofstream classes_file(cwd / "Classes.reflect.h", std::ios_base::openmode{ std::ios_base::trunc });
+	std::ofstream classes_file(path, std::ios_base::openmode{ std::ios_base::trunc });
 
 	for (auto& mirror : GetMirrors())
 	{
-		for (auto& klass : mirror.Classes)
+		for (auto& klass : mirror->Classes)
 		{
 			if (!klass.Flags.is_set(ClassFlags::Struct))
 				classes_file << "ReflectClass(" << klass.Name << ")" << std::endl;
 		}
-		for (auto& henum : mirror.Enums)
+		for (auto& henum : mirror->Enums)
 			classes_file << "ReflectEnum(" << henum.Name << ")" << std::endl;
 	}
 
 	if (options.Verbose)
-		PrintLine("Created {}", (cwd / "Classes.reflect.h").string());
+		PrintLine("Created {}", path.string());
+	return true;
 }
 
 std::string BuildCompileTimeLiteral(std::string_view str)
@@ -462,25 +468,17 @@ FileWriter::~FileWriter()
 }
 
 
-void BuildMirrorFile(FileMirror const& file, size_t& modified_files, const Options& options)
+bool BuildMirrorFile(FileMirror const& file, const Options& options)
 {
 	auto file_path = file.SourceFilePath;
 	file_path.concat(options.MirrorExtension);
-
-	/// TOOD: Check if we actually need to update the file
-	auto file_change_time = FileNeedsUpdating(file_path, file.SourceFilePath, options);
-	if (file_change_time == 0) return;
-
-	modified_files++;
 
 	if (!options.Quiet)
 		PrintLine("Building class file {}", file_path.string());
 
 	FileWriter f(file_path);
-	f.WriteLine("{}{}", TIMESTAMP_TEXT, file_change_time);
 	f.WriteLine("/// Source file: {}", file.SourceFilePath);
 	f.WriteLine("#pragma once");
-	//f.WriteLine("#include <Reflector.h>");
 
 	for (auto& klass : file.Classes)
 	{
@@ -497,4 +495,6 @@ void BuildMirrorFile(FileMirror const& file, size_t& modified_files, const Optio
 	}
 
 	f.Close();
+
+	return true;
 }
