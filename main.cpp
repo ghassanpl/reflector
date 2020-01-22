@@ -127,14 +127,14 @@ void LoadStoredModificationTimes(Options const& options)
 {
 	try 
 	{
-		auto db = json::parse(std::ifstream { path{options.OptionsFilePath}.concat("mtd") });
+		auto db = json::parse(std::ifstream { options.ModificationTimeDatabasePath });
 		for (auto&& [path, file] : all_files)
 			file.StoredModificationTime = file_time_stamp{ db.value(path.string(), 0LL) };
 	}
 	catch (std::exception e)
 	{
 		if (!options.Quiet)
-			fmt::print(std::cerr, "Modification time database missing or invalid, rebuilding\n");
+			fmt::print(std::cerr, "Modification time database ({}) missing or invalid, rebuilding\n", options.ModificationTimeDatabasePath);
 		if (options.Verbose)
 			fmt::print(std::cerr, "  Encountered error: {}\n", e.what());
 		return;
@@ -144,14 +144,14 @@ void LoadStoredModificationTimes(Options const& options)
 void SaveStoredModificationTimes(Options const& options)
 {
 	if (options.Verbose)
-		PrintLine("Saving file modification times to {}", path{ options.OptionsFilePath }.concat("mtd").string());
+		PrintLine("Saving file modification times to {}", options.ModificationTimeDatabasePath);
 
 	json value = json::object_t{};
 	for (auto&& [path, file] : all_files)
 	{
 		value[path.string()] = std::filesystem::exists(path) ? std::filesystem::last_write_time(path).time_since_epoch().count() : 0;
 	}
-	std::ofstream out{ path{options.OptionsFilePath}.concat("mtd") };
+	std::ofstream out{ options.ModificationTimeDatabasePath };
 	out << value.dump(2);
 }
 
@@ -183,6 +183,7 @@ int main(int argc, const char* argv[])
 		const auto reflector_h_path = artifact_path / "Reflector.h";
 		const auto classes_h_path = artifact_path / "Classes.reflect.h";
 		const auto includes_h_path = artifact_path / "Includes.reflect.h";
+		const auto reflect_database_path = artifact_path / "ReflectDatabase.json";
 
 		auto& exe_dep = AddFile(argv[0]);
 		auto& options_dep = AddFile(argv[1]);
@@ -258,7 +259,7 @@ int main(int argc, const char* argv[])
 			all_artifacts.AddDependency(AddFile(includes_h_path, mirror_files).BuildFunction(&CreateIncludeListArtifact));
 			if (options.CreateDatabase)
 			{
-				all_artifacts.AddDependency(AddFile(artifact_path / "ReflectDatabase.json", mirror_files).BuildFunction(&CreateJSONDBArtifact));
+				all_artifacts.AddDependency(AddFile(reflect_database_path, mirror_files).BuildFunction(&CreateJSONDBArtifact));
 			}
 		}
 

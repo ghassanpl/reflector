@@ -51,11 +51,21 @@ std::string ParseIdentifier(string_view& str)
 std::string ParseType(string_view& str)
 {
 	/// TODO: Unify all type parsing from entire codebase
-	int brackets = 0, tris = 0, parens = 0;
-	auto p = str.begin();
-	for (; p != str.end(); p++)
+
+	auto start = str.begin();
+	while (true)
 	{
-		switch (*p)
+		if (SwallowOptional(str, "struct") || SwallowOptional(str, "class") || SwallowOptional(str, "enum") || SwallowOptional(str, "union"))
+			continue;
+		break;
+	}
+
+	str = TrimWhitespace(str);
+
+	int brackets = 0, tris = 0, parens = 0;
+	for (; !str.empty(); str.remove_prefix(1))
+	{
+		switch (str[0])
 		{
 		case '[': brackets++; continue;
 		case ']': brackets--; continue;
@@ -65,15 +75,14 @@ std::string ParseType(string_view& str)
 		case '>': tris--; continue;
 		}
 
-		if (baselib::isblank(*p))
+		if (baselib::isblank(str[0]))
 		{
 			if (parens == 0 && tris == 0 && brackets == 0)
 				break;
 		}
 	}
 
-	std::string result = { str.begin(), p };
-	str = { p, str.end() };
+	std::string result = { start, str.begin() };
 	return result;
 }
 
@@ -393,6 +402,8 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	method.Attributes = ParseAttributeList(line);
 	method.DeclarationLine = line_num;
 	
+	auto debug_copy = next_line;
+
 	while (true)
 	{
 		if (SwallowOptional(next_line, "virtual")) method.Flags += Reflector::MethodFlags::Virtual;

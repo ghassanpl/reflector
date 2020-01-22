@@ -26,7 +26,14 @@ namespace Reflector
 		std::type_index TypeIndex;
 	};
 
-	/// TODO: Actually add these
+	enum class ClassFlags
+	{
+		Struct,
+		DeclaredStruct,
+		NoConstructors,
+		HasProxy
+	};
+
 	enum class FieldFlags
 	{
 		NoSetter,

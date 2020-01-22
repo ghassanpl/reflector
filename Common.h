@@ -17,6 +17,9 @@
 #include <fmt/ostream.h>
 using baselib::string_view;
 #include "Include/ReflectorClasses.h"
+using Reflector::ClassFlags;
+using Reflector::FieldFlags;
+using Reflector::MethodFlags;
 using std::filesystem::path;
 
 using nlohmann::json;
@@ -105,6 +108,7 @@ public:
 	void SetParameters(std::string params);
 	auto const& GetParameters() const { return mParameters; }
 	std::vector<MethodParameter> ParametersSplit;
+	std::string ParametersNamesOnly;
 	std::string ParametersTypesOnly;
 	std::string Body;
 	size_t SourceFieldDeclarationLine = 0;
@@ -120,13 +124,6 @@ public:
 	void CreateArtificialMethods(FileMirror& mirror, Class& klass);
 
 	json ToJSON() const;
-};
-
-enum class ClassFlags
-{
-	Struct,
-	DeclaredStruct,
-	NoConstructors
 };
 
 struct Property
@@ -223,6 +220,8 @@ struct Options
 	std::string FieldPrefix;
 	std::string MethodPrefix;
 	std::string BodyPrefix;
+
+	path ModificationTimeDatabasePath;
 
 	path OptionsFilePath;
 	json OptionsFile;
