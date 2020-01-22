@@ -49,6 +49,7 @@ namespace Reflector
 	{
 		Inline,
 		Virtual,
+		Abstract,
 		Static,
 		Const,
 		Noexcept,
@@ -161,5 +162,11 @@ namespace Reflector
 	protected:
 
 		ClassReflectionData const* mClass = nullptr;
+	};
+
+	template <typename T, typename PROXY_OBJ> 
+	struct ProxyFor
+	{
+		using Type = void;
 	};
 }

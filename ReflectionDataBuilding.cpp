@@ -56,7 +56,7 @@ void CreateReflectorHeaderArtifact(path const& path, const Options& options)
 	reflect_file.WriteLine("#define TOKENPASTE2_IMPL(x, y) x ## y");
 	reflect_file.WriteLine("#define TOKENPASTE2(x, y) TOKENPASTE2_IMPL(x, y)");
 	reflect_file.WriteLine("");
-	reflect_file.WriteLine("#define {}(...)", options.ClassPrefix);
+	reflect_file.WriteLine("#define {}(...) TOKENPASTE2({}_GENERATED_CLASS_, __LINE__)", options.ClassPrefix, options.MacroPrefix);
 	reflect_file.WriteLine("#define {}(...)", options.FieldPrefix);
 	reflect_file.WriteLine("#define {}(...)", options.MethodPrefix);
 	reflect_file.WriteLine("#define {}(...) TOKENPASTE2({}_GENERATED_CLASS_BODY_, __LINE__)", options.BodyPrefix, options.MacroPrefix);
@@ -115,8 +115,6 @@ std::string BuildCompileTimeLiteral(std::string_view str)
 
 bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
 {
-	bool should_build_proxy = false;
-
 	output.WriteLine("/// From class: {}", klass.Name);
 
 	/// ///////////////////////////////////// ///
@@ -311,9 +309,6 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 
 	for (auto& func : klass.Methods)
 	{
-		if (func.Flags.is_set(Reflector::MethodFlags::Virtual) && !func.Flags.is_set(Reflector::MethodFlags::Final))
-			should_build_proxy = true;
-
 		/// Callables for all methods
 		if (!func.Flags.is_set(Reflector::MethodFlags::NoCallable))
 			output.WriteLine("{}_CALLABLE(({}), {}, ({}), {})", options.MacroPrefix, func.Type, func.Name, func.GetParameters(), func.ActualDeclarationLine());
@@ -330,7 +325,40 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	/// Proxy class
 	/// ///////////////////////////////////// ///
 
-	should_build_proxy = should_build_proxy && klass.Attributes.value("CreateProxy", true);
+	output.WriteLine("#undef {}_GENERATED_CLASS_{}", options.MacroPrefix, klass.DeclarationLine);
+	if (klass.Flags.is_set(ClassFlags::HasProxy))
+	{
+		output.StartDefine("#define {}_GENERATED_CLASS_{} template <typename T, typename PROXY_OBJ> struct {}_Proxy : T {{", options.MacroPrefix, klass.DeclarationLine, klass.Name);
+		output.CurrentIndent++;
+		output.WriteLine("mutable PROXY_OBJ ReflectionProxyObject;");
+		for (auto& func : klass.Methods)
+		{
+			if (!func.Flags.is_set(Reflector::MethodFlags::Virtual))
+				continue;
+
+			auto base = fmt::format("virtual auto {0}({1})", func.Name, func.GetParameters());
+			if (func.Flags.is_set(Reflector::MethodFlags::Const))
+				base += " const";
+			if (func.Flags.is_set(Reflector::MethodFlags::Noexcept))
+				base += " noexcept";
+
+			output.WriteLine("{} -> decltype(T::{}({})) override {{", base, func.Name, func.ParametersNamesOnly);
+			output.CurrentIndent++;
+			/// TODO: Change {1} to std::forward<>({1})
+			output.WriteLine("using return_type = decltype(T::{0}({1}));", func.Name, func.ParametersNamesOnly);
+			if (func.Flags.is_set(MethodFlags::Abstract))
+				output.WriteLine("if (ReflectionProxyObject.Contains(\"{0}\")) return ReflectionProxyObject.CallOverload<return_type>(\"{0}\"{2}{1}); else ReflectionProxyObject.AbstractCall(\"{0}\");", func.Name, func.ParametersNamesOnly, (func.ParametersSplit.size() ? ", " : ""));
+			else
+				output.WriteLine("return ReflectionProxyObject.Contains(\"{0}\") ? ReflectionProxyObject.CallOverload<return_type>(\"{0}\"{2}{1}) : T::{0}({1});", func.Name, func.ParametersNamesOnly, (func.ParametersSplit.size() ? ", " : ""));
+			output.CurrentIndent--;
+			output.WriteLine("}}");
+		}
+		output.CurrentIndent--;
+		output.WriteLine("}};");
+		output.EndDefine("namespace Reflector {{ template <typename PROXY_OBJ> struct ProxyFor<{0}, PROXY_OBJ> {{ using Type = {0}_Proxy<{0}, PROXY_OBJ>; }}; }}", klass.Name);
+	}
+	else
+		output.WriteLine("#define {}_GENERATED_CLASS_{}", options.MacroPrefix, klass.DeclarationLine);
 	
 	return true;
 }

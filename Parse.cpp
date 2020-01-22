@@ -447,9 +447,13 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	{
 		next_line = Expect(next_line, "->");
 
-		auto end_line = next_line.find_first_of("{;");
+		auto end_line = next_line.find_first_of("{;=");
 		if (end_line != std::string::npos)
+		{
+			if (next_line[end_line] == '=')
+				method.Flags += MethodFlags::Abstract;
 			next_line = TrimWhitespace(next_line.substr(0, end_line));
+		}
 		if (next_line.ends_with("override"))
 			next_line.remove_suffix(sizeof("override") - 1);
 		method.Type = (std::string)TrimWhitespace(next_line);
@@ -457,6 +461,10 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	else
 	{
 		method.Type = pre_type;
+
+		auto end_line = next_line.find_first_of("{;=");
+		if (end_line != std::string::npos && next_line[end_line] == '=')
+			method.Flags += MethodFlags::Abstract;
 	}
 
 	if (auto getter = method.Attributes.find("UniqueName"); getter != method.Attributes.end())

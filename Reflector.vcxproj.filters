@@ -29,9 +29,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ReflectorClasses.h">
-      <Filter>Source Files</Filter>
-    </ClInclude>
     <ClInclude Include="Parse.h">
       <Filter>Source Files</Filter>
     </ClInclude>

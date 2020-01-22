@@ -251,24 +251,18 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 		}
 	}
 
-	/// TODO: Remove this?
-	/// Check for same-name methods
-	for (auto& method_names : MethodsByName)
+	/// Check if we should build proxy
+	bool should_build_proxy = false;
+
+	for (auto& method : Methods)
 	{
-		if (method_names.second.size() > 1)
-		{
-			/*
-			/// We make sure that no methods with this name have default arguments,
-			/// as we cannot differentiate between them in the visitors, as we need to cast them to their appropriate types, and
-			/// we cannot create a valid signature for a function with default arguments (stupid undecidable C++ syntax)
-			for (auto& other_method : method_names.second)
-			{
-				if (other_method->GetParameters().find('=') != std::string::npos)
-					throw std::exception{ NOSTRINGIFY(mirror.SourceFilePath.string(), "(", other_method->DeclarationLine + 1, ",0): limitation: methods that have overloads cannot have default arguments").c_str() };
-			}
-			*/
-		}
+		if (method.Flags.is_set(Reflector::MethodFlags::Virtual) && !method.Flags.is_set(Reflector::MethodFlags::Final))
+			should_build_proxy = true;
 	}
+
+	should_build_proxy = should_build_proxy && Attributes.value("CreateProxy", true);
+
+	Flags.set_to(ClassFlags::HasProxy, should_build_proxy);
 }
 
 json Class::ToJSON() const
