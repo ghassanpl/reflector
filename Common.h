@@ -156,6 +156,10 @@ struct Class : public Declaration
 	std::map<std::string, std::vector<Method const*>> MethodsByName;
 
 	json ToJSON() const;
+
+private:
+
+	std::vector<Method> mArtificialMethods;
 };
 
 struct Enumerator : Declaration

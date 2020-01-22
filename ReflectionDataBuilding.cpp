@@ -266,7 +266,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		if (!method.UniqueName.empty())
 			output.WriteLine(".UniqueName = \"{}\",", method.UniqueName);
 		if (!method.Body.empty())
-			output.WriteLine(".Body = \"{}\",", method.Body);
+			output.WriteLine(".Body = {},", EscapeJSON(method.Body));
 		output.WriteLine(".ReturnTypeIndex = typeid({}),", method.Type);
 		output.WriteLine(".ParentClass = &_data");
 		output.CurrentIndent--;
@@ -314,7 +314,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 			output.WriteLine("{}_CALLABLE(({}), {}, ({}), {})", options.MacroPrefix, func.Type, func.Name, func.GetParameters(), func.ActualDeclarationLine());
 		if (func.Flags.is_set(Reflector::MethodFlags::Artificial))
 		{
-			output.WriteLine("{} {}({}){} {{ {} }}", func.Type, func.Name, func.GetParameters(), (func.Flags.is_set(Reflector::MethodFlags::Const) ? " const" : ""), func.Body);
+			output.WriteLine("auto {}({}){} -> {} {{ {} }}", func.Name, func.GetParameters(), (func.Flags.is_set(Reflector::MethodFlags::Const) ? " const" : ""), func.Type, func.Body);
 		}
 	}
 

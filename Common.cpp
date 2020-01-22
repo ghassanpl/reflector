@@ -167,6 +167,13 @@ std::string Method::GetSignature(Class const& parent_class) const
 
 void Method::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 {
+	if (klass.Flags.is_set(ClassFlags::HasProxy) && Flags.is_set(MethodFlags::Virtual))
+	{
+		if (Flags.is_set(MethodFlags::Abstract))
+			klass.AddArtificialMethod(Type, "_PROXY_"+Name, GetParameters(), fmt::format("throw std::runtime_error{{\"invalid abstract call to function {}::{}\"}};", klass.Name, Name), { "Proxy function for " + Name }, Flags - MethodFlags::Virtual, DeclarationLine);
+		else
+			klass.AddArtificialMethod(Type, "_PROXY_" + Name, GetParameters(), "return self_type::" + Name + "(" + ParametersNamesOnly + ");", { "Proxy function for " + Name }, Flags - MethodFlags::Virtual, DeclarationLine);
+	}
 }
 
 json Method::ToJSON() const
@@ -212,17 +219,36 @@ void Class::AddArtificialMethod(std::string results, std::string name, std::stri
 	method.Access = AccessMode::Public;
 	method.Comments = std::move(comments);
 	method.SourceFieldDeclarationLine = source_field_declaration_line;
-	Methods.push_back(std::move(method));
+	mArtificialMethods.push_back(std::move(method));
 }
 
 void Class::CreateArtificialMethods(FileMirror& mirror)
 {
+	/// Check if we should build proxy
+	bool should_build_proxy = false;
+
+	for (auto& method : Methods)
+	{
+		if (method.Flags.is_set(Reflector::MethodFlags::Virtual) && !method.Flags.is_set(Reflector::MethodFlags::Final))
+			should_build_proxy = true;
+	}
+
+	should_build_proxy = should_build_proxy && Attributes.value("CreateProxy", true);
+
+	Flags.set_to(ClassFlags::HasProxy, should_build_proxy);
+
+	/// Create methods for fields and methods
+
 	for (auto& field : Fields)
 		field.CreateArtificialMethods(mirror, *this);
 	for (auto& method : Methods)
 		method.CreateArtificialMethods(mirror, *this);
 	for (auto& property : Properties)
 		property.second.CreateArtificialMethods(mirror, *this);
+
+	for (auto& am : mArtificialMethods)
+		Methods.push_back(std::move(am));
+	mArtificialMethods.clear();
 
 	/// First check unique method names
 	MethodsByName.clear();
@@ -250,19 +276,6 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 			throw std::exception{ message.c_str() };
 		}
 	}
-
-	/// Check if we should build proxy
-	bool should_build_proxy = false;
-
-	for (auto& method : Methods)
-	{
-		if (method.Flags.is_set(Reflector::MethodFlags::Virtual) && !method.Flags.is_set(Reflector::MethodFlags::Final))
-			should_build_proxy = true;
-	}
-
-	should_build_proxy = should_build_proxy && Attributes.value("CreateProxy", true);
-
-	Flags.set_to(ClassFlags::HasProxy, should_build_proxy);
 }
 
 json Class::ToJSON() const
