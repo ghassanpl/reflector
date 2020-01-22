@@ -27,16 +27,15 @@ int main(int argc, const char* argv[])
 		return 1;
 	}
 
-	std::ifstream ifs{ argv[1] };
-	if (!ifs.is_open())
-	{
-		std::cerr << "Could not open `"<<argv[1]<<"'\n";
-		return 2;
-	}
-	
 	try
 	{
-		Options options { json::parse(ifs) };
+		Options options{ argv[1] };
+
+		const auto artifact_path = std::filesystem::absolute(options.ArtifactPath.empty() ? std::filesystem::current_path() : path{ options.ArtifactPath });
+		const auto reflector_h_path = artifact_path / "Reflector.h";
+		const auto classes_h_path = artifact_path / "Classes.reflect.h";
+		const auto includes_h_path = artifact_path / "Includes.reflect.h";
+		const auto reflect_database_path = artifact_path / "ReflectDatabase.json";
 
 		std::vector<std::filesystem::path> final_files;
 		for (auto& path : options.PathsToScan)
@@ -108,24 +107,24 @@ int main(int argc, const char* argv[])
 
 		/// Check if 
 
-		const auto cwd = std::filesystem::absolute(options.ArtifactPath.empty() ? std::filesystem::current_path() : std::filesystem::path{ options.ArtifactPath });
-		std::filesystem::create_directories(cwd);
+		//const auto cwd = std::filesystem::absolute(options.ArtifactPath.empty() ? std::filesystem::current_path() : std::filesystem::path{ options.ArtifactPath });
+		std::filesystem::create_directories(artifact_path);
 
-		const bool type_list_missing = !std::filesystem::exists(cwd / "Classes.reflect.h") || options.Force;
-		const bool include_list_missing = !std::filesystem::exists(cwd / "Includes.reflect.h") || options.Force;
-		const bool json_db_missing = options.CreateDatabase && (!std::filesystem::exists(cwd / "ReflectDatabase.json") || options.Force);
+		const bool type_list_missing = !std::filesystem::exists(classes_h_path) || options.Force;
+		const bool include_list_missing = !std::filesystem::exists(includes_h_path) || options.Force;
+		const bool json_db_missing = options.CreateDatabase && (!std::filesystem::exists(reflect_database_path) || options.Force);
 		if (options.CreateArtifacts && (modified_files || type_list_missing || include_list_missing || json_db_missing))
 		{
-			futures.push_back(std::async(CreateTypeListArtifact, cwd, options));
-			futures.push_back(std::async(CreateIncludeListArtifact, cwd, options));
+			futures.push_back(std::async(CreateTypeListArtifact, classes_h_path, options));
+			futures.push_back(std::async(CreateIncludeListArtifact, includes_h_path, options));
 			if (options.CreateDatabase)
-				futures.push_back(std::async(CreateJSONDBArtifact, cwd, options));
+				futures.push_back(std::async(CreateJSONDBArtifact, reflect_database_path, options));
 		}
 
-		const bool create_reflector = !std::filesystem::exists(cwd / "Reflector.h") || options.Force;
+		const bool create_reflector = !std::filesystem::exists(reflector_h_path) || options.Force;
 
 		if (create_reflector)
-			futures.push_back(std::async(CreateReflectorHeaderArtifact, cwd, options));
+			futures.push_back(std::async(CreateReflectorHeaderArtifact, reflector_h_path, options));
 
 		for (auto& future : futures)
 			future.get(); /// to propagate exceptions
@@ -134,7 +133,7 @@ int main(int argc, const char* argv[])
 		if (options.Verbose)
 		{
 			if (!create_reflector)
-				PrintLine("{} exists, skipping", (cwd / "Reflector.h").string());
+				PrintLine("{} exists, skipping", reflector_h_path.string());
 		}
 
 		if (!options.Quiet)

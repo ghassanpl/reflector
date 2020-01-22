@@ -17,13 +17,17 @@
 #include <fmt/ostream.h>
 using baselib::string_view;
 #include "Include/ReflectorClasses.h"
+using Reflector::ClassFlags;
+using Reflector::FieldFlags;
+using Reflector::MethodFlags;
+using std::filesystem::path;
 
 using nlohmann::json;
 
 void PrintSafe(std::ostream& strm, std::string val);
 
 template <typename... ARGS>
-void ReportError(std::filesystem::path path, size_t line_num, ARGS&& ... args)
+void ReportError(path path, size_t line_num, ARGS&& ... args)
 {
 	PrintSafe(std::cerr, fmt::format("{}({},1): error: {}\n", path.string(), line_num, fmt::format(std::forward<ARGS>(args)...)));
 }
@@ -104,6 +108,7 @@ public:
 	void SetParameters(std::string params);
 	auto const& GetParameters() const { return mParameters; }
 	std::vector<MethodParameter> ParametersSplit;
+	std::string ParametersNamesOnly;
 	std::string ParametersTypesOnly;
 	std::string Body;
 	size_t SourceFieldDeclarationLine = 0;
@@ -119,13 +124,6 @@ public:
 	void CreateArtificialMethods(FileMirror& mirror, Class& klass);
 
 	json ToJSON() const;
-};
-
-enum class ClassFlags
-{
-	Struct,
-	DeclaredStruct,
-	NoConstructors
 };
 
 struct Property
@@ -176,7 +174,7 @@ struct Enum : public Declaration
 
 struct FileMirror
 {
-	std::filesystem::path SourceFilePath;
+	path SourceFilePath;
 	std::vector<Class> Classes;
 	std::vector<Enum> Enums;
 
@@ -192,7 +190,8 @@ void CreateArtificialMethods();
 
 struct Options
 {
-	Options(json&& options_file);
+	//Options(json&& options_file);
+	Options(path const& options_file_path);
 
 	bool Recursive = false;
 	bool Quiet = false;
@@ -205,9 +204,9 @@ struct Options
 	/// TODO: Read this from cmdline
 	bool ForwardDeclare = true;
 
-	std::filesystem::path ArtifactPath;
+	path ArtifactPath;
 
-	std::vector<std::filesystem::path> PathsToScan;
+	std::vector<path> PathsToScan;
 
 	std::string AnnotationPrefix = "R";
 	std::string MacroPrefix = "REFLECT";
@@ -222,6 +221,7 @@ struct Options
 	std::string MethodPrefix;
 	std::string BodyPrefix;
 
+	path OptionsFilePath;
 	json OptionsFile;
 };
 

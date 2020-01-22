@@ -9,6 +9,7 @@
 #include <mutex>
 #include <future>
 #include <thread>
+#include <fstream>
 
 uint64_t ChangeTime = 0;
 std::vector<FileMirror> Mirrors;
@@ -141,6 +142,7 @@ void Method::Split()
 	}
 
 	ParametersTypesOnly = baselib::Join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Type; });
+	ParametersNamesOnly = baselib::Join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Name; });
 }
 
 void Method::SetParameters(std::string params)
@@ -339,10 +341,11 @@ void FileMirror::CreateArtificialMethods()
 	}
 }
 
-#define OPTION(name, default_value, description) name = OptionsFile.value(#name, default_value);
+#define OPTION(name, default_value, description) name = OptionsFile.value(#name, default_value); OptionsFile.erase(#name);
 
-Options::Options(json&& options_file)
-	: OptionsFile(std::move(options_file))
+Options::Options(path const& options_file_path)
+	: OptionsFilePath(std::filesystem::canonical(options_file_path))
+	, OptionsFile(json::parse(std::fstream{ options_file_path }))
 {
 	if (!OptionsFile.is_object())
 		throw std::exception{ "Options file must contain a JSON object" };
@@ -376,14 +379,24 @@ Options::Options(json&& options_file)
 		PathsToScan.push_back((std::string)OptionsFile["Files"]);
 	else
 		throw std::exception{ "`Files' entry must be an array of strings or a string" };
+
+	OptionsFile.erase("Files");
 	
 	/// Hidden options :)
-	EnumPrefix = OptionsFile.value("EnumPrefix", AnnotationPrefix + "Enum");
-	EnumeratorPrefix = OptionsFile.value("EnumeratorPrefix", AnnotationPrefix + "Enumerator");
-	ClassPrefix = OptionsFile.value("ClassPrefix", AnnotationPrefix + "Class");
-	FieldPrefix = OptionsFile.value("FieldPrefix", AnnotationPrefix + "Field");
-	MethodPrefix = OptionsFile.value("MethodPrefix", AnnotationPrefix + "Method");
-	BodyPrefix = OptionsFile.value("BodyPrefix", AnnotationPrefix + "Body");
+	OPTION(EnumPrefix, AnnotationPrefix + "Enum", "");
+	OPTION(EnumeratorPrefix, AnnotationPrefix + "Enumerator", "");
+	OPTION(ClassPrefix, AnnotationPrefix + "Class", "");
+	OPTION(FieldPrefix, AnnotationPrefix + "Field", "");
+	OPTION(MethodPrefix, AnnotationPrefix + "Method", "");
+	OPTION(BodyPrefix, AnnotationPrefix + "Body", "");
+
+	if (OptionsFile.size() > 0 && Verbose)
+	{
+		for (auto& opt : OptionsFile.items())
+		{
+			PrintLine("Warning: Unrecognized option: {}\n", opt.key());
+		}
+	}
 }
 
 void PrintSafe(std::ostream& strm, std::string val)
