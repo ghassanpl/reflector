@@ -5,7 +5,6 @@
 
 #include "Common.h"
 #include "Parse.h"
-#include <baselib/ASCII.h>
 #include <mutex>
 #include <future>
 #include <thread>
@@ -40,9 +39,9 @@ Enum const* FindEnum(string_view name)
 void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 {
 	/// Create comments string
-	auto field_comments = baselib::Join(Comments, " ");
+	auto field_comments = string_ops::join(Comments, string_view{ " " });
 	if (field_comments.size())
-		field_comments[0] = (char)baselib::tolower(field_comments[0]);
+		field_comments[0] = (char)string_ops::tolower(field_comments[0]);
 	else
 		field_comments = fmt::format("the `{}` field of this object", DisplayName);
 
@@ -133,16 +132,16 @@ void Method::Split()
 	for (auto& full_param : parameters_split)
 	{
 		auto& param = ParametersSplit.emplace_back();
-		auto start_of_id = std::find_if(full_param.rbegin(), full_param.rend(), std::not_fn(baselib::isident)).base();
-		param.Type = baselib::TrimWhitespace({std::to_address(full_param.begin()), std::to_address(start_of_id) });
-		param.Name = baselib::TrimWhitespace({ std::to_address(start_of_id), std::to_address(full_param.end()) });
+		auto start_of_id = std::find_if(full_param.rbegin(), full_param.rend(), std::not_fn(string_ops::isident)).base();
+		param.Type = string_ops::trim_whitespace(string_ops::make_sv(full_param.begin(), start_of_id));
+		param.Name = string_ops::trim_whitespace(make_sv(start_of_id, full_param.end()));
 
 		if (param.Type.empty()) /// If we didn't specify a name, type was at the end, not name, so fix that
 			param.Type = param.Type + ' ' + param.Name;
 	}
 
-	ParametersTypesOnly = baselib::Join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Type; });
-	ParametersNamesOnly = baselib::Join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Name; });
+	ParametersTypesOnly = string_ops::join(ParametersSplit, string_view{ "," }, [](MethodParameter const& param) { return param.Type; });
+	ParametersNamesOnly = string_ops::join(ParametersSplit, string_view{ "," }, [](MethodParameter const& param) { return param.Name; });
 }
 
 void Method::SetParameters(std::string params)
@@ -157,7 +156,10 @@ void Method::SetParameters(std::string params)
 
 std::string Method::GetSignature(Class const& parent_class) const
 {
-	auto base = fmt::format("{} ({}::*)({})", Type, parent_class.Name, ParametersTypesOnly);
+	auto base = Flags.is_set(MethodFlags::Static) ? 
+		fmt::format("{} (*)({})", Type, ParametersTypesOnly)
+	:
+		fmt::format("{} ({}::*)({})", Type, parent_class.Name, ParametersTypesOnly);
 	if (Flags.is_set(Reflector::MethodFlags::Const))
 		base += " const";
 	if (Flags.is_set(Reflector::MethodFlags::Noexcept))
@@ -235,7 +237,11 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 
 	should_build_proxy = should_build_proxy && Attributes.value("CreateProxy", true);
 
-	Flags.set_to(ClassFlags::HasProxy, should_build_proxy);
+	Flags.set_to(should_build_proxy, ClassFlags::HasProxy);
+
+	/// Create singleton method if singleton
+	if (Attributes.value("Singleton", false))
+		AddArtificialMethod("self_type&", "SingletonInstance", "", "static self_type instance; return instance;", { "Returns the single instance of this class" }, Reflector::MethodFlags::Static);
 
 	/// Create methods for fields and methods
 

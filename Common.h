@@ -10,12 +10,13 @@
 #include <string_view>
 #include <vector>
 #include <nlohmann/json.hpp>
-#include <baselib/EnumFlags.h>
-#include <baselib/Strings.h>
+#include "../enum_flags/include/enum_flags.h"
+#include "../string_ops/include/string_ops.h"
 #define FMT_HEADER_ONLY 1
 #include <fmt/format.h>
 #include <fmt/ostream.h>
-using baselib::string_view;
+using std::string_view;
+using namespace string_ops;
 #include "Include/ReflectorClasses.h"
 using Reflector::ClassFlags;
 using Reflector::FieldFlags;

@@ -21,7 +21,7 @@ uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, con
 
 		uint64_t stored_change_time = 0;
 		const auto time = string_view{ string_view{ line }.substr(sizeof(TIMESTAMP_TEXT) - 1) };
-		const auto result = std::from_chars(time.begin(), time.end(), stored_change_time);
+		const auto result = std::from_chars(std::to_address(time.begin()), std::to_address(time.end()), stored_change_time);
 		if (!opts.Force && result.ec == std::errc{} && file_change_time == stored_change_time)
 			return 0;
 	}
@@ -89,8 +89,8 @@ void CreateTypeListArtifact(path const& path, Options const& options)
 	{
 		for (auto& klass : mirror.Classes)
 		{
-			if (!klass.Flags.is_set(ClassFlags::Struct))
-				classes_file << "ReflectClass(" << klass.Name << ")" << std::endl;
+			//if (!klass.Flags.is_set(ClassFlags::Struct))
+			classes_file << "ReflectClass(" << klass.Name << ")" << std::endl;
 		}
 		for (auto& henum : mirror.Enums)
 			classes_file << "ReflectEnum(" << henum.Name << ")" << std::endl;
@@ -198,6 +198,10 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 			output.WriteLine("{}(::Reflector::ClassReflectionData const& klass) : {}(klass) {{}}", klass.Name, klass.ParentClass);
 		}
 	}
+	else
+	{
+		output.WriteLine("typedef void parent_type;");
+	}
 
 	/// Flags
 	output.WriteLine("static constexpr int StaticClassFlags() {{ return {}; }}", klass.Flags.bits);
@@ -283,7 +287,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 
 	if (!klass.ParentClass.empty())
 	{
-		output.WriteLine("virtual ::Reflector::ClassReflectionData const& GetReflectionData() const override {{ return StaticGetReflectionData(); }}");
+		output.WriteLine("virtual ::Reflector::ClassReflectionData const& GetReflectionData() const {{ return StaticGetReflectionData(); }}");
 	}
 
 	/// ///////////////////////////////////// ///
@@ -307,6 +311,23 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	/// All methods
 	/// ///////////////////////////////////// ///
 
+	auto PrintPreFlags = [](enum_flags::enum_flags<Reflector::MethodFlags> flags) {
+		std::vector<std::string_view> prefixes;
+		if (flags.is_set(MethodFlags::Inline)) prefixes.push_back("inline");
+		if (flags.is_set(MethodFlags::Static)) prefixes.push_back("static");
+		if (flags.is_set(MethodFlags::Virtual)) prefixes.push_back("virtual");
+		if (flags.is_set(MethodFlags::Explicit)) prefixes.push_back("explicit");
+		return fmt::format("{}", fmt::join(prefixes, " "));
+	};
+
+	auto PrintPostFlags = [](enum_flags::enum_flags<Reflector::MethodFlags> flags) {
+		std::vector<std::string_view> suffixes;
+		if (flags.is_set(MethodFlags::Const)) suffixes.push_back("const");
+		if (flags.is_set(MethodFlags::Final)) suffixes.push_back("final");
+		if (flags.is_set(MethodFlags::Noexcept)) suffixes.push_back("noexcept");
+		return fmt::format("{}", fmt::join(suffixes, " "));
+	};
+
 	for (auto& func : klass.Methods)
 	{
 		/// Callables for all methods
@@ -314,7 +335,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 			output.WriteLine("{}_CALLABLE(({}), {}, ({}), {})", options.MacroPrefix, func.Type, func.Name, func.GetParameters(), func.ActualDeclarationLine());
 		if (func.Flags.is_set(Reflector::MethodFlags::Artificial))
 		{
-			output.WriteLine("auto {}({}){} -> {} {{ {} }}", func.Name, func.GetParameters(), (func.Flags.is_set(Reflector::MethodFlags::Const) ? " const" : ""), func.Type, func.Body);
+			output.WriteLine("{} auto {}({}){} -> {} {{ {} }}", PrintPreFlags(func.Flags), func.Name, func.GetParameters(), PrintPostFlags(func.Flags), func.Type, func.Body);
 		}
 	}
 

@@ -4,13 +4,14 @@
 /// DISCLAIMER: THE WORKS ARE WITHOUT WARRANTY.
 
 #include "Parse.h"
-#include <baselib/ASCII.h>
 #include <charconv>
 #include <fstream>
 
 std::string TypeFromVar(string_view str)
 {
-	return (std::string)baselib::TrimWhitespace({ str.begin(), std::find_if(str.rbegin(), str.rend(), [](char32_t cp) { return !(baselib::isalnum(cp) || cp == '_'); }).base() });
+	decltype(auto) start = str.begin();
+	decltype(auto) end = std::find_if(str.rbegin(), str.rend(), [](char32_t cp) { return !(string_ops::isalnum(cp) || cp == '_'); }).base();
+	return (std::string)string_ops::trim_whitespace(make_sv(start, end));
 }
 
 string_view Expect(string_view str, string_view value)
@@ -20,7 +21,7 @@ string_view Expect(string_view str, string_view value)
 		throw std::exception(fmt::format("Expected `{}`", value).c_str());
 	}
 	str.remove_prefix(value.size());
-	return TrimWhitespace(str);
+	return string_ops::trim_whitespace(str);
 }
 
 std::string EscapeJSON(json const& json)
@@ -42,9 +43,9 @@ std::string ParseIdentifier(string_view& str)
 {
 	auto p = str.begin();
 	for (; p != str.end(); p++)
-		if (!baselib::isident(*p)) break;
+		if (!string_ops::isident(*p)) break;
 	std::string result = { str.begin(), p };
-	str = { p, str.end() };
+	str = make_sv(p, str.end());
 	return result;
 }
 
@@ -60,7 +61,7 @@ std::string ParseType(string_view& str)
 		break;
 	}
 
-	str = TrimWhitespace(str);
+	str = string_ops::trim_whitespace(str);
 
 	int brackets = 0, tris = 0, parens = 0;
 	for (; !str.empty(); str.remove_prefix(1))
@@ -75,7 +76,7 @@ std::string ParseType(string_view& str)
 		case '>': tris--; continue;
 		}
 
-		if (baselib::isblank(str[0]))
+		if (string_ops::isblank(str[0]))
 		{
 			if (parens == 0 && tris == 0 && brackets == 0)
 				break;
@@ -110,7 +111,7 @@ std::string ParseExpression(string_view& str)
 	}
 
 	std::string result = { str.begin(), p };
-	str = { p, str.end() };
+	str = make_sv(p, str.end());
 	return result;
 }
 
@@ -120,7 +121,7 @@ std::tuple<std::string, std::string> ParseParameter(string_view& str)
 	/// TODO: Function pointers, arrays, etc.
 	auto type = ParseType(str);
 	auto name = ParseIdentifier(str);
-	str = baselib::TrimWhitespaceLeft(str);
+	str = string_ops::trim_whitespaceLeft(str);
 	if (str[0] == '=')
 	{
 	}
@@ -134,18 +135,13 @@ std::tuple<std::string, std::string> ParseParameter(string_view& str)
 
 json ParseAttributeList(string_view line)
 {
-	line = TrimWhitespace(line);
+	line = string_ops::trim_whitespace(line);
 	line = Expect(line, "(");
 	line.remove_suffix(1); /// )
-	line = TrimWhitespace(line);
+	line = string_ops::trim_whitespace(line);
 	if (line.empty())
 		return json::object();
 	return json::parse(line);
-}
-
-string_view TrimWhitespace(std::string_view str)
-{
-	return baselib::TrimWhitespace(baselib::string_view{ str });
 }
 
 Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options const& options)
@@ -155,28 +151,28 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 	line_num--;
 	henum.DeclarationLine = line_num + 1;
 
-	auto line = TrimWhitespace(lines[line_num]);
+	auto line = string_ops::trim_whitespace(string_view{ lines[line_num] });
 	line.remove_prefix(options.EnumPrefix.size());
 	henum.Attributes = ParseAttributeList(line);
 
 	line_num++;
-	auto header_line = TrimWhitespace(lines[line_num]);
+	auto header_line = string_ops::trim_whitespace(string_view{ lines[line_num] });
 
 	header_line = Expect(header_line, "enum class");
 	auto name_start = header_line.begin();
-	auto name_end = std::find_if_not(header_line.begin(), header_line.end(), baselib::isident);
+	auto name_end = std::find_if_not(header_line.begin(), header_line.end(), string_ops::isident);
 
-	henum.Name = TrimWhitespace(string_view{ name_start, name_end });
+	henum.Name = string_ops::trim_whitespace(string_ops::make_sv(name_start, name_end));
 	///TODO: parse base type
 
 	line_num++;
-	Expect(TrimWhitespace(lines[line_num]), "{");
+	Expect(string_ops::trim_whitespace(string_view{ lines[line_num] }), "{");
 
 	line_num++;
 	int64_t enumerator_value = 0;
-	while (TrimWhitespace(lines[line_num]) != "};")
+	while (string_ops::trim_whitespace(string_view{ lines[line_num] }) != "};")
 	{
-		auto enumerator_line = TrimWhitespace(lines[line_num]);
+		auto enumerator_line = string_ops::trim_whitespace(string_view{ lines[line_num] });
 		if (enumerator_line.empty() || enumerator_line.starts_with("//") || enumerator_line.starts_with("/*") || enumerator_line.starts_with(options.EnumeratorPrefix))
 		{
 			line_num++;
@@ -184,21 +180,21 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 		}
 
 		auto name_start = enumerator_line.begin();
-		auto name_end = std::find_if_not(enumerator_line.begin(), enumerator_line.end(), baselib::isident);
+		auto name_end = std::find_if_not(enumerator_line.begin(), enumerator_line.end(), string_ops::isident);
 
-		auto rest = TrimWhitespace(string_view{ name_end, enumerator_line.end() });
-		if (Consume(rest, '='))
+		auto rest = string_ops::trim_whitespace(make_sv(name_end, enumerator_line.end()));
+		if (consume(rest, '='))
 		{
-			rest = TrimWhitespace(rest);
-			std::from_chars(rest.begin(), rest.end(), enumerator_value);
+			rest = string_ops::trim_whitespace(rest);
+			std::from_chars(std::to_address(rest.begin()), std::to_address(rest.end()), enumerator_value);
 			/// TODO: Non-integer enumerator values (like 1<<5 and constexpr function calls/expression)
 		}
 
-		auto name = string_view{ name_start, name_end };
+		auto name = make_sv(name_start, name_end);
 		if (!name.empty())
 		{
 			Enumerator enumerator;
-			enumerator.Name = TrimWhitespace(name);
+			enumerator.Name = string_ops::trim_whitespace(name);
 			enumerator.Value = enumerator_value;
 			enumerator.DeclarationLine = line_num;
 			/// TODO: enumerator.Attributes = {};
@@ -227,7 +223,7 @@ auto ParseClassDecl(string_view line)
 		line = Expect(line, "class");
 	}
 	std::get<0>(result) = ParseIdentifier(line);
-	line = TrimWhitespace(line);
+	line = string_ops::trim_whitespace(line);
 
 	if (line.starts_with(":"))
 	{
@@ -235,10 +231,11 @@ auto ParseClassDecl(string_view line)
 		SwallowOptional(line, "public");
 		SwallowOptional(line, "protected");
 		SwallowOptional(line, "private");
+		SwallowOptional(line, "virtual");
 
 		int parens = 0, triangles = 0, brackets = 0;
 
-		line = TrimWhitespace(line);
+		line = string_ops::trim_whitespace(line);
 		auto start = line;
 		while (!line.empty() && !line.starts_with("{"))
 		{
@@ -255,10 +252,10 @@ auto ParseClassDecl(string_view line)
 			if (parens < 0 || triangles < 0 || brackets < 0)
 				throw std::exception{ "Mismatch class parents" };
 
-			Consume(line);
+			string_ops::consume(line);
 		}
 
-		std::get<1>(result) = { start.begin(), line.begin() };
+		std::get<1>(result) = { std::to_address(start.begin()), std::to_address(line.begin()) };
 	}
 
 	return result;
@@ -268,7 +265,7 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 {
 	std::tuple<std::string, std::string, std::string> result;
 
-	line = TrimWhitespace(line);
+	line = string_ops::trim_whitespace(line);
 
 	SwallowOptional(line, "mutable");
 
@@ -277,19 +274,19 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 	auto eq_start = std::find_first_of(line.begin(), line.end(), eq.begin(), eq.end());
 	auto colon_start = std::find_first_of(line.begin(), line.end(), colon.begin(), colon.end());
 
-	if (!TrimWhitespace(string_view{ colon_start + 1, line.end() }).empty())
+	if (!string_ops::trim_whitespace(string_ops::make_sv(colon_start + 1, line.end())).empty())
 	{
 		throw std::exception{ "Field must be only thing on line" };
 	}
 
 	if (eq_start != line.end())
 	{
-		type_and_name = TrimWhitespace(string_view{ line.begin(), eq_start });
-		std::get<2>(result) = TrimWhitespace(string_view{ eq_start + 1, colon_start });
+		type_and_name = string_ops::trim_whitespace(string_ops::make_sv(line.begin(), eq_start));
+		std::get<2>(result) = string_ops::trim_whitespace(string_ops::make_sv(eq_start + 1, colon_start));
 	}
 	else
 	{
-		type_and_name = TrimWhitespace(string_view{ line.begin(), colon_start });
+		type_and_name = string_ops::trim_whitespace(make_sv(line.begin(), colon_start));
 	}
 
 	if (type_and_name.empty())
@@ -297,10 +294,10 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 		throw std::exception{ "Field() must be followed by a proper class field declaration" };
 	}
 
-	auto name_start = ++std::find_if_not(type_and_name.rbegin(), type_and_name.rend(), baselib::isident);
+	auto name_start = ++std::find_if_not(type_and_name.rbegin(), type_and_name.rend(), string_ops::isident);
 
-	std::get<0>(result) = TrimWhitespace(string_view{ type_and_name.begin(), name_start.base() });
-	std::get<1>(result) = TrimWhitespace(string_view{ name_start.base(), type_and_name.end() });
+	std::get<0>(result) = string_ops::trim_whitespace(make_sv(type_and_name.begin(), name_start.base()));
+	std::get<1>(result) = string_ops::trim_whitespace(make_sv(name_start.base(), type_and_name.end()));
 
 	return result;
 }
@@ -379,14 +376,14 @@ std::vector<string_view> SplitArgs(string_view argstring)
 		case '>': tris--; break;
 		case '[': brackets++; break;
 		case ']': brackets--; break;
-		case ',': if (parens == 0 && tris == 0 && brackets == 0) { args.push_back({ begin, argstring.begin() }); argstring.remove_prefix(1); begin = argstring.begin(); } break;
+		case ',': if (parens == 0 && tris == 0 && brackets == 0) { args.push_back(make_sv(begin, argstring.begin())); argstring.remove_prefix(1); begin = argstring.begin(); } break;
 		}
 
 		argstring.remove_prefix(1);
 
 		if (argstring.empty())
 		{
-			args.push_back({ begin, argstring.begin() });
+			args.push_back(make_sv(begin, argstring.begin()));
 			break;
 		}
 	}
@@ -414,15 +411,15 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	}
 
 	auto pre_typestr = ParseType(next_line);
-	auto pre_type = (std::string)TrimWhitespace(pre_typestr);
-	next_line = TrimWhitespace(next_line);
+	auto pre_type = (std::string)string_ops::trim_whitespace(string_view{ pre_typestr });
+	next_line = string_ops::trim_whitespace(next_line);
 
 	auto name_start = next_line.begin();
-	auto name_end = std::find_if_not(next_line.begin(), next_line.end(), baselib::isident);
-	method.Name = TrimWhitespace(string_view{ name_start, name_end });
+	auto name_end = std::find_if_not(next_line.begin(), next_line.end(), string_ops::isident);
+	method.Name = string_ops::trim_whitespace(make_sv(name_start, name_end));
 	int num_pars = 0;
 	auto start_args = name_end;
-	next_line = { name_end, next_line.end() };
+	next_line = make_sv(name_end, next_line.end());
 	do
 	{
 		if (next_line.starts_with("("))
@@ -433,7 +430,7 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	} while (num_pars);
 	method.SetParameters(std::string{ start_args + 1, next_line.begin() - 1 });
 
-	next_line = TrimWhitespace(next_line);
+	next_line = string_ops::trim_whitespace(next_line);
 
 	while (true)
 	{
@@ -452,11 +449,11 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 		{
 			if (next_line[end_line] == '=')
 				method.Flags += MethodFlags::Abstract;
-			next_line = TrimWhitespace(next_line.substr(0, end_line));
+			next_line = string_ops::trim_whitespace(next_line.substr(0, end_line));
 		}
 		if (next_line.ends_with("override"))
 			next_line.remove_suffix(sizeof("override") - 1);
-		method.Type = (std::string)TrimWhitespace(next_line);
+		method.Type = (std::string)string_ops::trim_whitespace(next_line);
 	}
 	else
 	{
@@ -548,8 +545,8 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 
 	for (size_t line_num = 1; line_num < lines.size(); line_num++)
 	{
-		auto line = TrimWhitespace(lines[line_num - 1]);
-		auto next_line = TrimWhitespace(lines[line_num]);
+		auto line = string_ops::trim_whitespace(string_view{ lines[line_num - 1] });
+		auto next_line = string_ops::trim_whitespace(string_view{ lines[line_num] });
 
 		try
 		{
@@ -610,7 +607,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 
 			if (line.starts_with("///"))
 			{
-				comments.push_back((std::string)TrimWhitespace(line.substr(3)));
+				comments.push_back((std::string)string_ops::trim_whitespace(line.substr(3)));
 			}
 			else
 				comments.clear();

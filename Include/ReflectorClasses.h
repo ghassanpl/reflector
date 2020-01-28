@@ -79,10 +79,18 @@ namespace Reflector
 		static constexpr PTR_TYPE pointer = POINTER;
 
 		static auto Getter(PARENT_TYPE const* obj) -> FIELD_TYPE const& { return (obj->*(pointer)); }
-		template <typename VALUE>
-		static auto GenericSetter(PARENT_TYPE * obj, VALUE&& value) -> void { (obj->*(pointer)) = std::forward<VALUE>(value); };
+		template <typename PARENT = PARENT_TYPE, typename FIELD = FIELD_TYPE>
+		static auto GenericGetter(PARENT const* obj) -> FIELD const& { return (obj->*(pointer)); }
+
+		template <typename PARENT = PARENT_TYPE, typename VALUE>
+		static auto GenericSetter(PARENT* obj, VALUE&& value) -> void { (obj->*(pointer)) = std::forward<VALUE>(value); };
+
 		static auto CopySetter(PARENT_TYPE* obj, FIELD_TYPE const& value) -> void { (obj->*(pointer)) = value; };
 		static auto MoveSetter(PARENT_TYPE* obj, FIELD_TYPE&& value) -> void { (obj->*(pointer)) = std::move(value); };
+		template <typename PARENT = PARENT_TYPE, typename FIELD = FIELD_TYPE>
+		static auto GenericCopySetter(PARENT* obj, FIELD const& value) -> void { (obj->*(pointer)) = value; };
+		template <typename PARENT = PARENT_TYPE, typename FIELD = FIELD_TYPE>
+		static auto GenericMoveSetter(PARENT* obj, FIELD&& value) -> void { (obj->*(pointer)) = std::move(value); };
 
 		static auto VoidGetter(void const* obj) -> void const* { return &(obj->*(pointer)); }
 		static auto VoidSetter(void* obj, void const* value) -> void { (obj->*(pointer)) = reinterpret_cast<FIELD_TYPE const*>(value); };
