@@ -1,0 +1,9 @@
+{
+  "name": "reflector",
+  "version": "0.0.1",
+  "dependencies": [
+    "nlohmann-json",
+    "xxhash",
+    "magic-enum"
+  ]
+}

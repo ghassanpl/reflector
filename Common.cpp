@@ -45,7 +45,7 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 	if (field_comments.size())
 		field_comments[0] = (char)ascii::tolower(field_comments[0]);
 	else
-		field_comments = fmt::format("the `{}` field of this object", DisplayName);
+		field_comments = std::format("the `{}` field of this object", DisplayName);
 
 	/// Getters and Setters
 	if (!Flags.is_set(Reflector::FieldFlags::NoGetter))
@@ -83,7 +83,7 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 
 		for (auto& enumerator : henum->Enumerators)
 		{
-			klass.AddArtificialMethod("bool", "Is" + enumerator.Name, "", fmt::format("return ({} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator.Value),
+			klass.AddArtificialMethod("bool", "Is" + enumerator.Name, "", std::format("return ({} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator.Value),
 				{ "Checks whether the `" + enumerator.Name + "` flag is set in " + field_comments }, Reflector::MethodFlags::Const, DeclarationLine);
 		}
 
@@ -91,17 +91,17 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 		{
 			for (auto& enumerator : henum->Enumerators)
 			{
-				klass.AddArtificialMethod("void", "Set" + enumerator.Name, "", fmt::format("{} |= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
+				klass.AddArtificialMethod("void", "Set" + enumerator.Name, "", std::format("{} |= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
 					{ "Sets the `" + enumerator.Name + "` flag in " + field_comments }, {}, DeclarationLine);
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
-				klass.AddArtificialMethod("void", "Unset" + enumerator.Name, "", fmt::format("{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator.Value),
+				klass.AddArtificialMethod("void", "Unset" + enumerator.Name, "", std::format("{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator.Value),
 					{ "Clears the `" + enumerator.Name + "` flag in " + field_comments }, {}, DeclarationLine);
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
-				klass.AddArtificialMethod("void", "Toggle" + enumerator.Name, "", fmt::format("{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
+				klass.AddArtificialMethod("void", "Toggle" + enumerator.Name, "", std::format("{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
 					{ "Toggles the `" + enumerator.Name + "` flag in " + field_comments }, {}, DeclarationLine);
 			}
 		}
@@ -159,9 +159,9 @@ void Method::SetParameters(std::string params)
 std::string Method::GetSignature(Class const& parent_class) const
 {
 	auto base = Flags.is_set(MethodFlags::Static) ? 
-		fmt::format("{} (*)({})", Type, ParametersTypesOnly)
+		std::format("{} (*)({})", Type, ParametersTypesOnly)
 	:
-		fmt::format("{} ({}::*)({})", Type, parent_class.Name, ParametersTypesOnly);
+		std::format("{} ({}::*)({})", Type, parent_class.Name, ParametersTypesOnly);
 	if (Flags.is_set(Reflector::MethodFlags::Const))
 		base += " const";
 	if (Flags.is_set(Reflector::MethodFlags::Noexcept))
@@ -174,7 +174,7 @@ void Method::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 	if (klass.Flags.is_set(ClassFlags::HasProxy) && Flags.is_set(MethodFlags::Virtual))
 	{
 		if (Flags.is_set(MethodFlags::Abstract))
-			klass.AddArtificialMethod(Type, "_PROXY_"+Name, GetParameters(), fmt::format("throw std::runtime_error{{\"invalid abstract call to function {}::{}\"}};", klass.Name, Name), { "Proxy function for " + Name }, Flags - MethodFlags::Virtual, DeclarationLine);
+			klass.AddArtificialMethod(Type, "_PROXY_"+Name, GetParameters(), std::format("throw std::runtime_error{{\"invalid abstract call to function {}::{}\"}};", klass.Name, Name), { "Proxy function for " + Name }, Flags - MethodFlags::Virtual, DeclarationLine);
 		else
 			klass.AddArtificialMethod(Type, "_PROXY_" + Name, GetParameters(), "return self_type::" + Name + "(" + ParametersNamesOnly + ");", { "Proxy function for " + Name }, Flags - MethodFlags::Virtual, DeclarationLine);
 	}
@@ -275,11 +275,11 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 		if (MethodsByName[method.UniqueName].size() > 1)
 		{
 			std::string message;
-			message += fmt::format("{}({},0): method with unique name not unique", mirror.SourceFilePath.string(), method.DeclarationLine + 1);
+			message += std::format("{}({},0): method with unique name not unique", mirror.SourceFilePath.string(), method.DeclarationLine + 1);
 			for (auto& conflicting_method : MethodsByName[method.UniqueName])
 			{
 				if (conflicting_method != &method)
-					message += fmt::format("\n{}({},0):   conflicts with this declaration", mirror.SourceFilePath.string(), conflicting_method->DeclarationLine + 1);
+					message += std::format("\n{}({},0):   conflicts with this declaration", mirror.SourceFilePath.string(), conflicting_method->DeclarationLine + 1);
 			}
 			throw std::exception{ message.c_str() };
 		}

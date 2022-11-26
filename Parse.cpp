@@ -18,7 +18,7 @@ string_view Expect(string_view str, string_view value)
 {
 	if (!str.starts_with(value))
 	{
-		throw std::exception(fmt::format("Expected `{}`", value).c_str());
+		throw std::exception(std::format("Expected `{}`", value).c_str());
 	}
 	str.remove_prefix(value.size());
 	return string_ops::trimmed_whitespace(str);
@@ -471,7 +471,7 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	{
 		auto& property = klass.Properties[getter.value()];
 		if (!property.GetterName.empty())
-			throw std::exception(fmt::format("Getter for this property already declared at line {}", property.GetterLine).c_str());
+			throw std::exception(std::format("Getter for this property already declared at line {}", property.GetterLine).c_str());
 		property.GetterName = method.Name;
 		property.GetterLine = line_num;
 		/// TODO: Match getter/setter types
@@ -483,7 +483,7 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	{
 		auto& property = klass.Properties[setter.value()];
 		if (!property.SetterName.empty())
-			throw std::exception(fmt::format("Setter for this property already declared at line {}", property.SetterLine).c_str());
+			throw std::exception(std::format("Setter for this property already declared at line {}", property.SetterLine).c_str());
 		property.SetterName = method.Name;
 		property.SetterLine = line_num;
 		/// TODO: Match getter/setter types

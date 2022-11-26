@@ -12,12 +12,13 @@
 
 uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, const Options& opts);
 
-void BuildMirrorFile(FileMirror const& file, size_t& modified_files, const Options& opts);
+bool BuildMirrorFile(path const& file_path, const Options& options, FileMirror const& file, uint64_t file_change_time, path const& final_path);
 
-void CreateTypeListArtifact(path const& cwd, Options const& options);
-void CreateIncludeListArtifact(path const& cwd, Options const& options);
-void CreateJSONDBArtifact(path const& cwd, Options const& options);
-void CreateReflectorHeaderArtifact(path const& cwd, const Options& opts);
+bool CreateTypeListArtifact(path const& cwd, Options const& options);
+bool CreateIncludeListArtifact(path const& cwd, Options const& options);
+bool CreateJSONDBArtifact(path const& cwd, Options const& options);
+bool CreateReflectorHeaderArtifact(path const& target_path, const Options& options, path const& final_path);
+bool CreateReflectorClassesHeaderArtifact(path const& cwd, const Options& opts);
 
 struct FileWriter
 {
@@ -42,7 +43,7 @@ struct FileWriter
 	{
 		mOutFile << std::string(CurrentIndent, '\t');
 		//((mOutFile << std::forward<ARGS>(args)), ...);
-		fmt::vprint(mOutFile, str, fmt::make_format_args(std::forward<ARGS>(args)...));
+		mOutFile << std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...));
 		if (InDefine)
 			mOutFile << " \\";
 		mOutFile << '\n';

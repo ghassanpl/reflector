@@ -29,7 +29,7 @@ uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, con
 	return file_change_time;
 }
 
-void CreateJSONDBArtifact(path const& path, Options const& options)
+bool CreateJSONDBArtifact(path const& path, Options const& options)
 {
 	json db;
 
@@ -42,14 +42,15 @@ void CreateJSONDBArtifact(path const& path, Options const& options)
 	jsondb << db.dump(1, '\t');
 	jsondb.close();
 
-	if (options.Verbose)
-		PrintLine("Created {}", path.string());
+	return true;
 }
 
 static const std::string_view ReflectorClassesFile = R"blergh(#pragma once
 
 #include <typeindex>
 #include <vector>
+
+template <typename T> concept is_reflected_class = requires { T::StaticClassFlags(); };
 
 namespace Reflector
 {
@@ -122,7 +123,7 @@ namespace Reflector
 		static constexpr const char* name = NAME_CTL::value;
 
 		template <typename FLAG_TYPE>
-		inline constexpr bool HasFlag(FLAG_TYPE flag_val) noexcept { return (flags & (1 << uint64_t(flag_val))) != 0; }
+		static inline constexpr bool HasFlag(FLAG_TYPE flag_val) noexcept { return (flags & (1ULL << uint64_t(flag_val))) != 0; }
 	};
 	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, typename NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER>
 	struct CompileTimeFieldData : CompileTimePropertyData<FIELD_TYPE, PARENT_TYPE, FLAGS, NAME_CTL>
@@ -151,6 +152,8 @@ namespace Reflector
 	{
 		static constexpr uint64_t flags = FLAGS;
 		static constexpr const char* name = NAME_CTL::value;
+
+		static inline constexpr bool HasFlag(MethodFlags flag_val) noexcept { return (flags & (1ULL << uint64_t(flag_val))) != 0; }
 	};
 
 	struct FieldReflectionData
@@ -231,15 +234,19 @@ namespace Reflector
 }
 )blergh";
 
-void CreateReflectorHeaderArtifact(path const& path, const Options& options)
+bool CreateReflectorClassesHeaderArtifact(path const& path, const Options& options)
 {
-	FileWriter reflect_classes_file{ path.parent_path() / "ReflectorClasses.h" };
+	FileWriter reflect_classes_file{ path };
 	reflect_classes_file.mOutFile << ReflectorClassesFile;
 	reflect_classes_file.Close();
+	return true;
+}
 
-	auto rel = path.parent_path().lexically_relative(options.ArtifactPath);
+bool CreateReflectorHeaderArtifact(path const& target_path, const Options& options, path const& final_path)
+{
+	auto rel = final_path.parent_path().lexically_relative(options.ArtifactPath);
 
-	FileWriter reflect_file{ path };
+	FileWriter reflect_file{ target_path };
 	reflect_file.WriteLine("#pragma once");
 	reflect_file.WriteLine("#include \"{}/ReflectorClasses.h\"", rel.string());
 	reflect_file.WriteLine("#define TOKENPASTE3_IMPL(x, y, z) x ## y ## z");
@@ -257,22 +264,20 @@ void CreateReflectorHeaderArtifact(path const& path, const Options& options)
 	reflect_file.WriteLine("#define {}_CALLABLE(ret, name, args, id) static int TOKENPASTE3(ScriptFunction_, name, id)(struct lua_State* thread) {{ return 0; }}", options.MacroPrefix);
 	reflect_file.Close();
 	
-	if (options.Verbose)
-		PrintLine("Created {}", path.string());
+	return true;
 }
 
-void CreateIncludeListArtifact(path const& path, Options const& options)
+bool CreateIncludeListArtifact(path const& path, Options const& options)
 {
 	std::ofstream includes_file(path, std::ios_base::openmode{ std::ios_base::trunc });
 	for (auto& mirror : GetMirrors())
 	{
 		includes_file << "#include " << mirror.SourceFilePath << "" << std::endl;
 	}
-	if (options.Verbose)
-		PrintLine("Created {}", path.string());
+	return true;
 }
 
-void CreateTypeListArtifact(path const& path, Options const& options)
+bool CreateTypeListArtifact(path const& path, Options const& options)
 {
 	std::ofstream classes_file(path, std::ios_base::openmode{ std::ios_base::trunc });
 
@@ -286,9 +291,7 @@ void CreateTypeListArtifact(path const& path, Options const& options)
 		for (auto& henum : mirror.Enums)
 			classes_file << "ReflectEnum(" << henum.Name << ")" << std::endl;
 	}
-
-	if (options.Verbose)
-		PrintLine("Created {}", path.string());
+	return true;
 }
 
 std::string BuildCompileTimeLiteral(std::string_view str)
@@ -353,10 +356,10 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		auto& property = prop.second;
 		std::string getter_name = "nullptr";
 		if (!property.GetterName.empty())
-			getter_name = fmt::format("&{}::{}", klass.Name, property.GetterName);
+			getter_name = std::format("&{}::{}", klass.Name, property.GetterName);
 		std::string setter_name = "nullptr";
 		if (!property.SetterName.empty())
-			setter_name = fmt::format("&{}::{}", klass.Name, property.SetterName);
+			setter_name = std::format("&{}::{}", klass.Name, property.SetterName);
 		output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData(), \"{2}\", {3}, {4}, ::Reflector::CompileTimePropertyData<{5}, {1}, 0ULL, ::Reflector::CompileTimeLiteral<{6}>>{{}});",
 			options.MacroPrefix, klass.Name, property.Name, getter_name, setter_name, property.Type, BuildCompileTimeLiteral(property.Name));
 	}
@@ -502,21 +505,21 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	/// All methods
 	/// ///////////////////////////////////// ///
 
-	auto PrintPreFlags = [](enum_flags::enum_flags<Reflector::MethodFlags> flags) {
+	auto PrintPreFlags = [](enum_flags<Reflector::MethodFlags> flags) {
 		std::vector<std::string_view> prefixes;
 		if (flags.is_set(MethodFlags::Inline)) prefixes.push_back("inline");
 		if (flags.is_set(MethodFlags::Static)) prefixes.push_back("static");
 		if (flags.is_set(MethodFlags::Virtual)) prefixes.push_back("virtual");
 		if (flags.is_set(MethodFlags::Explicit)) prefixes.push_back("explicit");
-		return fmt::format("{}", fmt::join(prefixes, " "));
+		return join(prefixes, " ");
 	};
 
-	auto PrintPostFlags = [](enum_flags::enum_flags<Reflector::MethodFlags> flags) {
+	auto PrintPostFlags = [](enum_flags<Reflector::MethodFlags> flags) {
 		std::vector<std::string_view> suffixes;
 		if (flags.is_set(MethodFlags::Const)) suffixes.push_back("const");
 		if (flags.is_set(MethodFlags::Final)) suffixes.push_back("final");
 		if (flags.is_set(MethodFlags::Noexcept)) suffixes.push_back("noexcept");
-		return fmt::format("{}", fmt::join(suffixes, " "));
+		return join(suffixes, " ");
 	};
 
 	for (auto& func : klass.Methods)
@@ -548,7 +551,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 			if (!func.Flags.is_set(Reflector::MethodFlags::Virtual))
 				continue;
 
-			auto base = fmt::format("virtual auto {0}({1})", func.Name, func.GetParameters());
+			auto base = std::format("virtual auto {0}({1})", func.Name, func.GetParameters());
 			if (func.Flags.is_set(Reflector::MethodFlags::Const))
 				base += " const";
 			if (func.Flags.is_set(Reflector::MethodFlags::Noexcept))
@@ -705,26 +708,14 @@ FileWriter::~FileWriter()
 }
 
 
-void BuildMirrorFile(FileMirror const& file, size_t& modified_files, const Options& options)
+bool BuildMirrorFile(path const& file_path, const Options& options, FileMirror const& file, uint64_t file_change_time, path const& final_path)
 {
-	auto file_path = file.SourceFilePath;
-	file_path.concat(options.MirrorExtension);
-
-	/// TOOD: Check if we actually need to update the file
-	auto file_change_time = FileNeedsUpdating(file_path, file.SourceFilePath, options);
-	if (file_change_time == 0) return;
-
-	modified_files++;
-
-	if (!options.Quiet)
-		PrintLine("Building class file {}", file_path.string());
-
 	FileWriter f(file_path);
 	f.WriteLine("{}{}", TIMESTAMP_TEXT, file_change_time);
 	f.WriteLine("/// Source file: {}", file.SourceFilePath.string());
 	f.WriteLine("#pragma once");
 
-	auto rel = file_path.parent_path().lexically_relative(options.ArtifactPath);
+	auto rel = final_path.parent_path().lexically_relative(options.ArtifactPath);
 	f.WriteLine("#include \"{}/Reflector.h\"", rel.string());
 
 	for (auto& klass : file.Classes)
@@ -742,4 +733,6 @@ void BuildMirrorFile(FileMirror const& file, size_t& modified_files, const Optio
 	}
 
 	f.Close();
+
+	return true;
 }

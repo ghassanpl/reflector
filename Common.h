@@ -12,9 +12,10 @@
 #include <nlohmann/json.hpp>
 #include <ghassanpl/enum_flags.h>
 #include <ghassanpl/string_ops.h>
-#define FMT_HEADER_ONLY 1
-#include <fmt/format.h>
-#include <fmt/ostream.h>
+//#define FMT_HEADER_ONLY 1
+//#include <fmt/format.h>
+//#include <fmt/ostream.h>
+#include <format>
 using std::string_view;
 #include "Include/ReflectorClasses.h"
 using Reflector::ClassFlags;
@@ -37,13 +38,19 @@ void PrintSafe(std::ostream& strm, std::string val);
 template <typename... ARGS>
 void ReportError(path path, size_t line_num, std::string_view fmt, ARGS&& ... args)
 {
-	PrintSafe(std::cerr, fmt::format("{}({},1): error: {}\n", path.string(), line_num, fmt::vformat(fmt, fmt::make_format_args(std::forward<ARGS>(args)...))));
+	PrintSafe(std::cerr, std::format("{}({},1): error: {}\n", path.string(), line_num, std::vformat(fmt, std::make_format_args(std::forward<ARGS>(args)...))));
 }
 
 template <typename... ARGS>
 void PrintLine(std::string_view fmt, ARGS&&... args)
 {
-	PrintSafe(std::cout, fmt::vformat(fmt, fmt::make_format_args(std::forward<ARGS>(args)...)) + "\n");
+	PrintSafe(std::cout, std::vformat(fmt, std::make_format_args(std::forward<ARGS>(args)...)) + "\n");
+}
+
+template <typename... ARGS>
+void Print(std::string_view fmt, ARGS&&... args)
+{
+	PrintSafe(std::cout, std::vformat(fmt, std::make_format_args(std::forward<ARGS>(args)...)));
 }
 
 std::string EscapeJSON(json const& json);
