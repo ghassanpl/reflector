@@ -502,6 +502,23 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	/// All methods
 	/// ///////////////////////////////////// ///
 
+	auto PrintPreFlags = [](enum_flags::enum_flags<Reflector::MethodFlags> flags) {
+		std::vector<std::string_view> prefixes;
+		if (flags.is_set(MethodFlags::Inline)) prefixes.push_back("inline");
+		if (flags.is_set(MethodFlags::Static)) prefixes.push_back("static");
+		if (flags.is_set(MethodFlags::Virtual)) prefixes.push_back("virtual");
+		if (flags.is_set(MethodFlags::Explicit)) prefixes.push_back("explicit");
+		return fmt::format("{}", fmt::join(prefixes, " "));
+	};
+
+	auto PrintPostFlags = [](enum_flags::enum_flags<Reflector::MethodFlags> flags) {
+		std::vector<std::string_view> suffixes;
+		if (flags.is_set(MethodFlags::Const)) suffixes.push_back("const");
+		if (flags.is_set(MethodFlags::Final)) suffixes.push_back("final");
+		if (flags.is_set(MethodFlags::Noexcept)) suffixes.push_back("noexcept");
+		return fmt::format("{}", fmt::join(suffixes, " "));
+	};
+
 	for (auto& func : klass.Methods)
 	{
 		/// Callables for all methods
@@ -509,7 +526,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 			output.WriteLine("{}_CALLABLE(({}), {}, ({}), {})", options.MacroPrefix, func.Type, func.Name, func.GetParameters(), func.ActualDeclarationLine());
 		if (func.Flags.is_set(Reflector::MethodFlags::Artificial))
 		{
-			output.WriteLine("auto {}({}){} -> {} {{ {} }}", func.Name, func.GetParameters(), (func.Flags.is_set(Reflector::MethodFlags::Const) ? " const" : ""), func.Type, func.Body);
+			output.WriteLine("{} auto {}({}){} -> {} {{ {} }}", PrintPreFlags(func.Flags), func.Name, func.GetParameters(), PrintPostFlags(func.Flags), func.Type, func.Body);
 		}
 	}
 

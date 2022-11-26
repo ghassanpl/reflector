@@ -158,7 +158,10 @@ void Method::SetParameters(std::string params)
 
 std::string Method::GetSignature(Class const& parent_class) const
 {
-	auto base = fmt::format("{} ({}::*)({})", Type, parent_class.Name, ParametersTypesOnly);
+	auto base = Flags.is_set(MethodFlags::Static) ? 
+		fmt::format("{} (*)({})", Type, ParametersTypesOnly)
+	:
+		fmt::format("{} ({}::*)({})", Type, parent_class.Name, ParametersTypesOnly);
 	if (Flags.is_set(Reflector::MethodFlags::Const))
 		base += " const";
 	if (Flags.is_set(Reflector::MethodFlags::Noexcept))
@@ -237,6 +240,10 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 	should_build_proxy = should_build_proxy && Attributes.value(atRecordCreateProxy, true);
 
 	Flags.set_to(should_build_proxy, ClassFlags::HasProxy);
+
+	/// Create singleton method if singleton
+	if (Attributes.value("Singleton", false))
+		AddArtificialMethod("self_type&", "SingletonInstance", "", "static self_type instance; return instance;", { "Returns the single instance of this class" }, Reflector::MethodFlags::Static);
 
 	/// Create methods for fields and methods
 

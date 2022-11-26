@@ -21,7 +21,7 @@ string_view Expect(string_view str, string_view value)
 		throw std::exception(fmt::format("Expected `{}`", value).c_str());
 	}
 	str.remove_prefix(value.size());
-	return TrimWhitespace(str);
+	return string_ops::trimmed_whitespace(str);
 }
 
 std::string EscapeJSON(json const& json)
@@ -45,7 +45,7 @@ std::string ParseIdentifier(string_view& str)
 	for (; p != str.end(); p++)
 		if (!ascii::isident(*p)) break;
 	std::string result = { str.begin(), p };
-	str = { p, str.end() };
+	str = make_sv(p, str.end());
 	return result;
 }
 
@@ -61,7 +61,7 @@ std::string ParseType(string_view& str)
 		break;
 	}
 
-	str = TrimWhitespace(str);
+	str = string_ops::trimmed_whitespace(str);
 
 	int brackets = 0, tris = 0, parens = 0;
 	for (; !str.empty(); str.remove_prefix(1))
@@ -111,7 +111,7 @@ std::string ParseExpression(string_view& str)
 	}
 
 	std::string result = { str.begin(), p };
-	str = { p, str.end() };
+	str = make_sv(p, str.end());
 	return result;
 }
 
@@ -121,7 +121,7 @@ std::tuple<std::string, std::string> ParseParameter(string_view& str)
 	/// TODO: Function pointers, arrays, etc.
 	auto type = ParseType(str);
 	auto name = ParseIdentifier(str);
-	str = baselib::TrimWhitespaceLeft(str);
+	str = string_ops::trim_whitespaceLeft(str);
 	if (str[0] == '=')
 	{
 	}
@@ -151,28 +151,28 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 	line_num--;
 	henum.DeclarationLine = line_num + 1;
 
-	auto line = TrimWhitespace(lines[line_num]);
+	auto line = TrimWhitespace(string_view{ lines[line_num] });
 	line.remove_prefix(options.EnumPrefix.size());
 	henum.Attributes = ParseAttributeList(line);
 
 	line_num++;
-	auto header_line = TrimWhitespace(lines[line_num]);
+	auto header_line = TrimWhitespace(string_view{ lines[line_num] });
 
 	header_line = Expect(header_line, "enum class");
 	auto name_start = header_line.begin();
 	auto name_end = std::find_if_not(header_line.begin(), header_line.end(), ascii::isident);
 
-	henum.Name = TrimWhitespace(string_view{ name_start, name_end });
+	henum.Name = TrimWhitespace(string_ops::make_sv(name_start, name_end));
 	///TODO: parse base type
 
 	line_num++;
-	Expect(TrimWhitespace(lines[line_num]), "{");
+	Expect(TrimWhitespace(string_view{ lines[line_num] }), "{");
 
 	line_num++;
 	int64_t enumerator_value = 0;
-	while (TrimWhitespace(lines[line_num]) != "};")
+	while (TrimWhitespace(string_view{ lines[line_num] }) != "};")
 	{
-		auto enumerator_line = TrimWhitespace(lines[line_num]);
+		auto enumerator_line = TrimWhitespace(string_view{ lines[line_num] });
 		if (enumerator_line.empty() || enumerator_line.starts_with("//") || enumerator_line.starts_with("/*") || enumerator_line.starts_with(options.EnumeratorPrefix))
 		{
 			line_num++;
@@ -182,15 +182,15 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 		auto name_start = enumerator_line.begin();
 		auto name_end = std::find_if_not(enumerator_line.begin(), enumerator_line.end(), ascii::isident);
 
-		auto rest = TrimWhitespace(string_view{ name_end, enumerator_line.end() });
+		auto rest = TrimWhitespace(make_sv(name_end, enumerator_line.end()));
 		if (consume(rest, '='))
 		{
 			rest = TrimWhitespace(rest);
-			std::from_chars(to_address(rest.begin()), to_address(rest.end()), enumerator_value);
+			std::from_chars(std::to_address(rest.begin()), std::to_address(rest.end()), enumerator_value);
 			/// TODO: Non-integer enumerator values (like 1<<5 and constexpr function calls/expression)
 		}
 
-		auto name = string_view{ name_start, name_end };
+		auto name = make_sv(name_start, name_end);
 		if (!name.empty())
 		{
 			Enumerator enumerator;
@@ -255,7 +255,7 @@ auto ParseClassDecl(string_view line)
 			(void)consume(line);
 		}
 
-		std::get<1>(result) = { start.begin(), line.begin() };
+		std::get<1>(result) = { std::to_address(start.begin()), std::to_address(line.begin()) };
 	}
 
 	return result;
@@ -274,19 +274,19 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 	auto eq_start = std::find_first_of(line.begin(), line.end(), eq.begin(), eq.end());
 	auto colon_start = std::find_first_of(line.begin(), line.end(), colon.begin(), colon.end());
 
-	if (!TrimWhitespace(string_view{ colon_start + 1, line.end() }).empty())
+	if (!TrimWhitespace(string_ops::make_sv(colon_start + 1, line.end())).empty())
 	{
 		throw std::exception{ "Field must be only thing on line" };
 	}
 
 	if (eq_start != line.end())
 	{
-		type_and_name = TrimWhitespace(string_view{ line.begin(), eq_start });
-		std::get<2>(result) = TrimWhitespace(string_view{ eq_start + 1, colon_start });
+		type_and_name = TrimWhitespace(string_ops::make_sv(line.begin(), eq_start));
+		std::get<2>(result) = TrimWhitespace(string_ops::make_sv(eq_start + 1, colon_start));
 	}
 	else
 	{
-		type_and_name = TrimWhitespace(string_view{ line.begin(), colon_start });
+		type_and_name = TrimWhitespace(make_sv(line.begin(), colon_start));
 	}
 
 	if (type_and_name.empty())
@@ -296,8 +296,8 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 
 	auto name_start = ++std::find_if_not(type_and_name.rbegin(), type_and_name.rend(), ascii::isident);
 
-	std::get<0>(result) = TrimWhitespace(string_view{ type_and_name.begin(), name_start.base() });
-	std::get<1>(result) = TrimWhitespace(string_view{ name_start.base(), type_and_name.end() });
+	std::get<0>(result) = TrimWhitespace(make_sv(type_and_name.begin(), name_start.base()));
+	std::get<1>(result) = TrimWhitespace(make_sv(name_start.base(), type_and_name.end()));
 
 	return result;
 }
@@ -376,7 +376,7 @@ std::vector<string_view> SplitArgs(string_view argstring)
 		case '>': tris--; break;
 		case '[': brackets++; break;
 		case ']': brackets--; break;
-		case ',': if (parens == 0 && tris == 0 && brackets == 0) { args.push_back({ begin, argstring.begin() }); argstring.remove_prefix(1); begin = argstring.begin(); } break;
+		case ',': if (parens == 0 && tris == 0 && brackets == 0) { args.push_back(make_sv(begin, argstring.begin())); argstring.remove_prefix(1); begin = argstring.begin(); } break;
 		}
 
 		argstring.remove_prefix(1);
@@ -411,15 +411,15 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	}
 
 	auto pre_typestr = ParseType(next_line);
-	auto pre_type = (std::string)TrimWhitespace(pre_typestr);
+	auto pre_type = (std::string)TrimWhitespace(string_view{ pre_typestr });
 	next_line = TrimWhitespace(next_line);
 
 	auto name_start = next_line.begin();
 	auto name_end = std::find_if_not(next_line.begin(), next_line.end(), ascii::isident);
-	method.Name = TrimWhitespace(string_view{ name_start, name_end });
+	method.Name = TrimWhitespace(make_sv(name_start, name_end));
 	int num_pars = 0;
 	auto start_args = name_end;
-	next_line = { name_end, next_line.end() };
+	next_line = make_sv(name_end, next_line.end());
 	do
 	{
 		if (next_line.starts_with("("))
@@ -545,8 +545,8 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 
 	for (size_t line_num = 1; line_num < lines.size(); line_num++)
 	{
-		auto line = TrimWhitespace(lines[line_num - 1]);
-		auto next_line = TrimWhitespace(lines[line_num]);
+		auto line = TrimWhitespace(string_view{ lines[line_num - 1] });
+		auto next_line = TrimWhitespace(string_view{ lines[line_num] });
 
 		try
 		{

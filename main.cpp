@@ -40,6 +40,7 @@ int main(int argc, const char* argv[])
 		std::vector<std::filesystem::path> final_files;
 		for (auto& path : options.PathsToScan)
 		{
+			fmt::print("Looking in '{}'...\n", std::filesystem::absolute(path).string());
 			if (std::filesystem::is_directory(path))
 			{
 				auto add_files = [&](const std::filesystem::path& file) {
