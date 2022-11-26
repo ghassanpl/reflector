@@ -4,13 +4,14 @@
 /// DISCLAIMER: THE WORKS ARE WITHOUT WARRANTY.
 
 #include "Parse.h"
-#include <baselib/ASCII.h>
+#include "Attributes.h"
+#include <ghassanpl/string_ops.h>
 #include <charconv>
 #include <fstream>
 
 std::string TypeFromVar(string_view str)
 {
-	return (std::string)baselib::TrimWhitespace({ str.begin(), std::find_if(str.rbegin(), str.rend(), [](char32_t cp) { return !(baselib::isalnum(cp) || cp == '_'); }).base() });
+	return (std::string)TrimWhitespace({ str.begin(), std::find_if(str.rbegin(), str.rend(), [](char32_t cp) { return !(ascii::isalnum(cp) || cp == '_'); }).base() });
 }
 
 string_view Expect(string_view str, string_view value)
@@ -42,7 +43,7 @@ std::string ParseIdentifier(string_view& str)
 {
 	auto p = str.begin();
 	for (; p != str.end(); p++)
-		if (!baselib::isident(*p)) break;
+		if (!ascii::isident(*p)) break;
 	std::string result = { str.begin(), p };
 	str = { p, str.end() };
 	return result;
@@ -75,7 +76,7 @@ std::string ParseType(string_view& str)
 		case '>': tris--; continue;
 		}
 
-		if (baselib::isblank(str[0]))
+		if (ascii::isblank(str[0]))
 		{
 			if (parens == 0 && tris == 0 && brackets == 0)
 				break;
@@ -143,11 +144,6 @@ json ParseAttributeList(string_view line)
 	return json::parse(line);
 }
 
-string_view TrimWhitespace(std::string_view str)
-{
-	return baselib::TrimWhitespace(baselib::string_view{ str });
-}
-
 Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options const& options)
 {
 	Enum henum;
@@ -164,7 +160,7 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 
 	header_line = Expect(header_line, "enum class");
 	auto name_start = header_line.begin();
-	auto name_end = std::find_if_not(header_line.begin(), header_line.end(), baselib::isident);
+	auto name_end = std::find_if_not(header_line.begin(), header_line.end(), ascii::isident);
 
 	henum.Name = TrimWhitespace(string_view{ name_start, name_end });
 	///TODO: parse base type
@@ -184,13 +180,13 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 		}
 
 		auto name_start = enumerator_line.begin();
-		auto name_end = std::find_if_not(enumerator_line.begin(), enumerator_line.end(), baselib::isident);
+		auto name_end = std::find_if_not(enumerator_line.begin(), enumerator_line.end(), ascii::isident);
 
 		auto rest = TrimWhitespace(string_view{ name_end, enumerator_line.end() });
-		if (Consume(rest, '='))
+		if (consume(rest, '='))
 		{
 			rest = TrimWhitespace(rest);
-			std::from_chars(rest.begin(), rest.end(), enumerator_value);
+			std::from_chars(to_address(rest.begin()), to_address(rest.end()), enumerator_value);
 			/// TODO: Non-integer enumerator values (like 1<<5 and constexpr function calls/expression)
 		}
 
@@ -235,6 +231,7 @@ auto ParseClassDecl(string_view line)
 		SwallowOptional(line, "public");
 		SwallowOptional(line, "protected");
 		SwallowOptional(line, "private");
+		SwallowOptional(line, "virtual");
 
 		int parens = 0, triangles = 0, brackets = 0;
 
@@ -255,7 +252,7 @@ auto ParseClassDecl(string_view line)
 			if (parens < 0 || triangles < 0 || brackets < 0)
 				throw std::exception{ "Mismatch class parents" };
 
-			Consume(line);
+			(void)consume(line);
 		}
 
 		std::get<1>(result) = { start.begin(), line.begin() };
@@ -297,7 +294,7 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 		throw std::exception{ "Field() must be followed by a proper class field declaration" };
 	}
 
-	auto name_start = ++std::find_if_not(type_and_name.rbegin(), type_and_name.rend(), baselib::isident);
+	auto name_start = ++std::find_if_not(type_and_name.rbegin(), type_and_name.rend(), ascii::isident);
 
 	std::get<0>(result) = TrimWhitespace(string_view{ type_and_name.begin(), name_start.base() });
 	std::get<1>(result) = TrimWhitespace(string_view{ name_start.base(), type_and_name.end() });
@@ -321,27 +318,27 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 		field.DisplayName = field.Name;
 
 	/// Disable if explictly stated
-	if (field.Attributes.value("Getter", true) == false)
+	if (field.Attributes.value(atFieldGetter, true) == false)
 		field.Flags.set(Reflector::FieldFlags:: NoGetter);
-	if (field.Attributes.value("Setter", true) == false)
+	if (field.Attributes.value(atFieldSetter, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoSetter);
-	if (field.Attributes.value("Editor", true) == false || field.Attributes.value("Edit", true) == false)
+	if (field.Attributes.value(atFieldEditor, true) == false || field.Attributes.value(atFieldEdit, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoEdit);
-	if (field.Attributes.value("Save", true) == false)
+	if (field.Attributes.value(atFieldSave, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoSave);
-	if (field.Attributes.value("Load", true) == false)
+	if (field.Attributes.value(atFieldLoad, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoLoad);
 
 	/// Serialize = false implies Save = false, Load = false
-	if (field.Attributes.value("Serialize", true) == false)
+	if (field.Attributes.value(atFieldSerialize, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoSave, Reflector::FieldFlags::NoLoad);
 
 	/// Private implies Getter = false, Setter = false, Editor = false
-	if (field.Attributes.value("Private", false))
+	if (field.Attributes.value(atFieldPrivate, false))
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
 
 	/// ParentPointer implies Editor = false, Setter = false
-	if (field.Attributes.value("ParentPointer", false))
+	if (field.Attributes.value(atFieldParentPointer, false))
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter);
 
 	/// ChildVector implies Setter = false
@@ -350,15 +347,15 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 		field.Flags.set(Reflector::FieldFlags::NoSetter);
 
 	/// Enable if explictly stated
-	if (field.Attributes.value("Getter", false) == true)
+	if (field.Attributes.value(atFieldGetter, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoGetter);
-	if (field.Attributes.value("Setter", false) == true)
+	if (field.Attributes.value(atFieldSetter, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoSetter);
-	if (field.Attributes.value("Editor", false) == true || field.Attributes.value("Edit", false) == true)
+	if (field.Attributes.value(atFieldEditor, false) == true || field.Attributes.value(atFieldEdit, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoEdit);
-	if (field.Attributes.value("Save", false) == true)
+	if (field.Attributes.value(atFieldSave, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoSave);
-	if (field.Attributes.value("Load", false) == true)
+	if (field.Attributes.value(atFieldLoad, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoLoad);
 
 	return field;
@@ -386,7 +383,7 @@ std::vector<string_view> SplitArgs(string_view argstring)
 
 		if (argstring.empty())
 		{
-			args.push_back({ begin, argstring.begin() });
+			args.push_back({ to_address(begin), to_address(argstring.begin()) });
 			break;
 		}
 	}
@@ -418,7 +415,7 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	next_line = TrimWhitespace(next_line);
 
 	auto name_start = next_line.begin();
-	auto name_end = std::find_if_not(next_line.begin(), next_line.end(), baselib::isident);
+	auto name_end = std::find_if_not(next_line.begin(), next_line.end(), ascii::isident);
 	method.Name = TrimWhitespace(string_view{ name_start, name_end });
 	int num_pars = 0;
 	auto start_args = name_end;
@@ -467,10 +464,10 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 			method.Flags += MethodFlags::Abstract;
 	}
 
-	if (auto getter = method.Attributes.find("UniqueName"); getter != method.Attributes.end())
+	if (auto getter = method.Attributes.find(atMethodUniqueName); getter != method.Attributes.end())
 		method.UniqueName = getter->get<std::string>();
 
-	if (auto getter = method.Attributes.find("GetterFor"); getter != method.Attributes.end())
+	if (auto getter = method.Attributes.find(atMethodGetterFor); getter != method.Attributes.end())
 	{
 		auto& property = klass.Properties[getter.value()];
 		if (!property.GetterName.empty())
@@ -482,7 +479,7 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 		if (property.Name.empty()) property.Name = getter.value();
 	}
 
-	if (auto setter = method.Attributes.find("SetterFor"); setter != method.Attributes.end())
+	if (auto setter = method.Attributes.find(atMethodSetterFor); setter != method.Attributes.end())
 	{
 		auto& property = klass.Properties[setter.value()];
 		if (!property.SetterName.empty())
@@ -519,7 +516,7 @@ Class ParseClassDecl(string_view line, string_view next_line, size_t line_num, s
 	if (is_struct)
 		klass.Flags += ClassFlags::DeclaredStruct;
 
-	if (klass.Flags.is_set(ClassFlags::Struct) || klass.Attributes.value("Abstract", false) == true || klass.Attributes.value("Singleton", false) == true)
+	if (klass.Flags.is_set(ClassFlags::Struct) || klass.Attributes.value(atRecordAbstract, false) == true || klass.Attributes.value(atRecordSingleton, false) == true)
 		klass.Flags += ClassFlags::NoConstructors;
 
 	return klass;
@@ -536,7 +533,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 	std::string line;
 	std::ifstream infile{ path };
 	while (std::getline(infile, line))
-		lines.push_back(std::move(line));
+		lines.push_back(std::exchange(line, {}));
 	infile.close();
 
 	FileMirror mirror;
@@ -562,12 +559,12 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 			else if (line.starts_with(options.EnumPrefix))
 			{
 				mirror.Enums.push_back(ParseEnum(lines, line_num, options));
-				mirror.Enums.back().Comments = std::move(comments);
+				mirror.Enums.back().Comments = std::exchange(comments, {});
 			}
 			else if (line.starts_with(options.ClassPrefix))
 			{
 				current_access = AccessMode::Private;
-				mirror.Classes.push_back(ParseClassDecl(line, next_line, line_num, std::move(comments), options));
+				mirror.Classes.push_back(ParseClassDecl(line, next_line, line_num, std::exchange(comments, {}), options));
 				if (options.Verbose)
 				{
 					PrintLine("Found class {}", mirror.Classes.back().Name);
@@ -582,7 +579,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				}
 
 				auto& klass = mirror.Classes.back();
-				klass.Fields.push_back(ParseFieldDecl(mirror, klass, line, next_line, line_num, current_access, std::move(comments), options));
+				klass.Fields.push_back(ParseFieldDecl(mirror, klass, line, next_line, line_num, current_access, std::exchange(comments, {}), options));
 			}
 			else if (line.starts_with(options.MethodPrefix))
 			{
@@ -593,7 +590,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				}
 
 				auto& klass = mirror.Classes.back();
-				klass.Methods.push_back(ParseMethodDecl(klass, line, next_line, line_num, current_access, std::move(comments), options));
+				klass.Methods.push_back(ParseMethodDecl(klass, line, next_line, line_num, current_access, std::exchange(comments, {}), options));
 			}
 			else if (line.starts_with(options.BodyPrefix))
 			{

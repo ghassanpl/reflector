@@ -38,11 +38,11 @@ struct FileWriter
 	FileWriter(path path) : mOutFile{ path }, mPath(path) {}
 
 	template <typename... ARGS>
-	void WriteLine(ARGS&& ... args)
+	void WriteLine(std::string_view str, ARGS&& ... args)
 	{
 		mOutFile << std::string(CurrentIndent, '\t');
 		//((mOutFile << std::forward<ARGS>(args)), ...);
-		fmt::print(mOutFile, std::forward<ARGS>(args)...);
+		fmt::vprint(mOutFile, str, fmt::make_format_args(std::forward<ARGS>(args)...));
 		if (InDefine)
 			mOutFile << " \\";
 		mOutFile << '\n';

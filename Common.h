@@ -10,12 +10,12 @@
 #include <string_view>
 #include <vector>
 #include <nlohmann/json.hpp>
-#include <baselib/EnumFlags.h>
-#include <baselib/Strings.h>
+#include <ghassanpl/enum_flags.h>
+#include <ghassanpl/string_ops.h>
 #define FMT_HEADER_ONLY 1
 #include <fmt/format.h>
 #include <fmt/ostream.h>
-using baselib::string_view;
+using std::string_view;
 #include "Include/ReflectorClasses.h"
 using Reflector::ClassFlags;
 using Reflector::FieldFlags;
@@ -24,18 +24,26 @@ using std::filesystem::path;
 
 using nlohmann::json;
 
+using namespace ghassanpl;
+using namespace ghassanpl::string_ops;
+
+inline string_view TrimWhitespace(std::string_view str)
+{
+	return ghassanpl::string_ops::trimmed_whitespace(str);
+}
+
 void PrintSafe(std::ostream& strm, std::string val);
 
 template <typename... ARGS>
-void ReportError(path path, size_t line_num, ARGS&& ... args)
+void ReportError(path path, size_t line_num, std::string_view fmt, ARGS&& ... args)
 {
-	PrintSafe(std::cerr, fmt::format("{}({},1): error: {}\n", path.string(), line_num, fmt::format(std::forward<ARGS>(args)...)));
+	PrintSafe(std::cerr, fmt::format("{}({},1): error: {}\n", path.string(), line_num, fmt::vformat(fmt, fmt::make_format_args(std::forward<ARGS>(args)...))));
 }
 
 template <typename... ARGS>
-void PrintLine(ARGS&&... args)
+void PrintLine(std::string_view fmt, ARGS&&... args)
 {
-	PrintSafe(std::cout, fmt::format(std::forward<ARGS>(args)...) + "\n");
+	PrintSafe(std::cout, fmt::vformat(fmt, fmt::make_format_args(std::forward<ARGS>(args)...)) + "\n");
 }
 
 std::string EscapeJSON(json const& json);
@@ -60,7 +68,7 @@ struct Declaration
 
 struct Field : public Declaration
 {
-	enum_flags::enum_flags<Reflector::FieldFlags> Flags;
+	ghassanpl::enum_flags<Reflector::FieldFlags> Flags;
 	std::string Type;
 	std::string InitializingExpression;
 	std::string DisplayName;
@@ -100,7 +108,7 @@ struct Method : public Declaration
 	};
 
 	std::string Type;
-	enum_flags::enum_flags<Reflector::MethodFlags> Flags;
+	ghassanpl::enum_flags<Reflector::MethodFlags> Flags;
 private:
 	std::string mParameters;
 	void Split();
@@ -146,11 +154,11 @@ struct Class : public Declaration
 	std::vector<Method> Methods;
 	std::map<std::string, Property, std::less<>> Properties;
 
-	enum_flags::enum_flags<ClassFlags> Flags;
+	ghassanpl::enum_flags<ClassFlags> Flags;
 
 	size_t BodyLine = 0;
 
-	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, enum_flags::enum_flags<Reflector::MethodFlags> additional_flags = {}, size_t source_field_declaration_line = 0);
+	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {}, size_t source_field_declaration_line = 0);
 	void CreateArtificialMethods(FileMirror& mirror);
 
 	std::map<std::string, std::vector<Method const*>> MethodsByName;

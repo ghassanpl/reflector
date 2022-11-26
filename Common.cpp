@@ -5,7 +5,8 @@
 
 #include "Common.h"
 #include "Parse.h"
-#include <baselib/ASCII.h>
+#include "Attributes.h"
+#include <ghassanpl/string_ops.h>
 #include <mutex>
 #include <future>
 #include <thread>
@@ -40,9 +41,9 @@ Enum const* FindEnum(string_view name)
 void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 {
 	/// Create comments string
-	auto field_comments = baselib::Join(Comments, " ");
+	auto field_comments = join(Comments, " ");
 	if (field_comments.size())
-		field_comments[0] = (char)baselib::tolower(field_comments[0]);
+		field_comments[0] = (char)ascii::tolower(field_comments[0]);
 	else
 		field_comments = fmt::format("the `{}` field of this object", DisplayName);
 
@@ -54,14 +55,14 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 
 	if (!Flags.is_set(Reflector::FieldFlags::NoSetter))
 	{
-		auto on_change = Attributes.value("OnChange", "");
+		auto on_change = Attributes.value(atFieldOnChange, "");
 		if (!on_change.empty())
 			on_change = on_change + "(); ";
 		klass.AddArtificialMethod("void", "Set" + DisplayName, Type + " const & value", Name + " = value; " + on_change, { "Sets " + field_comments }, {}, DeclarationLine);
 	}
 
-	auto flag_getters = Attributes.value("FlagGetters", "");
-	auto flag_setters = Attributes.value("Flags", "");
+	auto flag_getters = Attributes.value(atFieldFlagGetters, "");
+	auto flag_setters = Attributes.value(atFieldFlags, "");
 	if (!flag_getters.empty() && !flag_setters.empty())
 	{
 		ReportError(mirror.SourceFilePath, DeclarationLine, "Only one of `FlagGetters' and `Flags' can be declared");
@@ -133,16 +134,16 @@ void Method::Split()
 	for (auto& full_param : parameters_split)
 	{
 		auto& param = ParametersSplit.emplace_back();
-		auto start_of_id = std::find_if(full_param.rbegin(), full_param.rend(), std::not_fn(baselib::isident)).base();
-		param.Type = baselib::TrimWhitespace({std::to_address(full_param.begin()), std::to_address(start_of_id) });
-		param.Name = baselib::TrimWhitespace({ std::to_address(start_of_id), std::to_address(full_param.end()) });
+		auto start_of_id = std::find_if(full_param.rbegin(), full_param.rend(), std::not_fn(ascii::isident)).base();
+		param.Type = TrimWhitespace({std::to_address(full_param.begin()), std::to_address(start_of_id) });
+		param.Name = TrimWhitespace({ std::to_address(start_of_id), std::to_address(full_param.end()) });
 
 		if (param.Type.empty()) /// If we didn't specify a name, type was at the end, not name, so fix that
 			param.Type = param.Type + ' ' + param.Name;
 	}
 
-	ParametersTypesOnly = baselib::Join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Type; });
-	ParametersNamesOnly = baselib::Join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Name; });
+	ParametersTypesOnly = join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Type; });
+	ParametersNamesOnly = join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Name; });
 }
 
 void Method::SetParameters(std::string params)
@@ -204,7 +205,7 @@ void Property::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 {
 }
 
-void Class::AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, enum_flags::enum_flags<Reflector::MethodFlags> additional_flags, size_t source_field_declaration_line)
+void Class::AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags, size_t source_field_declaration_line)
 {
 	Method method;
 	method.Flags += Reflector::MethodFlags::Artificial;
@@ -233,9 +234,9 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 			should_build_proxy = true;
 	}
 
-	should_build_proxy = should_build_proxy && Attributes.value("CreateProxy", true);
+	should_build_proxy = should_build_proxy && Attributes.value(atRecordCreateProxy, true);
 
-	Flags.set_to(ClassFlags::HasProxy, should_build_proxy);
+	Flags.set_to(should_build_proxy, ClassFlags::HasProxy);
 
 	/// Create methods for fields and methods
 

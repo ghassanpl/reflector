@@ -38,5 +38,8 @@
     <ClInclude Include="ReflectionDataBuilding.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="Attributes.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

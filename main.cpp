@@ -11,7 +11,7 @@
 #include <vector>
 #include <thread>
 #include <future>
-#include <sqlite_orm/sqlite_orm.h>
+//#include <sqlite_orm/sqlite_orm.h>
 
 int main(int argc, const char* argv[])
 {
@@ -31,7 +31,7 @@ int main(int argc, const char* argv[])
 	{
 		Options options{ argv[1] };
 
-		const auto artifact_path = std::filesystem::absolute(options.ArtifactPath.empty() ? std::filesystem::current_path() : path{ options.ArtifactPath });
+		const auto artifact_path = options.ArtifactPath = std::filesystem::absolute(options.ArtifactPath.empty() ? std::filesystem::current_path() : path{ options.ArtifactPath });
 		const auto reflector_h_path = artifact_path / "Reflector.h";
 		const auto classes_h_path = artifact_path / "Classes.reflect.h";
 		const auto includes_h_path = artifact_path / "Includes.reflect.h";
@@ -89,6 +89,9 @@ int main(int argc, const char* argv[])
 		/// Create artificial methods, knowing all the reflected classes
 		CreateArtificialMethods();
 
+		/// TODO: Make creation of artifacts better:
+		///	- create files in temp directory, and only move if the contents are different
+
 		/// Output artifacts
 		std::atomic<size_t> modified_files = 0;
 
@@ -122,7 +125,6 @@ int main(int argc, const char* argv[])
 		}
 
 		const bool create_reflector = !std::filesystem::exists(reflector_h_path) || options.Force;
-
 		if (create_reflector)
 			futures.push_back(std::async(CreateReflectorHeaderArtifact, reflector_h_path, options));
 
