@@ -358,8 +358,9 @@ void FileMirror::CreateArtificialMethods()
 
 #define OPTION(name, default_value, description) name = OptionsFile.value(#name, default_value); OptionsFile.erase(#name);
 
-Options::Options(path const& options_file_path)
-	: OptionsFilePath(std::filesystem::canonical(options_file_path))
+Options::Options(path exe_path, path const& options_file_path)
+	: ExePath(std::move(exe_path))
+	, OptionsFilePath(std::filesystem::canonical(options_file_path))
 	, OptionsFile(json::parse(std::fstream{ options_file_path }))
 {
 	if (!OptionsFile.is_object())

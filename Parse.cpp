@@ -6,6 +6,7 @@
 #include "Parse.h"
 #include "Attributes.h"
 #include <ghassanpl/string_ops.h>
+#include <ghassanpl/wilson.h>
 #include <charconv>
 #include <fstream>
 
@@ -141,7 +142,8 @@ json ParseAttributeList(string_view line)
 	line = TrimWhitespace(line);
 	if (line.empty())
 		return json::object();
-	return json::parse(line);
+	//return json::parse(line);
+	return ghassanpl::formats::wilson::parse_object(line);
 }
 
 Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options const& options)
@@ -346,6 +348,7 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 	if (type.starts_with("ChildVector<"))
 		field.Flags.set(Reflector::FieldFlags::NoSetter);
 
+
 	/// Enable if explictly stated
 	if (field.Attributes.value(atFieldGetter, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoGetter);
@@ -357,6 +360,9 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 		field.Flags.unset(Reflector::FieldFlags::NoSave);
 	if (field.Attributes.value(atFieldLoad, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoLoad);
+
+	if (field.Attributes.value(atFieldRequired, false))
+		field.Flags.set(Reflector::FieldFlags::Required);
 
 	return field;
 }

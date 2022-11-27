@@ -3,6 +3,8 @@
 #include <typeindex>
 #include <vector>
 
+template <typename T> concept is_reflected_class = requires { T::StaticClassFlags(); };
+
 namespace Reflector
 {
 	struct ClassReflectionData;
@@ -24,6 +26,8 @@ namespace Reflector
 		std::vector<MethodReflectionData> Methods;
 
 		std::type_index TypeIndex;
+
+		uint64_t Flags = 0;
 	};
 
 	enum class ClassFlags
@@ -42,7 +46,9 @@ namespace Reflector
 		NoScript,
 		NoSave,
 		NoLoad,
-		NoDebug
+		NoDebug,
+
+		Required,
 	};
 
 	enum class MethodFlags
@@ -60,6 +66,14 @@ namespace Reflector
 		NoCallable
 	};
 
+	enum class EnumFlags
+	{
+	};
+
+	enum class EnumeratorFlags
+	{
+	};
+
 	template <char... CHARS>
 	struct CompileTimeLiteral
 	{
@@ -72,6 +86,9 @@ namespace Reflector
 		using parent_type = PARENT_TYPE;
 		static constexpr uint64_t flags = FLAGS;
 		static constexpr const char* name = NAME_CTL::value;
+
+		template <typename FLAG_TYPE>
+		static constexpr bool HasFlag(FLAG_TYPE flag_value) noexcept { return (flags & (1ULL << uint64_t(flag_value))) != 0; }
 	};
 	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, typename NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER>
 	struct CompileTimeFieldData : CompileTimePropertyData<FIELD_TYPE, PARENT_TYPE, FLAGS, NAME_CTL>
@@ -100,6 +117,8 @@ namespace Reflector
 	{
 		static constexpr uint64_t flags = FLAGS;
 		static constexpr const char* name = NAME_CTL::value;
+
+		static constexpr bool HasFlag(MethodFlags flag_value) noexcept { return (flags & (1ULL << uint64_t(flag_value))) != 0; }
 	};
 
 	struct FieldReflectionData
@@ -112,6 +131,7 @@ namespace Reflector
 		nlohmann::json AttributesJSON;
 #endif
 		std::type_index FieldTypeIndex;
+		uint64_t Flags = 0;
 
 		ClassReflectionData const* ParentClass = nullptr;
 	};
@@ -128,6 +148,7 @@ namespace Reflector
 		const char* UniqueName = "";
 		const char* Body = "";
 		std::type_index ReturnTypeIndex;
+		uint64_t Flags = 0;
 
 		ClassReflectionData const* ParentClass = nullptr;
 	};
@@ -136,6 +157,7 @@ namespace Reflector
 	{
 		const char* Name = "";
 		int64_t Value;
+		uint64_t Flags = 0;
 	};
 
 	struct EnumReflectionData
@@ -144,6 +166,7 @@ namespace Reflector
 		const char* Attributes = "{}";
 		std::vector<EnumeratorReflectionData> Enumerators;
 		std::type_index TypeIndex;
+		uint64_t Flags = 0;
 	};
 
 	struct Reflectable

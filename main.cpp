@@ -121,7 +121,7 @@ int main(int argc, const char* argv[])
 
 	try
 	{
-		Options options{ argv[1] };
+		Options options{ argv[0], argv[1] };
 
 		const auto artifact_path = options.ArtifactPath = std::filesystem::absolute(options.ArtifactPath.empty() ? std::filesystem::current_path() : path{ options.ArtifactPath });
 	

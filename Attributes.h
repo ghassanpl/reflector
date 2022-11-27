@@ -56,6 +56,7 @@ inline const AttributeProperties atFieldLoad{ "Load", "Whether or not this field
 inline const AttributeProperties atFieldSerialize{ "Serialize", "False means both 'Save' and 'Load' are false", json::value_t::boolean, true };
 inline const AttributeProperties atFieldPrivate{ "Private", "True sets 'Edit', 'Setter', 'Getter' to false", json::value_t::boolean, false };
 inline const AttributeProperties atFieldParentPointer{ "ParentPointer", "Whether or not this field is a pointer to parent object, in a tree hierarchy; implies Edit = false, Setter = false", json::value_t::boolean, false };
+inline const AttributeProperties atFieldRequired{ "Required", "A helper flag for the serialization system - will set the FieldFlags::Required flag", json::value_t::boolean, false };
 
 inline const AttributeProperties atFieldOnChange{ "OnChange", "Calls the specified method when this field changes", json::value_t::string };
 

@@ -19,6 +19,8 @@
 using std::string_view;
 #include "Include/ReflectorClasses.h"
 using Reflector::ClassFlags;
+using Reflector::EnumeratorFlags;
+using Reflector::EnumFlags;
 using Reflector::FieldFlags;
 using Reflector::MethodFlags;
 using std::filesystem::path;
@@ -181,12 +183,16 @@ struct Enumerator : Declaration
 {
 	int64_t Value = 0;
 
+	ghassanpl::enum_flags<EnumeratorFlags> Flags;
+
 	json ToJSON() const;
 };
 
 struct Enum : public Declaration
 {
 	std::vector<Enumerator> Enumerators;
+
+	ghassanpl::enum_flags<EnumFlags> Flags;
 
 	json ToJSON() const;
 };
@@ -210,7 +216,7 @@ void CreateArtificialMethods();
 struct Options
 {
 	//Options(json&& options_file);
-	Options(path const& options_file_path);
+	Options(path exe_path, path const& options_file_path);
 
 	bool Recursive = false;
 	bool Quiet = false;
@@ -222,6 +228,8 @@ struct Options
 
 	/// TODO: Read this from cmdline
 	bool ForwardDeclare = true;
+
+	path ExePath;
 
 	path ArtifactPath;
 

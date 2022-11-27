@@ -45,200 +45,9 @@ bool CreateJSONDBArtifact(path const& path, Options const& options)
 	return true;
 }
 
-static const std::string_view ReflectorClassesFile = R"blergh(#pragma once
-
-#include <typeindex>
-#include <vector>
-
-template <typename T> concept is_reflected_class = requires { T::StaticClassFlags(); };
-
-namespace Reflector
-{
-	struct ClassReflectionData;
-	struct FieldReflectionData;
-	struct MethodReflectionData;
-
-	struct ClassReflectionData
-	{
-		const char* Name = "";
-		const char* ParentClassName = "";
-		const char* Attributes = "{}";
-#ifdef NLOHMANN_JSON_VERSION_MAJOR
-		nlohmann::json AttributesJSON;
-#endif
-		void* (*Constructor)(const ::Reflector::ClassReflectionData&) = {};
-
-		/// These are vectors and not e.g. initializer_list's because you might want to create your own classes
-		std::vector<FieldReflectionData> Fields; 
-		std::vector<MethodReflectionData> Methods;
-
-		std::type_index TypeIndex;
-	};
-
-	enum class ClassFlags
-	{
-		Struct,
-		DeclaredStruct,
-		NoConstructors,
-		HasProxy
-	};
-
-	enum class FieldFlags
-	{
-		NoSetter,
-		NoGetter,
-		NoEdit,
-		NoScript,
-		NoSave,
-		NoLoad,
-		NoDebug
-	};
-
-	enum class MethodFlags
-	{
-		Inline,
-		Virtual,
-		Abstract,
-		Static,
-		Const,
-		Noexcept,
-		Final,
-		Explicit,
-		Artificial,
-		HasBody,
-		NoCallable
-	};
-
-	template <char... CHARS>
-	struct CompileTimeLiteral
-	{
-		static constexpr const char value[] = { CHARS... };
-	};
-	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, typename NAME_CTL>
-	struct CompileTimePropertyData
-	{
-		using type = std::remove_cvref_t<FIELD_TYPE>;
-		using parent_type = PARENT_TYPE;
-		static constexpr uint64_t flags = FLAGS;
-		static constexpr const char* name = NAME_CTL::value;
-
-		template <typename FLAG_TYPE>
-		static inline constexpr bool HasFlag(FLAG_TYPE flag_val) noexcept { return (flags & (1ULL << uint64_t(flag_val))) != 0; }
-	};
-	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, typename NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER>
-	struct CompileTimeFieldData : CompileTimePropertyData<FIELD_TYPE, PARENT_TYPE, FLAGS, NAME_CTL>
-	{
-		static constexpr PTR_TYPE pointer = POINTER;
-
-		static auto Getter(PARENT_TYPE const* obj) -> FIELD_TYPE const& { return (obj->*(pointer)); }
-		template <typename PARENT = PARENT_TYPE, typename FIELD = FIELD_TYPE>
-		static auto GenericGetter(PARENT const* obj) -> FIELD const& { return (obj->*(pointer)); }
-
-		template <typename PARENT = PARENT_TYPE, typename VALUE>
-		static auto GenericSetter(PARENT* obj, VALUE&& value) -> void { (obj->*(pointer)) = std::forward<VALUE>(value); };
-
-		static auto CopySetter(PARENT_TYPE* obj, FIELD_TYPE const& value) -> void { (obj->*(pointer)) = value; };
-		static auto MoveSetter(PARENT_TYPE* obj, FIELD_TYPE&& value) -> void { (obj->*(pointer)) = std::move(value); };
-		template <typename PARENT = PARENT_TYPE, typename FIELD = FIELD_TYPE>
-		static auto GenericCopySetter(PARENT* obj, FIELD const& value) -> void { (obj->*(pointer)) = value; };
-		template <typename PARENT = PARENT_TYPE, typename FIELD = FIELD_TYPE>
-		static auto GenericMoveSetter(PARENT* obj, FIELD&& value) -> void { (obj->*(pointer)) = std::move(value); };
-
-		static auto VoidGetter(void const* obj) -> void const* { return &(obj->*(pointer)); }
-		static auto VoidSetter(void* obj, void const* value) -> void { (obj->*(pointer)) = reinterpret_cast<FIELD_TYPE const*>(value); };
-	};
-	template <uint64_t FLAGS, typename NAME_CTL>
-	struct CompileTimeMethodData
-	{
-		static constexpr uint64_t flags = FLAGS;
-		static constexpr const char* name = NAME_CTL::value;
-
-		static inline constexpr bool HasFlag(MethodFlags flag_val) noexcept { return (flags & (1ULL << uint64_t(flag_val))) != 0; }
-	};
-
-	struct FieldReflectionData
-	{
-		const char* Name = "";
-		const char* FieldType = "";
-		const char* Initializer = "";
-		const char* Attributes = "{}";
-#ifdef NLOHMANN_JSON_VERSION_MAJOR
-		nlohmann::json AttributesJSON;
-#endif
-		std::type_index FieldTypeIndex;
-
-		ClassReflectionData const* ParentClass = nullptr;
-	};
-
-	struct MethodReflectionData
-	{
-		const char* Name = "";
-		const char* ReturnType = "";
-		const char* Parameters = "";
-		const char* Attributes = "{}";
-#ifdef NLOHMANN_JSON_VERSION_MAJOR
-		nlohmann::json AttributesJSON;
-#endif
-		const char* UniqueName = "";
-		const char* Body = "";
-		std::type_index ReturnTypeIndex;
-
-		ClassReflectionData const* ParentClass = nullptr;
-	};
-
-	struct EnumeratorReflectionData
-	{
-		const char* Name = "";
-		int64_t Value;
-	};
-
-	struct EnumReflectionData
-	{
-		const char* Name = "";
-		const char* Attributes = "{}";
-		std::vector<EnumeratorReflectionData> Enumerators;
-		std::type_index TypeIndex;
-	};
-
-	struct Reflectable
-	{
-		virtual ClassReflectionData const& GetReflectionData() const
-		{
-			static const ClassReflectionData data = { 
-				.Name = "Reflectable",
-				.ParentClassName = "",
-				.Attributes = "",
-#ifdef NLOHMANN_JSON_VERSION_MAJOR
-				.AttributesJSON = ::nlohmann::json::object(),
-#endif
-				.TypeIndex = typeid(Reflectable)
-			}; 
-			return data;
-		}
-
-		Reflectable() noexcept = default;
-		Reflectable(::Reflector::ClassReflectionData const& klass) noexcept : mClass(&klass) {}
-
-		virtual ~Reflectable() = default;
-
-	protected:
-
-		ClassReflectionData const* mClass = nullptr;
-	};
-
-	template <typename T, typename PROXY_OBJ> 
-	struct ProxyFor
-	{
-		using Type = void;
-	};
-}
-)blergh";
-
 bool CreateReflectorClassesHeaderArtifact(path const& path, const Options& options)
 {
-	FileWriter reflect_classes_file{ path };
-	reflect_classes_file.mOutFile << ReflectorClassesFile;
-	reflect_classes_file.Close();
+	std::filesystem::copy_file(options.ExePath.parent_path() / "Include" / "ReflectorClasses.h", path, std::filesystem::copy_options::overwrite_existing);
 	return true;
 }
 
@@ -437,7 +246,9 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 			if (options.UseJSON)
 				output.WriteLine(".AttributesJSON = ::nlohmann::json::parse({}),", EscapeJSON(field.Attributes));
 		}
-		output.WriteLine(".FieldTypeIndex = typeid({})", field.Type);
+		output.WriteLine(".FieldTypeIndex = typeid({}),", field.Type);
+		output.WriteLine(".Flags = {},", field.Flags.bits);
+		output.WriteLine(".ParentClass = &_data");
 		output.CurrentIndent--;
 		output.WriteLine("}},");
 	}
@@ -466,6 +277,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		if (!method.Body.empty())
 			output.WriteLine(".Body = {},", EscapeJSON(method.Body));
 		output.WriteLine(".ReturnTypeIndex = typeid({}),", method.Type);
+		output.WriteLine(".Flags = {},", method.Flags.bits);
 		output.WriteLine(".ParentClass = &_data");
 		output.CurrentIndent--;
 		output.WriteLine("}},");
@@ -473,7 +285,8 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	output.CurrentIndent--;
 	output.WriteLine("}},");
 
-	output.WriteLine(".TypeIndex = typeid(self_type)");
+	output.WriteLine(".TypeIndex = typeid(self_type),");
+	output.WriteLine(".Flags = {}", klass.Flags.bits);
 	output.CurrentIndent--;
 	output.WriteLine("}}; return _data;");
 	output.CurrentIndent--;
@@ -606,19 +419,22 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 		output.WriteLine("::Reflector::EnumeratorReflectionData {{");
 		output.CurrentIndent++;
 		output.WriteLine(".Name = \"{}\",", enumerator.Name);
-		output.WriteLine(".Value = {}", enumerator.Value);
+		output.WriteLine(".Value = {},", enumerator.Value);
+		output.WriteLine(".Flags = {},", enumerator.Flags.bits);
 		output.CurrentIndent--;
 		output.WriteLine("}},");
 	}
 	output.CurrentIndent--;
 	output.WriteLine("}},");
-	output.WriteLine(".TypeIndex = typeid({})", henum.Name);
+	output.WriteLine(".TypeIndex = typeid({}),", henum.Name);
+	output.WriteLine(".Flags = {},", henum.Flags.bits);
 	output.CurrentIndent--;
 	output.WriteLine("}}; return _data;");
 	output.CurrentIndent--;
 	output.WriteLine("}}");
 
 	output.WriteLine("inline constexpr const char* GetEnumName({0}) {{ return \"{0}\"; }}", henum.Name);
+	output.WriteLine("inline constexpr size_t GetEnumCount({}) {{ return {}; }}", henum.Name, henum.Enumerators.size());
 	output.WriteLine("inline constexpr const char* GetEnumeratorName({} v) {{", henum.Name);
 	{
 		auto indent = output.Indent();
