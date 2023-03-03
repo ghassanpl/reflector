@@ -106,6 +106,8 @@ bool CreateTypeListArtifact(path const& path, Options const& options)
 
 std::string BuildCompileTimeLiteral(std::string_view str)
 {
+	return std::format("\"{}\"",ghassanpl::string_ops::escaped(str));
+	/*
 	std::string result;
 	for (auto c : str)
 	{
@@ -115,6 +117,7 @@ std::string BuildCompileTimeLiteral(std::string_view str)
 	}
 	result += "0";
 	return result;
+	*/
 }
 
 bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
@@ -141,7 +144,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	{
 		const auto& field = klass.Fields[i];
 		const auto ptr_str = "&" + klass.Name + "::" + field.Name;
-		output.WriteLine("{}_VISITOR(&{}::StaticGetReflectionData().Fields[{}], {}, ::Reflector::CompileTimeFieldData<{}, {}, {}, ::Reflector::CompileTimeLiteral<{}>, decltype({}), {}>{{}});"
+		output.WriteLine("{}_VISITOR(&{}::StaticGetReflectionData().Fields[{}], {}, ::Reflector::CompileTimeFieldData<{}, {}, {}, {}, decltype({}), {}>{{}});"
 			, options.MacroPrefix, klass.Name, i, ptr_str, field.Type, klass.Name, field.Flags.bits, BuildCompileTimeLiteral(field.Name), ptr_str, ptr_str);
 	}
 	output.EndDefine("");
@@ -153,7 +156,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		const auto& method = klass.Methods[i];
 		if (!method.Flags.is_set(Reflector::MethodFlags::NoCallable))
 		{
-			output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData().Methods[{2}], ({3})&{1}::{4}, &{1}::ScriptFunction_{4}{5}, ::Reflector::CompileTimeMethodData<{6}, ::Reflector::CompileTimeLiteral<{7}>>{{}});",
+			output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData().Methods[{2}], ({3})&{1}::{4}, &{1}::ScriptFunction_{4}{5}, ::Reflector::CompileTimeMethodData<{6}, {7}>{{}});",
 				options.MacroPrefix, klass.Name, i, method.GetSignature(klass), method.Name, method.ActualDeclarationLine(), method.Flags.bits, BuildCompileTimeLiteral(method.Name));
 		}
 	}
@@ -170,7 +173,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		std::string setter_name = "nullptr";
 		if (!property.SetterName.empty())
 			setter_name = std::format("&{}::{}", klass.Name, property.SetterName);
-		output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData(), \"{2}\", {3}, {4}, ::Reflector::CompileTimePropertyData<{5}, {1}, 0ULL, ::Reflector::CompileTimeLiteral<{6}>>{{}});",
+		output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData(), \"{2}\", {3}, {4}, ::Reflector::CompileTimePropertyData<{5}, {1}, 0ULL, {6}>{{}});",
 			options.MacroPrefix, klass.Name, property.Name, getter_name, setter_name, property.Type, BuildCompileTimeLiteral(property.Name));
 	}
 	output.EndDefine("");
@@ -403,6 +406,10 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.WriteLine("#undef {}_ENUM_{}", options.MacroPrefix, henum.DeclarationLine);
 	output.StartDefine("#define {}_ENUM_{}", options.MacroPrefix, henum.DeclarationLine);
 
+	/// ///////////////////////////////////// ///
+	/// Declaration and Artificials
+	/// ///////////////////////////////////// ///
+
 	output.WriteLine("enum class {};", henum.Name); /// forward decl;
 	output.WriteLine("static constexpr inline size_t {}Count = {};", henum.Name, henum.Enumerators.size());
 	output.WriteLine("static constexpr inline std::string_view {}Names[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](Enumerator const& enumerator) { return std::format("\"{}\"", enumerator.Name); }));
@@ -419,39 +426,6 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.WriteLine("inline constexpr auto operator==(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left == std::to_underlying(right); }}", henum.Name);
 	output.WriteLine("inline constexpr auto operator<=>(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left <=> std::to_underlying(right); }}", henum.Name);
 
-	output.WriteLine("inline ::Reflector::EnumReflectionData const& StaticGetReflectionData({}) {{", henum.Name);
-	output.CurrentIndent++;
-	output.WriteLine("static const ::Reflector::EnumReflectionData _data = {{");
-	output.CurrentIndent++;
-
-	output.WriteLine(".Name = \"{}\",", henum.Name);
-	if (!henum.Attributes.empty())
-	{
-		output.WriteLine(".Attributes = {},", EscapeJSON(henum.Attributes));
-		if (options.UseJSON)
-			output.WriteLine(".AttributesJSON = ::nlohmann::json::parse({}),", EscapeJSON(henum.Attributes));
-	}
-	output.WriteLine(".Enumerators = {{");
-	output.CurrentIndent++;
-	for (auto& enumerator : henum.Enumerators)
-	{
-		output.WriteLine("::Reflector::EnumeratorReflectionData {{");
-		output.CurrentIndent++;
-		output.WriteLine(".Name = \"{}\",", enumerator.Name);
-		output.WriteLine(".Value = {},", enumerator.Value);
-		output.WriteLine(".Flags = {},", enumerator.Flags.bits);
-		output.CurrentIndent--;
-		output.WriteLine("}},");
-	}
-	output.CurrentIndent--;
-	output.WriteLine("}},");
-	output.WriteLine(".TypeIndex = typeid({}),", henum.Name);
-	output.WriteLine(".Flags = {},", henum.Flags.bits);
-	output.CurrentIndent--;
-	output.WriteLine("}}; return _data;");
-	output.CurrentIndent--;
-	output.WriteLine("}}");
-
 	output.WriteLine("inline constexpr const char* GetEnumName({0}) {{ return \"{0}\"; }}", henum.Name);
 	output.WriteLine("inline constexpr size_t GetEnumCount({}) {{ return {}; }}", henum.Name, henum.Enumerators.size());
 	output.WriteLine("inline constexpr const char* GetEnumeratorName({} v) {{", henum.Name);
@@ -467,7 +441,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 			}
 			output.WriteLine("}}");
 		}
-		output.WriteLine("return \"<Unknown>\";");	
+		output.WriteLine("return \"<Unknown>\";");
 	}
 	output.WriteLine("}}");
 	output.WriteLine("inline constexpr {0} GetEnumeratorFromName({0} v, std::string_view name) {{", henum.Name);
@@ -506,13 +480,50 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	}
 	output.CurrentIndent--;
 	output.WriteLine("}}");
-	
+
 	if (options.UseJSON)
 	{
 		output.WriteLine("inline void to_json(json& j, {0} const & p) {{ j = std::underlying_type_t<{0}>(p); }}", henum.Name);
 
 		output.WriteLine("inline void from_json(json const& j, {0}& p) {{ if (j.is_string()) p = GetEnumeratorFromName({0}{{}}, j); else p = ({0})(std::underlying_type_t<{0}>)j; }}", henum.Name);
 	}
+
+	/// ///////////////////////////////////// ///
+	/// Reflection data
+	/// ///////////////////////////////////// ///
+
+	output.WriteLine("inline ::Reflector::EnumReflectionData const& StaticGetReflectionData({}) {{", henum.Name);
+	output.CurrentIndent++;
+	output.WriteLine("static const ::Reflector::EnumReflectionData _data = {{");
+	output.CurrentIndent++;
+
+	output.WriteLine(".Name = \"{}\",", henum.Name);
+	if (!henum.Attributes.empty())
+	{
+		output.WriteLine(".Attributes = {},", EscapeJSON(henum.Attributes));
+		if (options.UseJSON)
+			output.WriteLine(".AttributesJSON = ::nlohmann::json::parse({}),", EscapeJSON(henum.Attributes));
+	}
+	output.WriteLine(".Enumerators = {{");
+	output.CurrentIndent++;
+	for (auto& enumerator : henum.Enumerators)
+	{
+		output.WriteLine("::Reflector::EnumeratorReflectionData {{");
+		output.CurrentIndent++;
+		output.WriteLine(".Name = \"{}\",", enumerator.Name);
+		output.WriteLine(".Value = {},", enumerator.Value);
+		output.WriteLine(".Flags = {},", enumerator.Flags.bits);
+		output.CurrentIndent--;
+		output.WriteLine("}},");
+	}
+	output.CurrentIndent--;
+	output.WriteLine("}},");
+	output.WriteLine(".TypeIndex = typeid({}),", henum.Name);
+	output.WriteLine(".Flags = {},", henum.Flags.bits);
+	output.CurrentIndent--;
+	output.WriteLine("}}; return _data;");
+	output.CurrentIndent--;
+	output.WriteLine("}}");
 
 	output.EndDefine();
 

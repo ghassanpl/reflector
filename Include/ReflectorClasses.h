@@ -75,23 +75,25 @@ namespace Reflector
 	{
 	};
 
-	template <char... CHARS>
+	template<size_t N>
 	struct CompileTimeLiteral
 	{
-		static constexpr const char value[] = { CHARS... };
+		constexpr CompileTimeLiteral(char const (&s)[N]) { std::copy_n(s, N, this->value); }
+		constexpr std::strong_ordering operator<=>(CompileTimeLiteral const&) const = default;
+		char value[N];
 	};
-	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, typename NAME_CTL>
+	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL>
 	struct CompileTimePropertyData
 	{
 		using type = std::remove_cvref_t<FIELD_TYPE>;
 		using parent_type = PARENT_TYPE;
 		static constexpr uint64_t flags = FLAGS;
-		static constexpr const char* name = NAME_CTL::value;
+		static constexpr const char* name = NAME_CTL.value;
 
 		template <typename FLAG_TYPE>
 		static constexpr bool HasFlag(FLAG_TYPE flag_value) noexcept { return (flags & (1ULL << uint64_t(flag_value))) != 0; }
 	};
-	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, typename NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER>
+	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER>
 	struct CompileTimeFieldData : CompileTimePropertyData<FIELD_TYPE, PARENT_TYPE, FLAGS, NAME_CTL>
 	{
 		static constexpr PTR_TYPE pointer = POINTER;
@@ -113,11 +115,11 @@ namespace Reflector
 		static auto VoidGetter(void const* obj) -> void const* { return &(obj->*(pointer)); }
 		static auto VoidSetter(void* obj, void const* value) -> void { (obj->*(pointer)) = reinterpret_cast<FIELD_TYPE const*>(value); };
 	};
-	template <uint64_t FLAGS, typename NAME_CTL>
+	template <uint64_t FLAGS, CompileTimeLiteral NAME_CTL>
 	struct CompileTimeMethodData
 	{
 		static constexpr uint64_t flags = FLAGS;
-		static constexpr const char* name = NAME_CTL::value;
+		static constexpr const char* name = NAME_CTL.value;
 
 		static constexpr bool HasFlag(MethodFlags flag_value) noexcept { return (flags & (1ULL << uint64_t(flag_value))) != 0; }
 	};
