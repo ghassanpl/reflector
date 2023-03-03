@@ -4,6 +4,7 @@
 /// DISCLAIMER: THE WORKS ARE WITHOUT WARRANTY.
 
 #include "ReflectionDataBuilding.h"
+#include "Attributes.h"
 #include <charconv>
 
 uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, const Options& opts)
@@ -209,6 +210,10 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	/// Flags
 	output.WriteLine("static constexpr int StaticClassFlags() {{ return {}; }}", klass.Flags.bits);
 
+	/// Other body lines
+	for (auto& line : klass.AdditionalBodyLines)
+		output.WriteLine(line);
+
 	/// ///////////////////////////////////// ///
 	/// Reflection Data Method
 	/// ///////////////////////////////////// ///
@@ -393,12 +398,26 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 
 bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& henum, const Options& options)
 {
+	auto has_any_enumerators = (henum.Enumerators.size() > 0);
 	output.WriteLine("/// From enum: {}", henum.Name);
 	output.WriteLine("#undef {}_ENUM_{}", options.MacroPrefix, henum.DeclarationLine);
 	output.StartDefine("#define {}_ENUM_{}", options.MacroPrefix, henum.DeclarationLine);
 
 	output.WriteLine("enum class {};", henum.Name); /// forward decl;
+	output.WriteLine("static constexpr inline size_t {}Count = {};", henum.Name, henum.Enumerators.size());
+	output.WriteLine("static constexpr inline std::string_view {}Names[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](Enumerator const& enumerator) { return std::format("\"{}\"", enumerator.Name); }));
+	output.WriteLine("static constexpr inline {0} {0}Values[] = {{ {1} }} ;", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](Enumerator const& enumerator) { 
+		return std::format("{}{{{}}}", henum.Name, enumerator.Value); 
+	}));
+	
+	if (has_any_enumerators)
+	{
+		output.WriteLine("static constexpr inline {0} First{0} = {0}{{{1}}};", henum.Name, henum.Enumerators.front().Value);
+		output.WriteLine("static constexpr inline {0} Last{0} = {0}{{{1}}};", henum.Name, henum.Enumerators.back().Value);
+	}
 
+	output.WriteLine("inline constexpr auto operator==(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left == std::to_underlying(right); }}", henum.Name);
+	output.WriteLine("inline constexpr auto operator<=>(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left <=> std::to_underlying(right); }}", henum.Name);
 
 	output.WriteLine("inline ::Reflector::EnumReflectionData const& StaticGetReflectionData({}) {{", henum.Name);
 	output.CurrentIndent++;
@@ -439,7 +458,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	{
 		auto indent = output.Indent();
 
-		if (henum.Enumerators.size())
+		if (has_any_enumerators)
 		{
 			output.WriteLine("switch (int64_t(v)) {{");
 			for (auto& enumerator : henum.Enumerators)
@@ -461,6 +480,21 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 		output.WriteLine("return {{}};");
 	}
 	output.WriteLine("}}");
+
+	if (has_any_enumerators && atEnumList(henum.Attributes, false))
+	{
+		output.WriteLine("inline constexpr {0} GetNext({0} v) {{ return {0}Values[(int64_t(v) + 1) % {0}Count]; }}", henum.Name);
+		output.WriteLine("inline constexpr {0} GetPrev({0} v) {{ return {0}Values[(int64_t(v) + ({0}Count - 1)) % {0}Count]; }}", henum.Name);
+
+		/// Preincrement
+		output.WriteLine("inline constexpr {0}& operator++({0}& v) {{ v = GetNext(v); return v; }}", henum.Name);
+		output.WriteLine("inline constexpr {0}& operator--({0}& v) {{ v = GetPrev(v); return v; }}", henum.Name);
+
+		/// Postincrement
+		output.WriteLine("inline constexpr {0} operator++({0}& v, int) {{ auto result = v; v = GetNext(v); return result; }}", henum.Name);
+		output.WriteLine("inline constexpr {0} operator--({0}& v, int) {{ auto result = v; v = GetPrev(v); return result; }}", henum.Name);
+	}
+
 	output.WriteLine("inline std::ostream& operator<<(std::ostream& strm, {} v) {{ strm << GetEnumeratorName(v); return strm; }}", henum.Name);
 	output.WriteLine("template <typename T>");
 	output.WriteLine("void OutputFlagsFor(std::ostream& strm, {}, T flags, std::string_view separator = \", \") {{ ", henum.Name);

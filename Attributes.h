@@ -32,13 +32,19 @@ struct AttributeProperties
 		Name = std::move(name);
 	}
 
-	operator std::string const&() const noexcept { return Name; }
-	auto operator <=>(std::string const& other) const noexcept { return Name <=> other; }
+	//operator std::string const&() const noexcept { return Name; }
+	//auto operator <=>(std::string const& other) const noexcept { return Name <=> other; }
 
 	template <typename T>
-	auto operator()(json const& attrs, T&& default_value)
+	auto operator()(json const& attrs, T&& default_value) const
 	{
-		return attrs.value(this->Name, std::forward<T>(default_value));
+		auto it = attrs.find(this->Name);
+		if (it == attrs.end())
+			return std::forward<T>(default_value);
+		if constexpr (std::is_same_v<T, bool>)
+			return it->is_null() ? true : (bool)*it;
+		else
+			return (T)*it;
 	}
 
 private:
@@ -68,6 +74,8 @@ inline const AttributeProperties atMethodGetterFor{ "GetterFor", "This function 
 inline const AttributeProperties atMethodSetterFor{ "SetterFor", "This function is a setter for the named field", json::value_t::string };
 
 inline const AttributeProperties atRecordAbstract{ "Abstract", "This record is abstract (don't create special constructors)", json::value_t::boolean, false };
-inline const AttributeProperties atRecordSingleton{ "Singleton", "This record is a singleton ", json::value_t::boolean, false };
+inline const AttributeProperties atRecordSingleton{ "Singleton", "This record is a singleton. Adds a static function 'SingletonInstance' that returns the single instance of this record", json::value_t::boolean, false };
 
 inline const AttributeProperties atRecordCreateProxy{ "CreateProxy", "If set to false, proxy classes are not built for classes with virtual methods", json::value_t::boolean, true };
+
+inline const AttributeProperties atEnumList{ "List", "If set to true, generates GetNext() and GetPrev() functions that return the next/prev enumerator in sequence, wrapping around", json::value_t::boolean, false };

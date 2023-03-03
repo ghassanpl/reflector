@@ -11,6 +11,7 @@
 #include <future>
 #include <thread>
 #include <fstream>
+using namespace std::string_literals;
 
 uint64_t ChangeTime = 0;
 std::vector<FileMirror> Mirrors;
@@ -55,14 +56,14 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 
 	if (!Flags.is_set(Reflector::FieldFlags::NoSetter))
 	{
-		auto on_change = Attributes.value(atFieldOnChange, "");
+		auto on_change = atFieldOnChange(Attributes, ""s);
 		if (!on_change.empty())
 			on_change = on_change + "(); ";
 		klass.AddArtificialMethod("void", "Set" + DisplayName, Type + " const & value", Name + " = value; " + on_change, { "Sets " + field_comments }, {}, DeclarationLine);
 	}
 
-	auto flag_getters = Attributes.value(atFieldFlagGetters, "");
-	auto flag_setters = Attributes.value(atFieldFlags, "");
+	auto flag_getters = atFieldFlagGetters(Attributes, ""s);
+	auto flag_setters = atFieldFlags(Attributes, ""s);
 	if (!flag_getters.empty() && !flag_setters.empty())
 	{
 		ReportError(mirror.SourceFilePath, DeclarationLine, "Only one of `FlagGetters' and `Flags' can be declared");
@@ -80,6 +81,8 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 			ReportError(mirror.SourceFilePath, DeclarationLine, "Enum `{}' not reflected", enum_name);
 			return;
 		}
+
+		klass.AdditionalBodyLines.push_back(std::format("static_assert(::std::is_integral_v<{}>, \"Type '{}' for field '{}' with Flags attribute must be integral\");", this->Type, henum->Name, this->Name));
 
 		for (auto& enumerator : henum->Enumerators)
 		{
@@ -237,12 +240,12 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 			should_build_proxy = true;
 	}
 
-	should_build_proxy = should_build_proxy && Attributes.value(atRecordCreateProxy, true);
+	should_build_proxy = should_build_proxy && atRecordCreateProxy(Attributes, true);
 
 	Flags.set_to(should_build_proxy, ClassFlags::HasProxy);
 
 	/// Create singleton method if singleton
-	if (Attributes.value("Singleton", false))
+	if (atRecordSingleton(Attributes, false))
 		AddArtificialMethod("self_type&", "SingletonInstance", "", "static self_type instance; return instance;", { "Returns the single instance of this class" }, Reflector::MethodFlags::Static);
 
 	/// Create methods for fields and methods

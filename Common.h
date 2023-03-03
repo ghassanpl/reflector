@@ -162,6 +162,7 @@ struct Class : public Declaration
 	std::vector<Field> Fields;
 	std::vector<Method> Methods;
 	std::map<std::string, Property, std::less<>> Properties;
+	std::vector<std::string> AdditionalBodyLines;
 
 	ghassanpl::enum_flags<ClassFlags> Flags;
 

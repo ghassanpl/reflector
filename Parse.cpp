@@ -138,12 +138,11 @@ json ParseAttributeList(string_view line)
 {
 	line = TrimWhitespace(line);
 	line = Expect(line, "(");
-	line.remove_suffix(1); /// )
 	line = TrimWhitespace(line);
 	if (line.empty())
 		return json::object();
 	//return json::parse(line);
-	return ghassanpl::formats::wilson::parse_object(line);
+	return ghassanpl::formats::wilson::parse_object(line, ')');
 }
 
 Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options const& options)
@@ -271,12 +270,13 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 
 	SwallowOptional(line, "mutable");
 
-	string_view eq = "=", colon = ";";
+	string_view eq = "=", open_brace = "{", colon = ";";
 	string_view type_and_name = "";
 	auto eq_start = std::find_first_of(line.begin(), line.end(), eq.begin(), eq.end());
+	auto brace_start = std::find_first_of(line.begin(), line.end(), open_brace.begin(), open_brace.end());
 	auto colon_start = std::find_first_of(line.begin(), line.end(), colon.begin(), colon.end());
 
-	if (!TrimWhitespace(string_ops::make_sv(colon_start + 1, line.end())).empty())
+	if (colon_start != line.end() && !TrimWhitespace(string_ops::make_sv(colon_start + 1, line.end())).empty())
 	{
 		throw std::exception{ "Field must be only thing on line" };
 	}
@@ -285,6 +285,11 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 	{
 		type_and_name = TrimWhitespace(string_ops::make_sv(line.begin(), eq_start));
 		std::get<2>(result) = TrimWhitespace(string_ops::make_sv(eq_start + 1, colon_start));
+	}
+	else if (brace_start != line.end())
+	{
+		type_and_name = TrimWhitespace(string_ops::make_sv(line.begin(), brace_start));
+		std::get<2>(result) = TrimWhitespace(string_ops::make_sv(brace_start, colon_start));
 	}
 	else
 	{
@@ -320,27 +325,27 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 		field.DisplayName = field.Name;
 
 	/// Disable if explictly stated
-	if (field.Attributes.value(atFieldGetter, true) == false)
+	if (atFieldGetter(field.Attributes, true) == false)
 		field.Flags.set(Reflector::FieldFlags:: NoGetter);
-	if (field.Attributes.value(atFieldSetter, true) == false)
+	if (atFieldSetter(field.Attributes, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoSetter);
-	if (field.Attributes.value(atFieldEditor, true) == false || field.Attributes.value(atFieldEdit, true) == false)
+	if (atFieldEditor(field.Attributes, true) == false || atFieldEdit(field.Attributes, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoEdit);
-	if (field.Attributes.value(atFieldSave, true) == false)
+	if (atFieldSave(field.Attributes, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoSave);
-	if (field.Attributes.value(atFieldLoad, true) == false)
+	if (atFieldLoad(field.Attributes, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoLoad);
 
 	/// Serialize = false implies Save = false, Load = false
-	if (field.Attributes.value(atFieldSerialize, true) == false)
+	if (atFieldSerialize(field.Attributes, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoSave, Reflector::FieldFlags::NoLoad);
 
 	/// Private implies Getter = false, Setter = false, Editor = false
-	if (field.Attributes.value(atFieldPrivate, false))
+	if (atFieldPrivate(field.Attributes, false))
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
 
 	/// ParentPointer implies Editor = false, Setter = false
-	if (field.Attributes.value(atFieldParentPointer, false))
+	if (atFieldParentPointer(field.Attributes, false))
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter);
 
 	/// ChildVector implies Setter = false
@@ -350,18 +355,18 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 
 
 	/// Enable if explictly stated
-	if (field.Attributes.value(atFieldGetter, false) == true)
+	if (atFieldGetter(field.Attributes, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoGetter);
-	if (field.Attributes.value(atFieldSetter, false) == true)
+	if (atFieldSetter(field.Attributes, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoSetter);
-	if (field.Attributes.value(atFieldEditor, false) == true || field.Attributes.value(atFieldEdit, false) == true)
+	if (atFieldEditor(field.Attributes, false) == true || atFieldEdit(field.Attributes, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoEdit);
-	if (field.Attributes.value(atFieldSave, false) == true)
+	if (atFieldSave(field.Attributes, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoSave);
-	if (field.Attributes.value(atFieldLoad, false) == true)
+	if (atFieldLoad(field.Attributes, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoLoad);
 
-	if (field.Attributes.value(atFieldRequired, false))
+	if (atFieldRequired(field.Attributes, false))
 		field.Flags.set(Reflector::FieldFlags::Required);
 
 	return field;
@@ -470,10 +475,10 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 			method.Flags += MethodFlags::Abstract;
 	}
 
-	if (auto getter = method.Attributes.find(atMethodUniqueName); getter != method.Attributes.end())
+	if (auto getter = method.Attributes.find(atMethodUniqueName.Name); getter != method.Attributes.end())
 		method.UniqueName = getter->get<std::string>();
 
-	if (auto getter = method.Attributes.find(atMethodGetterFor); getter != method.Attributes.end())
+	if (auto getter = method.Attributes.find(atMethodGetterFor.Name); getter != method.Attributes.end())
 	{
 		auto& property = klass.Properties[getter.value()];
 		if (!property.GetterName.empty())
@@ -485,7 +490,7 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 		if (property.Name.empty()) property.Name = getter.value();
 	}
 
-	if (auto setter = method.Attributes.find(atMethodSetterFor); setter != method.Attributes.end())
+	if (auto setter = method.Attributes.find(atMethodSetterFor.Name); setter != method.Attributes.end())
 	{
 		auto& property = klass.Properties[setter.value()];
 		if (!property.SetterName.empty())
@@ -522,7 +527,7 @@ Class ParseClassDecl(string_view line, string_view next_line, size_t line_num, s
 	if (is_struct)
 		klass.Flags += ClassFlags::DeclaredStruct;
 
-	if (klass.Flags.is_set(ClassFlags::Struct) || klass.Attributes.value(atRecordAbstract, false) == true || klass.Attributes.value(atRecordSingleton, false) == true)
+	if (klass.Flags.is_set(ClassFlags::Struct) || atRecordAbstract(klass.Attributes, false) == true || atRecordSingleton(klass.Attributes, false) == true)
 		klass.Flags += ClassFlags::NoConstructors;
 
 	return klass;

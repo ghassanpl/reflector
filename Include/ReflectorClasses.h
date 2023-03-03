@@ -49,6 +49,7 @@ namespace Reflector
 		NoDebug,
 
 		Required,
+		Artificial,
 	};
 
 	enum class MethodFlags
@@ -164,6 +165,9 @@ namespace Reflector
 	{
 		const char* Name = "";
 		const char* Attributes = "{}";
+#ifdef NLOHMANN_JSON_VERSION_MAJOR
+		nlohmann::json AttributesJSON;
+#endif
 		std::vector<EnumeratorReflectionData> Enumerators;
 		std::type_index TypeIndex;
 		uint64_t Flags = 0;
