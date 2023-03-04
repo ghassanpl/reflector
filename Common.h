@@ -61,6 +61,8 @@ enum class AccessMode { Unspecified, Public, Private, Protected };
 
 static constexpr const char* AMStrings[] = { "Unspecified", "Public", "Private", "Protected" };
 
+uint64_t GenerateUID(std::filesystem::path const& file_path, size_t declaration_line);
+
 struct FileMirror;
 struct Class;
 
@@ -72,8 +74,13 @@ struct Declaration
 	AccessMode Access = AccessMode::Unspecified;
 	std::vector<std::string> Comments;
 
+	uint64_t UID = 0;
+
+	std::string GeneratedUniqueName() const { return std::format("{}_{:08x}", Name, UID); }
+
 	json ToJSON() const;
 };
+
 
 struct Field : public Declaration
 {

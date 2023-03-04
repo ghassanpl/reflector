@@ -7,6 +7,7 @@
 #include "Attributes.h"
 #include <ghassanpl/string_ops.h>
 #include <ghassanpl/wilson.h>
+#include <ghassanpl/hashes.h>
 #include <charconv>
 #include <fstream>
 
@@ -28,6 +29,11 @@ string_view Expect(string_view str, string_view value)
 std::string EscapeJSON(json const& json)
 {
 	return "R\"_REFLECT_(" + json.dump() + ")_REFLECT_\"";
+}
+
+uint64_t GenerateUID(std::filesystem::path const& file_path, size_t declaration_line)
+{
+	return ghassanpl::hash(file_path.string(), declaration_line);
 }
 
 bool SwallowOptional(string_view& str, string_view swallow)
@@ -84,8 +90,7 @@ std::string ParseType(string_view& str)
 		}
 	}
 
-	std::string result = { start, str.begin() };
-	return result;
+	return ghassanpl::string_ops::make_string(start, str.begin());
 }
 
 std::string ParseExpression(string_view& str)
@@ -439,7 +444,9 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 			num_pars--;
 		next_line.remove_prefix(1);
 	} while (num_pars);
-	method.SetParameters(std::string{ start_args + 1, next_line.begin() - 1 });
+	auto params = string_ops::make_sv(start_args + 1, next_line.begin());
+	params.remove_suffix(1);
+	method.SetParameters(std::string{params});
 
 	next_line = TrimWhitespace(next_line);
 
@@ -571,11 +578,13 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 			{
 				mirror.Enums.push_back(ParseEnum(lines, line_num, options));
 				mirror.Enums.back().Comments = std::exchange(comments, {});
+				mirror.Enums.back().UID = GenerateUID(path, line_num);
 			}
 			else if (line.starts_with(options.ClassPrefix))
 			{
 				current_access = AccessMode::Private;
 				mirror.Classes.push_back(ParseClassDecl(line, next_line, line_num, std::exchange(comments, {}), options));
+				mirror.Classes.back().UID = GenerateUID(path, line_num);
 				if (options.Verbose)
 				{
 					PrintLine("Found class {}", mirror.Classes.back().Name);
@@ -591,6 +600,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 
 				auto& klass = mirror.Classes.back();
 				klass.Fields.push_back(ParseFieldDecl(mirror, klass, line, next_line, line_num, current_access, std::exchange(comments, {}), options));
+				klass.Fields.back().UID = GenerateUID(path, line_num);
 			}
 			else if (line.starts_with(options.MethodPrefix))
 			{
@@ -602,6 +612,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 
 				auto& klass = mirror.Classes.back();
 				klass.Methods.push_back(ParseMethodDecl(klass, line, next_line, line_num, current_access, std::exchange(comments, {}), options));
+				klass.Methods.back().UID = GenerateUID(path, line_num);
 			}
 			else if (line.starts_with(options.BodyPrefix))
 			{

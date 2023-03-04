@@ -19,6 +19,7 @@ namespace Reflector
 #ifdef NLOHMANN_JSON_VERSION_MAJOR
 		nlohmann::json AttributesJSON;
 #endif
+		uint64_t UID = 0;
 		void* (*Constructor)(const ::Reflector::ClassReflectionData&) = {};
 
 		/// These are vectors and not e.g. initializer_list's because you might want to create your own classes
@@ -152,6 +153,7 @@ namespace Reflector
 		const char* Body = "";
 		std::type_index ReturnTypeIndex;
 		uint64_t Flags = 0;
+		uint64_t UID = 0;
 
 		ClassReflectionData const* ParentClass = nullptr;
 	};
@@ -173,6 +175,7 @@ namespace Reflector
 		std::vector<EnumeratorReflectionData> Enumerators;
 		std::type_index TypeIndex;
 		uint64_t Flags = 0;
+		uint64_t UID = 0;
 	};
 
 	struct Reflectable
