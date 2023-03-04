@@ -203,6 +203,7 @@ int main(int argc, const char* argv[])
 				factory.QueueArtifact(artifact_path / "ReflectDatabase.json", CreateJSONDBArtifact);
 			factory.QueueArtifact(artifact_path / "Reflector.h", CreateReflectorHeaderArtifact, artifact_path / "Reflector.h");
 			factory.QueueArtifact(artifact_path / "ReflectorClasses.h", CreateReflectorClassesHeaderArtifact);
+			factory.QueueArtifact(artifact_path / "Database.reflect.cpp", CreateReflectorDatabaseArtifact);
 		}
 		files_changed += factory.Run();
 

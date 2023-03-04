@@ -18,11 +18,12 @@ bool CreateTypeListArtifact(path const& cwd, Options const& options);
 bool CreateIncludeListArtifact(path const& cwd, Options const& options);
 bool CreateJSONDBArtifact(path const& cwd, Options const& options);
 bool CreateReflectorHeaderArtifact(path const& target_path, const Options& options, path const& final_path);
-bool CreateReflectorClassesHeaderArtifact(path const& cwd, const Options& opts);
+bool CreateReflectorClassesHeaderArtifact(path const& target_path, const Options& opts);
+bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opts);
 
 struct FileWriter
 {
-	std::ofstream mOutFile;
+	std::unique_ptr<std::ostream> mOutFile;
 	path mPath;
 	size_t CurrentIndent = 0;
 	bool InDefine = false;
@@ -36,17 +37,22 @@ struct FileWriter
 
 	Indenter Indent() { return Indenter{ *this }; }
 
-	FileWriter(path path) : mOutFile{ path }, mPath(path) {}
+	FileWriter(path path) : mOutFile{ new std::ofstream{path} }, mPath(path) {
+		mOutFile->exceptions(std::ofstream::failbit | std::ofstream::badbit);
+		if (!static_cast<std::ofstream*>(mOutFile.get())->is_open())
+			throw std::runtime_error(std::format("could not open file '{}' for writing", path.string()));
+	}
+	FileWriter() : mOutFile{ new std::stringstream{} }, mPath() {}
 
 	template <typename... ARGS>
 	void WriteLine(std::string_view str, ARGS&& ... args)
 	{
-		mOutFile << std::string(CurrentIndent, '\t');
+		*mOutFile << std::string(CurrentIndent, '\t');
 		//((mOutFile << std::forward<ARGS>(args)), ...);
-		mOutFile << std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...));
+		*mOutFile << std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...));
 		if (InDefine)
-			mOutFile << " \\";
-		mOutFile << '\n';
+			*mOutFile << " \\";
+		*mOutFile << '\n';
 	}
 
 	//void WriteJSON(json const& value);

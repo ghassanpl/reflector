@@ -258,7 +258,10 @@ void Class::CreateArtificialMethods(FileMirror& mirror)
 		property.second.CreateArtificialMethods(mirror, *this);
 
 	for (auto& am : mArtificialMethods)
+	{
+		am.UID = GenerateUID(mirror.SourceFilePath, am.ActualDeclarationLine());
 		Methods.push_back(std::move(am));
+	}
 	mArtificialMethods.clear();
 
 	/// First check unique method names
@@ -374,7 +377,7 @@ Options::Options(path exe_path, path const& options_file_path)
 	OPTION(Force, false, "Ignore timestamps, regenerate all files");
 	OPTION(Verbose, false, "Print additional information");
 	OPTION(CreateDatabase, true, "Create a JSON database with reflection data");
-	OPTION(UseJSON, true, "Output code that uses nlohmann::json to store class attributes");
+	OPTION(UseJSON, true, "Output code that uses json to store class attributes");
 	OPTION(ForwardDeclare, true, "Output forward declarations of reflected classes");
 	OPTION(CreateArtifacts, true, "Whether to generate artifacts (*.reflect.h files, db, others)");
 	OPTION(AnnotationPrefix, "R", "The prefix for all annotation macros");

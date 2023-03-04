@@ -16,8 +16,8 @@ namespace Reflector
 		const char* Name = "";
 		const char* ParentClassName = "";
 		const char* Attributes = "{}";
-#ifdef NLOHMANN_JSON_VERSION_MAJOR
-		nlohmann::json AttributesJSON;
+#if REFLECTOR_USES_JSON
+		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
 		uint64_t UID = 0;
 		void* (*Constructor)(const ::Reflector::ClassReflectionData&) = {};
@@ -26,7 +26,7 @@ namespace Reflector
 		std::vector<FieldReflectionData> Fields; 
 		std::vector<MethodReflectionData> Methods;
 
-		std::type_index TypeIndex;
+		std::type_index TypeIndex = typeid(void);
 
 		uint64_t Flags = 0;
 	};
@@ -131,10 +131,10 @@ namespace Reflector
 		const char* FieldType = "";
 		const char* Initializer = "";
 		const char* Attributes = "{}";
-#ifdef NLOHMANN_JSON_VERSION_MAJOR
-		nlohmann::json AttributesJSON;
+#if REFLECTOR_USES_JSON
+		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
-		std::type_index FieldTypeIndex;
+		std::type_index FieldTypeIndex = typeid(void);
 		uint64_t Flags = 0;
 
 		ClassReflectionData const* ParentClass = nullptr;
@@ -146,12 +146,12 @@ namespace Reflector
 		const char* ReturnType = "";
 		const char* Parameters = "";
 		const char* Attributes = "{}";
-#ifdef NLOHMANN_JSON_VERSION_MAJOR
-		nlohmann::json AttributesJSON;
+#if REFLECTOR_USES_JSON
+		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
 		const char* UniqueName = "";
 		const char* Body = "";
-		std::type_index ReturnTypeIndex;
+		std::type_index ReturnTypeIndex = typeid(void);
 		uint64_t Flags = 0;
 		uint64_t UID = 0;
 
@@ -169,11 +169,11 @@ namespace Reflector
 	{
 		const char* Name = "";
 		const char* Attributes = "{}";
-#ifdef NLOHMANN_JSON_VERSION_MAJOR
-		nlohmann::json AttributesJSON;
+#if REFLECTOR_USES_JSON
+		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
 		std::vector<EnumeratorReflectionData> Enumerators;
-		std::type_index TypeIndex;
+		std::type_index TypeIndex = typeid(void);
 		uint64_t Flags = 0;
 		uint64_t UID = 0;
 	};
@@ -186,8 +186,8 @@ namespace Reflector
 				.Name = "Reflectable",
 				.ParentClassName = "",
 				.Attributes = "",
-#ifdef NLOHMANN_JSON_VERSION_MAJOR
-				.AttributesJSON = ::nlohmann::json::object(),
+#if REFLECTOR_USES_JSON
+				.AttributesJSON = {},
 #endif
 				.TypeIndex = typeid(Reflectable)
 			}; 
@@ -209,4 +209,12 @@ namespace Reflector
 	{
 		using Type = void;
 	};
+
+	template <typename REFLECTABLE_CLASS>
+	requires (std::is_class_v<REFLECTABLE_CLASS>)
+	::Reflector::ClassReflectionData const& Reflect();
+
+	template <typename REFLECTABLE_CLASS>
+	requires (std::is_enum_v<REFLECTABLE_CLASS>)
+	::Reflector::EnumReflectionData const& Reflect();
 }

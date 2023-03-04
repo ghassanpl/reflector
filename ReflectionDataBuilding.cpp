@@ -7,6 +7,8 @@
 #include "Attributes.h"
 #include <charconv>
 
+bool BuildDatabaseEntriesForMirror(FileWriter& output, const Options& options, FileMirror const& file);
+
 uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, const Options& opts)
 {
 	auto stat = std::filesystem::status(target_path);
@@ -52,26 +54,52 @@ bool CreateReflectorClassesHeaderArtifact(path const& path, const Options& optio
 	return true;
 }
 
+bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opts)
+{
+	FileWriter database_file{ target_path };
+	
+	database_file.WriteLine("#include \"Reflector.h\"");
+	if (opts.GenerateTypeIndices)
+		database_file.WriteLine("#include \"Includes.reflect.h\"");
+	
+	for (auto& mirror : GetMirrors())
+	{
+		if (!BuildDatabaseEntriesForMirror(database_file, opts, mirror))
+			return false;
+	}
+	database_file.Close();
+	
+	return true;
+}
+
 bool CreateReflectorHeaderArtifact(path const& target_path, const Options& options, path const& final_path)
 {
 	auto rel = final_path.parent_path().lexically_relative(options.ArtifactPath);
 
 	FileWriter reflect_file{ target_path };
 	reflect_file.WriteLine("#pragma once");
+	if (options.UseJSON)
+	{
+		reflect_file.WriteLine("#include {}", options.JSONHeaderPath);
+		reflect_file.WriteLine("#define REFLECTOR_USES_JSON 1", options.MacroPrefix);
+		reflect_file.WriteLine("#define REFLECTOR_JSON_TYPE {}", options.JSONType);
+		reflect_file.WriteLine("#define REFLECTOR_JSON_PARSE_FUNC {}", options.JSONParseFunction);
+	}
 	reflect_file.WriteLine("#include \"{}/ReflectorClasses.h\"", rel.string());
-	reflect_file.WriteLine("#define TOKENPASTE3_IMPL(x, y, z) x ## y ## z");
-	reflect_file.WriteLine("#define TOKENPASTE3(x, y, z) TOKENPASTE3_IMPL(x, y, z)");
-	reflect_file.WriteLine("#define TOKENPASTE2_IMPL(x, y) x ## y");
-	reflect_file.WriteLine("#define TOKENPASTE2(x, y) TOKENPASTE2_IMPL(x, y)");
+	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE3_IMPL(x, y, z) x ## y ## z");
+	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE3(x, y, z) REFLECTOR_TOKENPASTE3_IMPL(x, y, z)");
+	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE2_IMPL(x, y) x ## y");
+	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE2(x, y) REFLECTOR_TOKENPASTE2_IMPL(x, y)");
 	reflect_file.WriteLine("");
-	reflect_file.WriteLine("#define {}(...) TOKENPASTE2({}_GENERATED_CLASS_, __LINE__)", options.ClassPrefix, options.MacroPrefix);
+	reflect_file.WriteLine("#define {}(...) REFLECTOR_TOKENPASTE2({}_GENERATED_CLASS_, __LINE__)", options.ClassPrefix, options.MacroPrefix);
 	reflect_file.WriteLine("#define {}(...)", options.FieldPrefix);
 	reflect_file.WriteLine("#define {}(...)", options.MethodPrefix);
-	reflect_file.WriteLine("#define {}(...) TOKENPASTE2({}_GENERATED_CLASS_BODY_, __LINE__)", options.BodyPrefix, options.MacroPrefix);
-	reflect_file.WriteLine("#define {}(...) TOKENPASTE2({}_ENUM_, __LINE__)", options.EnumPrefix, options.MacroPrefix);
+	reflect_file.WriteLine("#define {}(...) REFLECTOR_TOKENPASTE2({}_GENERATED_CLASS_BODY_, __LINE__)", options.BodyPrefix, options.MacroPrefix);
+	reflect_file.WriteLine("#define {}(...) REFLECTOR_TOKENPASTE2({}_ENUM_, __LINE__)", options.EnumPrefix, options.MacroPrefix);
 	reflect_file.WriteLine("#define {}(...)", options.EnumeratorPrefix);
 	reflect_file.WriteLine("");
-	reflect_file.WriteLine("#define {}_CALLABLE(ret, name, args, id) static int TOKENPASTE3(ScriptFunction_, name, id)(struct lua_State* thread) {{ return 0; }}", options.MacroPrefix);
+	if (options.GenerateLuaFunctionBindings)
+		reflect_file.WriteLine("#define {}_CALLABLE(ret, name, args) static int ScriptFunction_ ## name(struct lua_State* thread) {{ return 0; }}", options.MacroPrefix);
 	reflect_file.Close();
 	
 	return true;
@@ -107,17 +135,133 @@ bool CreateTypeListArtifact(path const& path, Options const& options)
 std::string BuildCompileTimeLiteral(std::string_view str)
 {
 	return std::format("\"{}\"",ghassanpl::string_ops::escaped(str));
-	/*
-	std::string result;
-	for (auto c : str)
+}
+
+void BuildStaticReflectionData(FileWriter& output, const Enum& henum, const Options& options)
+{
+	output.WriteLine("::Reflector::EnumReflectionData const& StaticGetReflectionData_For_{}() {{", henum.GeneratedUniqueName());
+	output.CurrentIndent++;
+	output.WriteLine("static const ::Reflector::EnumReflectionData _data = {{");
+	output.CurrentIndent++;
+
+	output.WriteLine(".Name = \"{}\",", henum.Name);
+	if (!henum.Attributes.empty())
 	{
-		result += "'";
-		result += c;
-		result += "',";
+		output.WriteLine(".Attributes = {},", EscapeJSON(henum.Attributes));
+		if (options.UseJSON)
+			output.WriteLine(".AttributesJSON = {}({}),", options.JSONParseFunction, EscapeJSON(henum.Attributes));
 	}
-	result += "0";
-	return result;
-	*/
+	output.WriteLine(".Enumerators = {{");
+	output.CurrentIndent++;
+	for (auto& enumerator : henum.Enumerators)
+	{
+		output.WriteLine("::Reflector::EnumeratorReflectionData {{");
+		output.CurrentIndent++;
+		output.WriteLine(".Name = \"{}\",", enumerator.Name);
+		output.WriteLine(".Value = {},", enumerator.Value);
+		output.WriteLine(".Flags = {},", enumerator.Flags.bits);
+		output.CurrentIndent--;
+		output.WriteLine("}},");
+	}
+	output.CurrentIndent--;
+	output.WriteLine("}},");
+	output.WriteLine(".TypeIndex = typeid({}),", henum.Name);
+	output.WriteLine(".Flags = {},", henum.Flags.bits);
+	output.CurrentIndent--;
+	output.WriteLine("}}; return _data;");
+	output.CurrentIndent--;
+	output.WriteLine("}}");
+
+	output.WriteLine("template <>");
+	output.WriteLine("::Reflector::EnumReflectionData const& Reflector::Reflect<{}>() {{ return StaticGetReflectionData_For_{}(); }}", henum.Name, henum.GeneratedUniqueName());
+}
+
+void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Options& options)
+{
+	output.WriteLine("::Reflector::ClassReflectionData const& StaticGetReflectionData_For_{}() {{", klass.GeneratedUniqueName());
+	output.CurrentIndent++;
+	output.WriteLine("static const ::Reflector::ClassReflectionData _data = {{");
+	output.CurrentIndent++;
+	output.WriteLine(".Name = \"{}\",", klass.Name);
+	output.WriteLine(".ParentClassName = \"{}\",", OnlyType(klass.ParentClass));
+
+	if (!klass.Attributes.empty())
+	{
+		output.WriteLine(".Attributes = {},", EscapeJSON(klass.Attributes));
+		if (options.UseJSON)
+			output.WriteLine(".AttributesJSON = {}({}),", options.JSONParseFunction, EscapeJSON(klass.Attributes));
+	}
+	if (!klass.Flags.is_set(ClassFlags::NoConstructors))
+		output.WriteLine(".Constructor = +[](const ::Reflector::ClassReflectionData& klass){{ return (void*)new self_type{{klass}}; }},");
+
+	/// Fields
+	output.WriteLine(".Fields = {{");
+	output.CurrentIndent++;
+	for (auto& field : klass.Fields)
+	{
+		output.WriteLine("::Reflector::FieldReflectionData {{");
+		output.CurrentIndent++;
+		output.WriteLine(".Name = \"{}\",", field.Name);
+		output.WriteLine(".FieldType = \"{}\",", field.Type);
+		if (!field.InitializingExpression.empty())
+			output.WriteLine(".Initializer = {},", EscapeJSON(field.InitializingExpression));
+		if (!field.Attributes.empty())
+		{
+			output.WriteLine(".Attributes = {},", EscapeJSON(field.Attributes));
+			if (options.UseJSON)
+				output.WriteLine(".AttributesJSON = {}({}),", options.JSONParseFunction, EscapeJSON(field.Attributes));
+		}
+		if (options.GenerateTypeIndices)
+			output.WriteLine(".FieldTypeIndex = typeid({}),", field.Type);
+		output.WriteLine(".Flags = {},", field.Flags.bits);
+		//output.WriteLine(".ParentClass = &_data");
+		output.CurrentIndent--;
+		output.WriteLine("}},");
+	}
+	output.CurrentIndent--;
+	output.WriteLine("}},");
+
+	/// Methods
+	output.WriteLine(".Methods = {{");
+	output.CurrentIndent++;
+	for (auto& method : klass.Methods)
+	{
+		output.WriteLine("::Reflector::MethodReflectionData {{");
+		output.CurrentIndent++;
+		output.WriteLine(".Name = \"{}\",", method.Name);
+		output.WriteLine(".ReturnType = \"{}\",", method.Type);
+		if (!method.GetParameters().empty())
+			output.WriteLine(".Parameters = {},", EscapeJSON(method.GetParameters()));
+		if (!method.Attributes.empty())
+		{
+			output.WriteLine(".Attributes = {},", EscapeJSON(method.Attributes));
+			if (options.UseJSON)
+				output.WriteLine(".AttributesJSON = {}({}),", options.JSONParseFunction, EscapeJSON(method.Attributes));
+		}
+		if (!method.UniqueName.empty())
+			output.WriteLine(".UniqueName = \"{}\",", method.UniqueName);
+		if (!method.Body.empty())
+			output.WriteLine(".Body = {},", EscapeJSON(method.Body));
+		if (options.GenerateTypeIndices)
+			output.WriteLine(".ReturnTypeIndex = typeid({}),", method.Type);
+		output.WriteLine(".Flags = {},", method.Flags.bits);
+		//output.WriteLine(".ParentClass = &_data");
+		output.CurrentIndent--;
+		output.WriteLine("}},");
+	}
+	output.CurrentIndent--;
+	output.WriteLine("}},");
+
+	if (options.GenerateTypeIndices)
+		output.WriteLine(".TypeIndex = typeid({}),", klass.Name);
+	output.WriteLine(".Flags = {}", klass.Flags.bits);
+	output.CurrentIndent--;
+	output.WriteLine("}}; return _data;");
+	output.CurrentIndent--;
+	output.WriteLine("}}");
+
+	output.WriteLine("template <>");
+	output.WriteLine("::Reflector::ClassReflectionData const& Reflector::Reflect<{}>() {{ return StaticGetReflectionData_For_{}(); }}", klass.Name, klass.GeneratedUniqueName());
 }
 
 bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
@@ -132,6 +276,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	{
 		output.WriteLine("{} {};", (klass.Flags.is_set(ClassFlags::DeclaredStruct) ? "struct" : "class"), klass.Name);
 	}
+	output.WriteLine("::Reflector::ClassReflectionData const& StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
 
 	/// ///////////////////////////////////// ///
 	/// Visitor macros
@@ -154,10 +299,15 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (size_t i = 0; i < klass.Methods.size(); i++)
 	{
 		const auto& method = klass.Methods[i];
-		if (!method.Flags.is_set(Reflector::MethodFlags::NoCallable))
+		if (options.GenerateLuaFunctionBindings && !method.Flags.is_set(Reflector::MethodFlags::NoCallable)) /// if callable
 		{
-			output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData().Methods[{2}], ({3})&{1}::{4}, &{1}::ScriptFunction_{4}{5}, ::Reflector::CompileTimeMethodData<{6}, {7}>{{}});",
-				options.MacroPrefix, klass.Name, i, method.GetSignature(klass), method.Name, method.ActualDeclarationLine(), method.Flags.bits, BuildCompileTimeLiteral(method.Name));
+			output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData().Methods[{2}], ({3})&{1}::{4}, &{1}::ScriptFunction_{5}, ::Reflector::CompileTimeMethodData<{6}, {7}>{{}});",
+				options.MacroPrefix, klass.Name, i, method.GetSignature(klass), method.Name, method.GeneratedUniqueName(), method.Flags.bits, BuildCompileTimeLiteral(method.Name));
+		}
+		else
+		{
+			output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData().Methods[{2}], ({3})&{1}::{4}, ::Reflector::CompileTimeMethodData<{5}, {6}>{{}});",
+				options.MacroPrefix, klass.Name, i, method.GetSignature(klass), method.Name, method.Flags.bits, BuildCompileTimeLiteral(method.Name));
 		}
 	}
 	output.EndDefine("");
@@ -221,84 +371,8 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	/// Reflection Data Method
 	/// ///////////////////////////////////// ///
 
-	output.WriteLine("static ::Reflector::ClassReflectionData const& StaticGetReflectionData() {{");
-	output.CurrentIndent++;
-	output.WriteLine("static const ::Reflector::ClassReflectionData _data = {{");
-	output.CurrentIndent++;
-	output.WriteLine(".Name = \"{}\",", klass.Name);
-	output.WriteLine(".ParentClassName = \"{}\",", OnlyType(klass.ParentClass));
-
-	if (!klass.Attributes.empty())
-	{
-		output.WriteLine(".Attributes = {},", EscapeJSON(klass.Attributes));
-		if (options.UseJSON)
-			output.WriteLine(".AttributesJSON = ::nlohmann::json::parse({}),", EscapeJSON(klass.Attributes));
-	}
-	if (!klass.Flags.is_set(ClassFlags::NoConstructors))
-		output.WriteLine(".Constructor = +[](const ::Reflector::ClassReflectionData& klass){{ return (void*)new self_type{{klass}}; }},");
-
-	/// Fields
-	output.WriteLine(".Fields = {{");
-	output.CurrentIndent++;
-	for (auto& field : klass.Fields)
-	{
-		output.WriteLine("::Reflector::FieldReflectionData {{");
-		output.CurrentIndent++;
-		output.WriteLine(".Name = \"{}\",", field.Name);
-		output.WriteLine(".FieldType = \"{}\",", field.Type);
-		if (!field.InitializingExpression.empty())
-			output.WriteLine(".Initializer = {},", EscapeJSON(field.InitializingExpression));
-		if (!field.Attributes.empty())
-		{
-			output.WriteLine(".Attributes = {},", EscapeJSON(field.Attributes));
-			if (options.UseJSON)
-				output.WriteLine(".AttributesJSON = ::nlohmann::json::parse({}),", EscapeJSON(field.Attributes));
-		}
-		output.WriteLine(".FieldTypeIndex = typeid({}),", field.Type);
-		output.WriteLine(".Flags = {},", field.Flags.bits);
-		output.WriteLine(".ParentClass = &_data");
-		output.CurrentIndent--;
-		output.WriteLine("}},");
-	}
-	output.CurrentIndent--;
-	output.WriteLine("}},");
-
-	/// Methods
-	output.WriteLine(".Methods = {{");
-	output.CurrentIndent++;
-	for (auto& method : klass.Methods)
-	{
-		output.WriteLine("::Reflector::MethodReflectionData {{");
-		output.CurrentIndent++;
-		output.WriteLine(".Name = \"{}\",", method.Name);
-		output.WriteLine(".ReturnType = \"{}\",", method.Type);
-		if (!method.GetParameters().empty())
-			output.WriteLine(".Parameters = {},", EscapeJSON(method.GetParameters()));
-		if (!method.Attributes.empty())
-		{
-			output.WriteLine(".Attributes = {},", EscapeJSON(method.Attributes));
-			if (options.UseJSON)
-				output.WriteLine(".AttributesJSON = ::nlohmann::json::parse({}),", EscapeJSON(method.Attributes));
-		}
-		if (!method.UniqueName.empty())
-			output.WriteLine(".UniqueName = \"{}\",", method.UniqueName);
-		if (!method.Body.empty())
-			output.WriteLine(".Body = {},", EscapeJSON(method.Body));
-		output.WriteLine(".ReturnTypeIndex = typeid({}),", method.Type);
-		output.WriteLine(".Flags = {},", method.Flags.bits);
-		output.WriteLine(".ParentClass = &_data");
-		output.CurrentIndent--;
-		output.WriteLine("}},");
-	}
-	output.CurrentIndent--;
-	output.WriteLine("}},");
-
-	output.WriteLine(".TypeIndex = typeid(self_type),");
-	output.WriteLine(".Flags = {}", klass.Flags.bits);
-	output.CurrentIndent--;
-	output.WriteLine("}}; return _data;");
-	output.CurrentIndent--;
-	output.WriteLine("}}");
+	//output.WriteLine("private: extern ::Reflector::ClassReflectionData const& StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
+	output.WriteLine("public: static ::Reflector::ClassReflectionData const& StaticGetReflectionData() {{ return StaticGetReflectionData_For_{}(); }}", klass.GeneratedUniqueName());
 
 	if (!klass.ParentClass.empty())
 	{
@@ -346,8 +420,8 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (auto& func : klass.Methods)
 	{
 		/// Callables for all methods
-		if (!func.Flags.is_set(Reflector::MethodFlags::NoCallable))
-			output.WriteLine("{}_CALLABLE(({}), {}, ({}), {})", options.MacroPrefix, func.Type, func.Name, func.GetParameters(), func.ActualDeclarationLine());
+		if (options.GenerateLuaFunctionBindings && !func.Flags.is_set(Reflector::MethodFlags::NoCallable))
+			output.WriteLine("{}_CALLABLE(({}), {}, ({}))", options.MacroPrefix, func.Type, func.GeneratedUniqueName(), func.GetParameters());
 		if (func.Flags.is_set(Reflector::MethodFlags::Artificial))
 		{
 			output.WriteLine("{} auto {}({}){} -> {} {{ {} }}", PrintPreFlags(func.Flags), func.Name, func.GetParameters(), PrintPostFlags(func.Flags), func.Type, func.Body);
@@ -488,43 +562,6 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 		output.WriteLine("inline void from_json(json const& j, {0}& p) {{ if (j.is_string()) p = GetEnumeratorFromName({0}{{}}, j); else p = ({0})(std::underlying_type_t<{0}>)j; }}", henum.Name);
 	}
 
-	/// ///////////////////////////////////// ///
-	/// Reflection data
-	/// ///////////////////////////////////// ///
-
-	output.WriteLine("inline ::Reflector::EnumReflectionData const& StaticGetReflectionData({}) {{", henum.Name);
-	output.CurrentIndent++;
-	output.WriteLine("static const ::Reflector::EnumReflectionData _data = {{");
-	output.CurrentIndent++;
-
-	output.WriteLine(".Name = \"{}\",", henum.Name);
-	if (!henum.Attributes.empty())
-	{
-		output.WriteLine(".Attributes = {},", EscapeJSON(henum.Attributes));
-		if (options.UseJSON)
-			output.WriteLine(".AttributesJSON = ::nlohmann::json::parse({}),", EscapeJSON(henum.Attributes));
-	}
-	output.WriteLine(".Enumerators = {{");
-	output.CurrentIndent++;
-	for (auto& enumerator : henum.Enumerators)
-	{
-		output.WriteLine("::Reflector::EnumeratorReflectionData {{");
-		output.CurrentIndent++;
-		output.WriteLine(".Name = \"{}\",", enumerator.Name);
-		output.WriteLine(".Value = {},", enumerator.Value);
-		output.WriteLine(".Flags = {},", enumerator.Flags.bits);
-		output.CurrentIndent--;
-		output.WriteLine("}},");
-	}
-	output.CurrentIndent--;
-	output.WriteLine("}},");
-	output.WriteLine(".TypeIndex = typeid({}),", henum.Name);
-	output.WriteLine(".Flags = {},", henum.Flags.bits);
-	output.CurrentIndent--;
-	output.WriteLine("}}; return _data;");
-	output.CurrentIndent--;
-	output.WriteLine("}}");
-
 	output.EndDefine();
 
 
@@ -539,35 +576,41 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	return true;
 }
 
-/*
-void FileWriter::WriteJSON(json const& value)
-{
-	CurrentIndent++;
-	_WriteLine("return R\"_REFLECT_({})_REFLECT_\";", value.dump());
-	CurrentIndent--;
-}
-*/
-
 void FileWriter::WriteLine()
 {
-	mOutFile << '\n';
+	*mOutFile << '\n';
 }
 
 void FileWriter::Close()
 {
-	mOutFile.flush();
-	mOutFile.close();
+	mOutFile->flush();
+	mOutFile = nullptr;
 }
 
 FileWriter::~FileWriter()
 {
-	if (mOutFile.is_open())
+	if (mOutFile)
 	{
-		mOutFile.close();
+		std::cerr << std::format("file '{}' not closed due to an error, deleting", mPath.string());
+		mOutFile = nullptr;
 		std::filesystem::remove(mPath);
 	}
 }
 
+bool BuildDatabaseEntriesForMirror(FileWriter& output, const Options& options, FileMirror const& file)
+{
+	for (auto& klass : file.Classes)
+	{
+		BuildStaticReflectionData(output, klass, options);
+		output.WriteLine();
+	}
+	for (auto& henum : file.Enums)
+	{
+		BuildStaticReflectionData(output, henum, options);
+		output.WriteLine();
+	}
+	return true;
+}
 
 bool BuildMirrorFile(path const& file_path, const Options& options, FileMirror const& file, uint64_t file_change_time, path const& final_path)
 {

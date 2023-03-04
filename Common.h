@@ -76,7 +76,7 @@ struct Declaration
 
 	uint64_t UID = 0;
 
-	std::string GeneratedUniqueName() const { return std::format("{}_{:08x}", Name, UID); }
+	std::string GeneratedUniqueName() const { return std::format("{}_{:016x}", Name, UID); }
 
 	json ToJSON() const;
 };
@@ -233,6 +233,14 @@ struct Options
 	bool UseJSON = true;
 	bool CreateArtifacts = true;
 	bool CreateDatabase = true;
+
+	std::string JSONHeaderPath = "<nlohmann/json.hpp>";
+	std::string JSONParseFunction = "::nlohmann::json::parse";
+	std::string JSONType = "::nlohmann::json";
+
+	bool GenerateLuaFunctionBindings = false;
+
+	bool GenerateTypeIndices = true;
 
 	/// TODO: Read this from cmdline
 	bool ForwardDeclare = true;
