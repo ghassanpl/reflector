@@ -14,6 +14,7 @@ namespace Reflector
 	struct ClassReflectionData
 	{
 		const char* Name = "";
+		const char* FullType = "";
 		const char* ParentClassName = "";
 		const char* Attributes = "{}";
 #if REFLECTOR_USES_JSON
@@ -168,6 +169,7 @@ namespace Reflector
 	struct EnumReflectionData
 	{
 		const char* Name = "";
+		const char* FullType = "";
 		const char* Attributes = "{}";
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
@@ -184,6 +186,7 @@ namespace Reflector
 		{
 			static const ClassReflectionData data = { 
 				.Name = "Reflectable",
+				.FullType = "Reflector::Reflectable",
 				.ParentClassName = "",
 				.Attributes = "",
 #if REFLECTOR_USES_JSON

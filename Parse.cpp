@@ -10,6 +10,7 @@
 #include <ghassanpl/hashes.h>
 #include <charconv>
 #include <fstream>
+using namespace std::string_literals;
 
 std::string TypeFromVar(string_view str)
 {
@@ -211,6 +212,8 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 		line_num++;
 	}
 
+	henum.Namespace = atTypeNamespace(henum.Attributes, ""s);
+
 	return henum;
 }
 
@@ -324,14 +327,18 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 	field.Comments = std::move(comments);
 	auto decl = ParseFieldDecl(next_line);
 	std::tie(field.Type, field.Name, field.InitializingExpression) = decl;
-	if (field.Name.size() > 1 && field.Name[0] == 'm' && isupper(field.Name[1]))
+	if (field.Name.size() > 1 && field.Name[0] == 'm' && isupper(field.Name[1])) /// TODO: Change this to an optionable regex
 		field.DisplayName.assign(field.Name.begin() + 1, field.Name.end());
 	else
 		field.DisplayName = field.Name;
+	field.CleanName = field.DisplayName;
+
+	/// Get display name from attributes if set
+	atDisplayName.TryGet(field.Attributes, field.DisplayName);
 
 	/// Disable if explictly stated
 	if (atFieldGetter(field.Attributes, true) == false)
-		field.Flags.set(Reflector::FieldFlags:: NoGetter);
+		field.Flags.set(Reflector::FieldFlags::NoGetter);
 	if (atFieldSetter(field.Attributes, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoSetter);
 	if (atFieldEditor(field.Attributes, true) == false || atFieldEdit(field.Attributes, true) == false)
@@ -537,6 +544,8 @@ Class ParseClassDecl(string_view line, string_view next_line, size_t line_num, s
 	if (klass.Flags.is_set(ClassFlags::Struct) || atRecordAbstract(klass.Attributes, false) == true || atRecordSingleton(klass.Attributes, false) == true)
 		klass.Flags += ClassFlags::NoConstructors;
 
+	klass.Namespace = atTypeNamespace(klass.Attributes, ""s);
+
 	return klass;
 }
 
@@ -587,7 +596,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				mirror.Classes.back().UID = GenerateUID(path, line_num);
 				if (options.Verbose)
 				{
-					PrintLine("Found class {}", mirror.Classes.back().Name);
+					PrintLine("Found class {}", mirror.Classes.back().FullType());
 				}
 			}
 			else if (line.starts_with(options.FieldPrefix))

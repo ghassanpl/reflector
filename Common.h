@@ -76,6 +76,22 @@ struct Declaration
 
 	uint64_t UID = 0;
 
+	std::string Namespace;
+
+	std::string FullName() const
+	{
+		if (Namespace.empty())
+			return Name;
+		return std::format("{}_{}", ghassanpl::string_ops::replaced(Namespace, "::", "_"), Name);
+	}
+
+	std::string FullType() const
+	{
+		if (Namespace.empty())
+			return Name;
+		return std::format("{}::{}", Namespace, Name);
+	}
+
 	std::string GeneratedUniqueName() const { return std::format("{}_{:016x}", Name, UID); }
 
 	json ToJSON() const;
@@ -88,6 +104,7 @@ struct Field : public Declaration
 	std::string Type;
 	std::string InitializingExpression;
 	std::string DisplayName;
+	std::string CleanName;
 
 	void CreateArtificialMethods(FileMirror& mirror, Class& klass);
 
@@ -223,7 +240,8 @@ void CreateArtificialMethods();
 
 struct Options
 {
-	//Options(json&& options_file);
+	/// TODO: We should document all of this
+
 	Options(path exe_path, path const& options_file_path);
 
 	bool Recursive = false;
@@ -238,7 +256,7 @@ struct Options
 	std::string JSONParseFunction = "::nlohmann::json::parse";
 	std::string JSONType = "::nlohmann::json";
 
-	bool GenerateLuaFunctionBindings = false;
+	bool GenerateLuaFunctionBindings = true;
 
 	bool GenerateTypeIndices = true;
 

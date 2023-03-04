@@ -22,6 +22,7 @@ json Declaration::ToJSON() const
 	if (!Attributes.empty())
 		result["Attributes"] = Attributes;
 	result["Name"] = Name;
+	result["Namespace"] = Namespace;
 	result["DeclarationLine"] = DeclarationLine;
 	if (Access != AccessMode::Unspecified)
 		result["Access"] = AMStrings[(int)Access];
@@ -34,7 +35,7 @@ Enum const* FindEnum(string_view name)
 {
 	for (auto& mirror : Mirrors)
 		for (auto& henum : mirror.Enums)
-			if (henum.Name == name)
+			if (henum.Name == name || henum.FullType() == name)
 				return &henum;
 	return nullptr;
 }
@@ -46,12 +47,12 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 	if (field_comments.size())
 		field_comments[0] = (char)ascii::tolower(field_comments[0]);
 	else
-		field_comments = std::format("the `{}` field of this object", DisplayName);
+		field_comments = std::format("the {} field of this object", DisplayName);
 
 	/// Getters and Setters
 	if (!Flags.is_set(Reflector::FieldFlags::NoGetter))
 	{
-		klass.AddArtificialMethod(Type + " const &", "Get" + DisplayName, "", "return " + Name + ";", { "Gets " + field_comments }, { Reflector::MethodFlags::Const }, DeclarationLine);
+		klass.AddArtificialMethod(Type + " const &", "Get" + CleanName, "", "return this->" + Name + ";", { "Gets " + field_comments }, { Reflector::MethodFlags::Const }, DeclarationLine);
 	}
 
 	if (!Flags.is_set(Reflector::FieldFlags::NoSetter))
@@ -59,7 +60,7 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 		auto on_change = atFieldOnChange(Attributes, ""s);
 		if (!on_change.empty())
 			on_change = on_change + "(); ";
-		klass.AddArtificialMethod("void", "Set" + DisplayName, Type + " const & value", Name + " = value; " + on_change, { "Sets " + field_comments }, {}, DeclarationLine);
+		klass.AddArtificialMethod("void", "Set" + CleanName, Type + " const & value", "this->" + Name + " = value; " + on_change, {"Sets " + field_comments}, {}, DeclarationLine);
 	}
 
 	auto flag_getters = atFieldFlagGetters(Attributes, ""s);
@@ -82,30 +83,30 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 			return;
 		}
 
-		klass.AdditionalBodyLines.push_back(std::format("static_assert(::std::is_integral_v<{}>, \"Type '{}' for field '{}' with Flags attribute must be integral\");", this->Type, henum->Name, this->Name));
+		klass.AdditionalBodyLines.push_back(std::format("static_assert(::std::is_integral_v<{}>, \"Type '{}' for field '{}' with Flags attribute must be integral\");", this->Type, henum->FullType(), this->Name));
 
 		for (auto& enumerator : henum->Enumerators)
 		{
-			klass.AddArtificialMethod("bool", "Is" + enumerator.Name, "", std::format("return ({} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator.Value),
-				{ "Checks whether the `" + enumerator.Name + "` flag is set in " + field_comments }, Reflector::MethodFlags::Const, DeclarationLine);
+			klass.AddArtificialMethod("bool", "Is" + enumerator.Name, "", std::format("return (this->{} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator.Value),
+				{ "Checks whether the `" + enumerator.Name + "` flag is set in " + DisplayName }, Reflector::MethodFlags::Const, DeclarationLine);
 		}
 
 		if (do_setters)
 		{
 			for (auto& enumerator : henum->Enumerators)
 			{
-				klass.AddArtificialMethod("void", "Set" + enumerator.Name, "", std::format("{} |= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
-					{ "Sets the `" + enumerator.Name + "` flag in " + field_comments }, {}, DeclarationLine);
+				klass.AddArtificialMethod("void", "Set" + enumerator.Name, "", std::format("this->{} |= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
+					{ "Sets the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
-				klass.AddArtificialMethod("void", "Unset" + enumerator.Name, "", std::format("{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator.Value),
-					{ "Clears the `" + enumerator.Name + "` flag in " + field_comments }, {}, DeclarationLine);
+				klass.AddArtificialMethod("void", "Unset" + enumerator.Name, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator.Value),
+					{ "Clears the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
-				klass.AddArtificialMethod("void", "Toggle" + enumerator.Name, "", std::format("{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
-					{ "Toggles the `" + enumerator.Name + "` flag in " + field_comments }, {}, DeclarationLine);
+				klass.AddArtificialMethod("void", "Toggle" + enumerator.Name, "", std::format("this->{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
+					{ "Toggles the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
 			}
 		}
 	}
@@ -119,6 +120,8 @@ json Field::ToJSON() const
 		result["InitializingExpression"] = InitializingExpression;
 	if (DisplayName != Name)
 		result["DisplayName"] = DisplayName;
+	if (CleanName != Name)
+		result["CleanName"] = CleanName;
 #define ADDFLAG(n) if (Flags.is_set(Reflector::FieldFlags::n)) result[#n] = true
 	ADDFLAG(NoGetter);
 	ADDFLAG(NoSetter);
@@ -164,7 +167,7 @@ std::string Method::GetSignature(Class const& parent_class) const
 	auto base = Flags.is_set(MethodFlags::Static) ? 
 		std::format("{} (*)({})", Type, ParametersTypesOnly)
 	:
-		std::format("{} ({}::*)({})", Type, parent_class.Name, ParametersTypesOnly);
+		std::format("{} ({}::*)({})", Type, parent_class.FullType(), ParametersTypesOnly);
 	if (Flags.is_set(Reflector::MethodFlags::Const))
 		base += " const";
 	if (Flags.is_set(Reflector::MethodFlags::Noexcept))
@@ -177,7 +180,7 @@ void Method::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 	if (klass.Flags.is_set(ClassFlags::HasProxy) && Flags.is_set(MethodFlags::Virtual))
 	{
 		if (Flags.is_set(MethodFlags::Abstract))
-			klass.AddArtificialMethod(Type, "_PROXY_"+Name, GetParameters(), std::format("throw std::runtime_error{{\"invalid abstract call to function {}::{}\"}};", klass.Name, Name), { "Proxy function for " + Name }, Flags - MethodFlags::Virtual, DeclarationLine);
+			klass.AddArtificialMethod(Type, "_PROXY_"+Name, GetParameters(), std::format("throw std::runtime_error{{\"invalid abstract call to function {}::{}\"}};", klass.FullType(), Name), {"Proxy function for " + Name}, Flags - MethodFlags::Virtual, DeclarationLine);
 		else
 			klass.AddArtificialMethod(Type, "_PROXY_" + Name, GetParameters(), "return self_type::" + Name + "(" + ParametersNamesOnly + ");", { "Proxy function for " + Name }, Flags - MethodFlags::Virtual, DeclarationLine);
 	}
@@ -347,10 +350,10 @@ json FileMirror::ToJSON() const
 	result["SourceFilePath"] = SourceFilePath.string();
 	auto& classes = result["Classes"] = json::object();
 	for (auto& klass : Classes)
-		classes[klass.Name] = klass.ToJSON();
+		classes[klass.FullName()] = klass.ToJSON();
 	auto& enums = result["Enums"] = json::object();
 	for (auto& enum_ : Enums)
-		enums[enum_.Name] = enum_.ToJSON();
+		enums[enum_.FullName()] = enum_.ToJSON();
 	return result;
 }
 

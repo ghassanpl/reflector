@@ -47,10 +47,27 @@ struct AttributeProperties
 			return (T)*it;
 	}
 
+	template <typename T>
+	bool TryGet(json const& attrs, T& dest) const
+	{
+		auto it = attrs.find(this->Name);
+		if (it == attrs.end())
+			return false;
+		if constexpr (std::is_same_v<T, bool>)
+			dest = it->is_null() ? true : (bool)*it;
+		else
+			dest = (T)*it;
+		return true;
+	}
+
 private:
 
 	AttributeProperties(AttributeProperties const& other) noexcept = default;
 };
+
+inline const AttributeProperties atDisplayName{ "DisplayName", "The name that is going to be displayed in editors and such", json::value_t::string };
+
+inline const AttributeProperties atTypeNamespace{ "Namespace", "A helper since we don't parse namespaces; set this to the full namespace of the following type, otherwise you might get errors", json::value_t::string };
 
 inline const AttributeProperties atFieldGetter{ "Getter", "Whether or not to create a getter for this field", json::value_t::boolean, true };
 inline const AttributeProperties atFieldSetter{ "Setter", "Whether or not to create a setter for this field", json::value_t::boolean, true };
