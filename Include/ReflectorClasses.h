@@ -3,8 +3,6 @@
 #include <typeindex>
 #include <vector>
 
-template <typename T> concept is_reflected_class = requires { T::StaticClassFlags(); };
-
 namespace Reflector
 {
 	struct ClassReflectionData;
@@ -213,11 +211,18 @@ namespace Reflector
 		using Type = void;
 	};
 
-	template <typename REFLECTABLE_CLASS>
-	requires (std::is_class_v<REFLECTABLE_CLASS>)
-	::Reflector::ClassReflectionData const& Reflect();
+	template <typename ENUM>
+	inline constexpr bool IsReflectedEnum()
+	{
+		return false;
+	}
+
+	template <typename T> concept reflected_class = requires { T::StaticClassFlags(); };
+	template <typename T> concept reflected_enum = IsReflectedEnum<T>();
 
 	template <typename REFLECTABLE_CLASS>
-	requires (std::is_enum_v<REFLECTABLE_CLASS>)
+	::Reflector::ClassReflectionData const& Reflect();
+
+	template <typename REFLECTABLE_ENUM>
 	::Reflector::EnumReflectionData const& Reflect();
 }

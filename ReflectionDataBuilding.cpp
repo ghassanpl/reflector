@@ -32,6 +32,19 @@ uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, con
 	return file_change_time;
 }
 
+void WriteForwardDeclaration(FileWriter& output, const Class& klass, const Options& options)
+{
+	if (klass.Namespace.empty())
+		output.WriteLine("{} {};", (klass.Flags.is_set(ClassFlags::DeclaredStruct) ? "struct" : "class"), klass.FullType());
+	else
+		output.WriteLine("namespace {} {{ {} {}; }}", klass.Namespace, klass.Flags.is_set(ClassFlags::DeclaredStruct) ? "struct" : "class", klass.Name);
+}
+
+void WriteForwardDeclaration(FileWriter& output, const Enum& henum, const Options& options)
+{
+	output.WriteLine("enum class {};", henum.FullType());
+}
+
 bool CreateJSONDBArtifact(path const& path, Options const& options)
 {
 	json db;
@@ -60,7 +73,9 @@ bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opt
 	
 	database_file.WriteLine("#include \"Reflector.h\"");
 	if (opts.GenerateTypeIndices)
+	{
 		database_file.WriteLine("#include \"Includes.reflect.h\"");
+	}
 	
 	for (auto& mirror : GetMirrors())
 	{
@@ -139,6 +154,7 @@ std::string BuildCompileTimeLiteral(std::string_view str)
 
 void BuildStaticReflectionData(FileWriter& output, const Enum& henum, const Options& options)
 {
+	WriteForwardDeclaration(output, henum, options);
 	output.WriteLine("::Reflector::EnumReflectionData const& StaticGetReflectionData_For_{}() {{", henum.GeneratedUniqueName());
 	output.CurrentIndent++;
 	output.WriteLine("static const ::Reflector::EnumReflectionData _data = {{");
@@ -179,6 +195,7 @@ void BuildStaticReflectionData(FileWriter& output, const Enum& henum, const Opti
 
 void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Options& options)
 {
+	WriteForwardDeclaration(output, klass, options);
 	output.WriteLine("::Reflector::ClassReflectionData const& StaticGetReflectionData_For_{}() {{", klass.GeneratedUniqueName());
 	output.CurrentIndent++;
 	output.WriteLine("static const ::Reflector::ClassReflectionData _data = {{");
@@ -276,10 +293,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 
 	if (options.ForwardDeclare)
 	{
-		if (klass.Namespace.empty())
-			output.WriteLine("{} {};", (klass.Flags.is_set(ClassFlags::DeclaredStruct) ? "struct" : "class"), klass.FullType());
-		else
-			output.WriteLine("namespace {} {{ {} {}; }}", klass.Namespace, klass.Flags.is_set(ClassFlags::DeclaredStruct) ? "struct" : "class", klass.Name);
+		WriteForwardDeclaration(output, klass, options);
 	}
 	output.WriteLine("::Reflector::ClassReflectionData const& StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
 
@@ -482,6 +496,10 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 {
 	auto has_any_enumerators = (henum.Enumerators.size() > 0);
 	output.WriteLine("/// From enum: {}", henum.FullType());
+
+	WriteForwardDeclaration(output, henum, options);
+	output.WriteLine("namespace Reflector {{ template <> inline constexpr bool IsReflectedEnum<{}>() {{ return true; }} }}", henum.FullType());
+
 	output.WriteLine("#undef {}_ENUM_{}", options.MacroPrefix, henum.DeclarationLine);
 	output.StartDefine("#define {}_ENUM_{}", options.MacroPrefix, henum.DeclarationLine);
 
@@ -493,7 +511,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.WriteLine("static constexpr inline size_t {}Count = {};", henum.Name, henum.Enumerators.size());
 	if (has_any_enumerators)
 	{
-		output.WriteLine("static constexpr inline std::string_view {}Names[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](Enumerator const& enumerator) { return std::format("\"{}\"", enumerator.Name); }));
+		output.WriteLine("static constexpr inline const char* {}Names[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](Enumerator const& enumerator) { return std::format("\"{}\"", enumerator.Name); }));
 		output.WriteLine("static constexpr inline {0} {0}Values[] = {{ {1} }} ;", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](Enumerator const& enumerator) {
 			return std::format("{}{{{}}}", henum.Name, enumerator.Value);
 		}));
@@ -513,17 +531,71 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 
 		if (has_any_enumerators)
 		{
-			output.WriteLine("switch (int64_t(v)) {{");
-			for (auto& enumerator : henum.Enumerators)
+			if (henum.IsConsecutive())
 			{
-				output.WriteLine("case {}: return \"{}\";", enumerator.Value, enumerator.Name);
+				output.WriteLine("if (int64_t(v) >= {0} && int64_t(v) <= {1}) return {2}Names[int64_t(v)-{0}];", henum.Enumerators.front().Value, henum.Enumerators.back().Value, henum.Name);
 			}
-			output.WriteLine("}}");
+			else
+			{
+				output.WriteLine("switch (int64_t(v)) {{");
+				for (auto& enumerator : henum.Enumerators)
+				{
+					output.WriteLine("case {}: return \"{}\";", enumerator.Value, enumerator.Name);
+				}
+				output.WriteLine("}}");
+			}
 		}
 		output.WriteLine("return \"<Unknown>\";");
 	}
-	output.WriteLine("}}");
-	output.WriteLine("inline constexpr {0} GetEnumeratorFromName({0} v, std::string_view name) {{", henum.Name);
+	output.WriteLine("}}"); 
+	/// TODO: Should this return std::optional?
+	/// TODO: Implement the ones below and check performance using https://quick-bench.com/
+	/// Cases:
+	///		naive
+	///		magic_enum::enum_value("str")
+	///		mph
+	///		switch trie
+	/// TODO: EITHER: Use mph ( https://www.ibiblio.org/pub/Linux/devel/lang/c/!INDEX.short.html Q:\Code\Native\External\mph ) to generate a minimal perfect hash function for this
+	/// TODO: OR, generate a TRIE and then for leafs check for equality, and for non-leafs switch against the first character:
+	/*
+		constexpr auto check(TT out, char const* a, char const* b) -> TT {
+			return std::strcmp(a, b) ? ILLEGAL : out;
+		}
+
+		constexpr auto lookup(char const* kw) -> TT 
+		{
+			switch (*kw++) {
+				default: return ILLEGAL;
+
+				case 'a': return check(AND,    kw, "nd");
+				case 'c': return check(CLASS,  kw, "lass");
+				case 'e': return check(ELSE,   kw, "lse");
+				case 'i': return check(IF,     kw, "f");
+				case 'n': return check(NIL,    kw, "il");
+				case 'o': return check(OR,     kw, "r");
+				case 'p': return check(PRINT,  kw, "rint");
+				case 'r': return check(RETURN, kw, "eturn");
+				case 's': return check(SUPER,  kw, "uper");
+				case 'w': return check(WHILE,  kw, "hile");
+
+				case 'f': 
+					switch (*kw++) {
+						default: return ILLEGAL;
+						case 'a': return check(FALSE, kw, "lse");
+						case 'o': return check(FOR,   kw, "r");
+						case 'u': return check(FUN,   kw, "n");
+					}
+
+				case 't': 
+					switch (*kw++) {
+						default: return ILLEGAL;
+						case 'h': return check(THIS, kw, "is");
+						case 'r': return check(TRUE, kw, "ue");
+					}
+			}
+		}
+	*/
+	output.WriteLine("inline constexpr {0} GetEnumeratorFromName({0}, std::string_view name) {{", henum.Name);
 	{
 		auto indent = output.Indent();
 		for (auto& enumerator : henum.Enumerators)
@@ -549,6 +621,8 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	}
 
 	output.WriteLine("inline std::ostream& operator<<(std::ostream& strm, {} v) {{ strm << GetEnumeratorName(v); return strm; }}", henum.Name);
+
+	/// TODO: Move the body of the below function to the DB
 	output.WriteLine("template <typename T>");
 	output.WriteLine("void OutputFlagsFor(std::ostream& strm, {}, T flags, std::string_view separator = \", \") {{ ", henum.Name);
 	output.CurrentIndent++;
@@ -560,6 +634,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.CurrentIndent--;
 	output.WriteLine("}}");
 
+	/*
 	/// TODO: This isn't strictly necessary if we can use the ADL serializer (https://json.nlohmann.me/features/arbitrary_types/#how-do-i-convert-third-party-types)
 	if (options.UseJSON)
 	{
@@ -567,6 +642,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 		/// TODO: this depends on nlohmann::json::is_string
 		output.WriteLine("inline void from_json({1} const& j, {0}& p) {{ if (j.is_string()) p = GetEnumeratorFromName({0}{{}}, j); else p = ({0})(std::underlying_type_t<{0}>)j; }}", henum.Name, options.JSONType);
 	}
+	*/
 
 	output.EndDefine();
 

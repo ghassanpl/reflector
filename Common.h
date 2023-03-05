@@ -219,6 +219,14 @@ struct Enum : public Declaration
 
 	ghassanpl::enum_flags<EnumFlags> Flags;
 
+	bool IsConsecutive() const
+	{
+		for (size_t i = 1; i < Enumerators.size(); ++i)
+			if (Enumerators[i].Value != Enumerators[i - 1].Value + 1)
+				return false;
+		return true;
+	}
+
 	json ToJSON() const;
 };
 
