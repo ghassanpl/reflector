@@ -107,3 +107,5 @@ inline const AttributeProperties atEnumeratorOpposite{ "Opposite", "Only valid o
 /// Ideas
 inline const AttributeProperties atEnumeratorSetter{ "Setter", "Only valid on Flag enums, will change the setter for this flag (if one is created) to this value", json::value_t::string};
 inline const AttributeProperties atFieldTypeList{ "TypeList", "If set to an (reflected) enum name, creates IsX() { this->field == (decltype(this->field))N; } functions for each enumerator in the enum", json::value_t::string };
+
+inline const AttributeProperties atClassCreateIsChilds{ "CreateIsChilds", "Creates functions IsX (and AsX equivalents) for each subclass of this class in the given list, that checks if this object is of subclass X", json::value_t::array };

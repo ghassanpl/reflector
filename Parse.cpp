@@ -64,7 +64,7 @@ std::string ParseType(string_view& str)
 	auto start = str.begin();
 	while (true)
 	{
-		if (SwallowOptional(str, "struct") || SwallowOptional(str, "class") || SwallowOptional(str, "enum") || SwallowOptional(str, "union"))
+		if (SwallowOptional(str, "struct") || SwallowOptional(str, "class") || SwallowOptional(str, "enum") || SwallowOptional(str, "union") || SwallowOptional(str, "const"))
 			continue;
 		break;
 	}
@@ -90,6 +90,17 @@ std::string ParseType(string_view& str)
 				break;
 		}
 	}
+		
+	str = string_ops::trimmed_whitespace(str);
+	
+	while (true)
+	{
+		if (SwallowOptional(str, "const") || SwallowOptional(str, "*") || SwallowOptional(str, "&"))
+			continue;
+		break;
+	}
+	
+	str = string_ops::trimmed_whitespace(str);
 
 	return ghassanpl::string_ops::make_string(start, str.begin());
 }

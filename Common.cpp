@@ -110,16 +110,42 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 			{
 				klass.AddArtificialMethod("void", "Set" + enumerator.Name, "", std::format("this->{} |= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
 					{ "Sets the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+
+				if (auto opposite = atEnumeratorOpposite(enumerator.Attributes, ""s); !opposite.empty())
+				{
+					klass.AddArtificialMethod("void", "Set" + opposite, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator.Value),
+						{ "Clears the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+
+				}
+				else if (flag_nots)
+				{
+					klass.AddArtificialMethod("void", "SetNot" + enumerator.Name, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator.Value),
+						{ "Clears the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+				}
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
 				klass.AddArtificialMethod("void", "Unset" + enumerator.Name, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator.Value),
 					{ "Clears the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+
+
+				if (auto opposite = atEnumeratorOpposite(enumerator.Attributes, ""s); !opposite.empty())
+				{
+					klass.AddArtificialMethod("void", "Unset" + opposite, "", std::format("this->{} |= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
+						{ "Sets the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+
+				}
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
 				klass.AddArtificialMethod("void", "Toggle" + enumerator.Name, "", std::format("this->{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
 					{ "Toggles the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+
+				if (auto opposite = atEnumeratorOpposite(enumerator.Attributes, ""s); !opposite.empty())
+				{
+					klass.AddArtificialMethod("void", "Toggle" + opposite, "", std::format("this->{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
+						{ "Toggles the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+				}
 			}
 		}
 	}
