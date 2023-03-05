@@ -2,10 +2,12 @@
 
 #include <typeindex>
 #include <vector>
+#if REFLECTOR_USES_JSON
+#include REFLECTOR_JSON_HEADER
+#endif
 
 namespace Reflector
 {
-	struct ClassReflectionData;
 	struct FieldReflectionData;
 	struct MethodReflectionData;
 
@@ -19,7 +21,7 @@ namespace Reflector
 		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
 		uint64_t UID = 0;
-		void* (*Constructor)(const ::Reflector::ClassReflectionData&) = {};
+		void* (*Constructor)(const ClassReflectionData&) = {};
 
 		/// These are vectors and not e.g. initializer_list's because you might want to create your own classes
 		std::vector<FieldReflectionData> Fields; 
@@ -198,6 +200,10 @@ namespace Reflector
 		Reflectable() noexcept = default;
 		Reflectable(::Reflector::ClassReflectionData const& klass) noexcept : mClass(&klass) {}
 
+		template <typename T> bool Is() const { return dynamic_cast<T const*>(this) != nullptr; }
+		template <typename T> T const* As() const { return dynamic_cast<T const*>(this); }
+		template <typename T> T* As() { return dynamic_cast<T*>(this); }
+
 		virtual ~Reflectable() = default;
 
 	protected:
@@ -221,8 +227,11 @@ namespace Reflector
 	template <typename T> concept reflected_enum = IsReflectedEnum<T>();
 
 	template <typename REFLECTABLE_CLASS>
-	::Reflector::ClassReflectionData const& Reflect();
+	ClassReflectionData const& Reflect();
 
 	template <typename REFLECTABLE_ENUM>
-	::Reflector::EnumReflectionData const& Reflect();
+	EnumReflectionData const& Reflect();
+
+	extern ClassReflectionData const* Classes[];
+	extern EnumReflectionData const* Enums[];
 }

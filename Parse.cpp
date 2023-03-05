@@ -175,13 +175,24 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 	line_num++;
 	Expect(TrimWhitespace(string_view{ lines[line_num] }), "{");
 
+	json attribute_list;
+
 	line_num++;
 	int64_t enumerator_value = 0;
 	while (TrimWhitespace(string_view{ lines[line_num] }) != "};")
 	{
 		auto enumerator_line = TrimWhitespace(string_view{ lines[line_num] });
-		if (enumerator_line.empty() || enumerator_line.starts_with("//") || enumerator_line.starts_with("/*") || enumerator_line.starts_with(options.EnumeratorPrefix))
+		if (enumerator_line.empty() || enumerator_line.starts_with("//") || enumerator_line.starts_with("/*"))
 		{
+			line_num++;
+			continue;
+		}
+
+		if (enumerator_line.starts_with(options.EnumeratorPrefix))
+		{
+			enumerator_line.remove_prefix(options.EnumeratorPrefix.size());
+			attribute_list = ParseAttributeList(enumerator_line);
+
 			line_num++;
 			continue;
 		}
@@ -204,7 +215,7 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 			enumerator.Name = TrimWhitespace(name);
 			enumerator.Value = enumerator_value;
 			enumerator.DeclarationLine = line_num;
-			/// TODO: enumerator.Attributes = {};
+			enumerator.Attributes = std::exchange(attribute_list, {});
 			/// TODO: enumerator.Comments = "";
 			henum.Enumerators.push_back(std::move(enumerator));
 			enumerator_value++;
@@ -543,6 +554,12 @@ Class ParseClassDecl(string_view line, string_view next_line, size_t line_num, s
 
 	if (klass.Flags.is_set(ClassFlags::Struct) || atRecordAbstract(klass.Attributes, false) == true || atRecordSingleton(klass.Attributes, false) == true)
 		klass.Flags += ClassFlags::NoConstructors;
+
+	/// If we declared an actual class it has to derive from Reflectable
+	if (!klass.Flags.is_set(ClassFlags::NoConstructors) && klass.ParentClass.empty())
+	{
+		throw std::exception(std::format("Non-struct class '{}' must derive from Reflectable or a Reflectable class", klass.FullType()).c_str());
+	}
 
 	klass.Namespace = atTypeNamespace(klass.Attributes, ""s);
 

@@ -35,6 +35,11 @@ struct AttributeProperties
 	//operator std::string const&() const noexcept { return Name; }
 	//auto operator <=>(std::string const& other) const noexcept { return Name <=> other; }
 
+	bool ExistsIn(json const& attrs) const
+	{
+		return attrs.contains(this->Name);
+	}
+
 	template <typename T>
 	auto operator()(json const& attrs, T&& default_value) const
 	{
@@ -84,7 +89,8 @@ inline const AttributeProperties atFieldRequired{ "Required", "A helper flag for
 inline const AttributeProperties atFieldOnChange{ "OnChange", "Calls the specified method when this field changes", json::value_t::string };
 
 inline const AttributeProperties atFieldFlagGetters{ "FlagGetters", "If set to an (reflected) enum name, creates getter functions (IsFlag) for each Flag in this field; can't be set if 'Flags' is set", json::value_t::string };
-inline const AttributeProperties atFieldFlags{ "Flags", "If set to an (reflected) enum name, creates getter and setter functions (SetFlag, UnsetFlag, ToggleFlag) for each Flag in this field; can't be set if 'FlagGetters' is set", json::value_t::string };
+inline const AttributeProperties atFieldFlags{ "Flags", "If set to an (reflected) enum name, creates getter and setter functions (IsFlag, SetFlag, UnsetFlag, ToggleFlag) for each Flag in this field; can't be set if 'FlagGetters' is set", json::value_t::string };
+inline const AttributeProperties atFieldFlagNots{ "FlagNots", "Requires 'Flags' attribute. If set, creates IsNotFlag functions in addition to regular IsFlag (except for enumerators with Opposite attribute).", json::value_t::boolean, true };
 
 inline const AttributeProperties atMethodUniqueName{ "UniqueName", "A unique (for this type) name of this method; useful for overloaded functions", json::value_t::string };
 inline const AttributeProperties atMethodGetterFor{ "GetterFor", "This function is a getter for the named field", json::value_t::string };
@@ -96,3 +102,8 @@ inline const AttributeProperties atRecordSingleton{ "Singleton", "This record is
 inline const AttributeProperties atRecordCreateProxy{ "CreateProxy", "If set to false, proxy classes are not built for classes with virtual methods", json::value_t::boolean, true };
 
 inline const AttributeProperties atEnumList{ "List", "If set to true, generates GetNext() and GetPrev() functions that return the next/prev enumerator in sequence, wrapping around", json::value_t::boolean, false };
+inline const AttributeProperties atEnumeratorOpposite{ "Opposite", "Only valid on Flag enums, will create a virtual flag that is the complement of this one, for the purposes of creating getters and setters", json::value_t::string};
+
+/// Ideas
+inline const AttributeProperties atEnumeratorSetter{ "Setter", "Only valid on Flag enums, will change the setter for this flag (if one is created) to this value", json::value_t::string};
+inline const AttributeProperties atFieldTypeList{ "TypeList", "If set to an (reflected) enum name, creates IsX() { this->field == (decltype(this->field))N; } functions for each enumerator in the enum", json::value_t::string };

@@ -85,10 +85,23 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 
 		klass.AdditionalBodyLines.push_back(std::format("static_assert(::std::is_integral_v<{}>, \"Type '{}' for field '{}' with Flags attribute must be integral\");", this->Type, henum->FullType(), this->Name));
 
+		const auto flag_nots = atFieldFlagNots(Attributes, true);
+
 		for (auto& enumerator : henum->Enumerators)
 		{
 			klass.AddArtificialMethod("bool", "Is" + enumerator.Name, "", std::format("return (this->{} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator.Value),
 				{ "Checks whether the `" + enumerator.Name + "` flag is set in " + DisplayName }, Reflector::MethodFlags::Const, DeclarationLine);
+
+			if (auto opposite = atEnumeratorOpposite(enumerator.Attributes, ""s); !opposite.empty())
+			{
+				klass.AddArtificialMethod("bool", "Is" + opposite, "", std::format("return (this->{} & {}{{{}}}) == 0;", Name, Type, 1ULL << enumerator.Value),
+					{ "Checks whether the `" + enumerator.Name + "` flag is NOT set in " + DisplayName }, Reflector::MethodFlags::Const, DeclarationLine);
+			}
+			else if (flag_nots)
+			{
+				klass.AddArtificialMethod("bool", "IsNot" + enumerator.Name, "", std::format("return (this->{} & {}{{{}}}) == 0;", Name, Type, 1ULL << enumerator.Value),
+					{ "Checks whether the `" + enumerator.Name + "` flag is set in " + DisplayName }, Reflector::MethodFlags::Const, DeclarationLine);
+			}
 		}
 
 		if (do_setters)

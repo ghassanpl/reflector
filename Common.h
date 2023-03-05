@@ -257,19 +257,20 @@ struct Options
 	bool Force = false;
 	bool Verbose = false;
 	bool UseJSON = true;
+	/// TODO: Check if these work in combinations
 	bool CreateArtifacts = true;
 	bool CreateDatabase = true;
+	bool GenerateLuaFunctionBindings = false;
+	bool GenerateTypeIndices = false;
+	bool ForwardDeclare = true;
 
 	std::string JSONHeaderPath = "<nlohmann/json.hpp>";
 	std::string JSONParseFunction = "::nlohmann::json::parse";
 	std::string JSONType = "::nlohmann::json";
 
-	bool GenerateLuaFunctionBindings = true;
+	/// TODO: Will create std::maps and such for easy access to database information
+	bool GenerateEasyDatabaseAccess = false;
 
-	bool GenerateTypeIndices = true;
-
-	/// TODO: Read this from cmdline
-	bool ForwardDeclare = true;
 
 	path ExePath;
 
