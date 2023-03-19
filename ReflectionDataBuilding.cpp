@@ -11,8 +11,8 @@ bool BuildDatabaseEntriesForMirror(FileWriter& output, const Options& options, F
 
 uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, const Options& opts)
 {
-	auto stat = std::filesystem::status(target_path);
-	uint64_t file_change_time = std::max(ChangeTime, (uint64_t)std::filesystem::last_write_time(source_path).time_since_epoch().count());
+	const auto stat = std::filesystem::status(target_path);
+	const uint64_t file_change_time = std::max(ChangeTime, static_cast<uint64_t>(std::filesystem::last_write_time(source_path).time_since_epoch().count()));
 	if (stat.type() != std::filesystem::file_type::not_found)
 	{
 		/// Open file and get first line
@@ -24,8 +24,8 @@ uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, con
 
 		uint64_t stored_change_time = 0;
 		const auto time = string_view{ string_view{ line }.substr(sizeof(TIMESTAMP_TEXT) - 1) };
-		const auto result = std::from_chars(to_address(time.begin()), to_address(time.end()), stored_change_time);
-		if (!opts.Force && result.ec == std::errc{} && file_change_time == stored_change_time)
+		const auto [ptr, ec] = std::from_chars(to_address(time.begin()), to_address(time.end()), stored_change_time);
+		if (!opts.Force && ec == std::errc{} && file_change_time == stored_change_time)
 			return 0;
 	}
 
@@ -94,9 +94,9 @@ bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opt
 	database_file.WriteLine("}};");
 	database_file.WriteLine("::Reflector::EnumReflectionData const* Reflector::Enums[] = {{");
 	database_file.CurrentIndent++;
-	for (auto& mirror : GetMirrors())
+	for (const auto& [SourceFilePath, Classes, Enums] : GetMirrors())
 	{
-		for (auto& henum : mirror.Enums)
+		for (auto& henum : Enums)
 		{
 			database_file.WriteLine("&StaticGetReflectionData_For_{}(),", henum.GeneratedUniqueName());
 		}
@@ -113,7 +113,7 @@ bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opt
 
 bool CreateReflectorHeaderArtifact(path const& target_path, const Options& options, path const& final_path)
 {
-	auto rel = final_path.parent_path().lexically_relative(options.ArtifactPath);
+	const auto rel = final_path.parent_path().lexically_relative(options.ArtifactPath);
 
 	FileWriter reflect_file{ target_path };
 	reflect_file.WriteLine("#pragma once");
@@ -148,9 +148,9 @@ bool CreateReflectorHeaderArtifact(path const& target_path, const Options& optio
 bool CreateIncludeListArtifact(path const& path, Options const& options)
 {
 	std::ofstream includes_file(path, std::ios_base::openmode{ std::ios_base::trunc });
-	for (auto& mirror : GetMirrors())
+	for (const auto& [SourceFilePath, Classes, Enums] : GetMirrors())
 	{
-		includes_file << "#include " << mirror.SourceFilePath << "" << std::endl;
+		includes_file << "#include " << SourceFilePath << "" << std::endl;
 	}
 	return true;
 }
@@ -159,14 +159,14 @@ bool CreateTypeListArtifact(path const& path, Options const& options)
 {
 	std::ofstream classes_file(path, std::ios_base::openmode{ std::ios_base::trunc });
 
-	for (auto& mirror : GetMirrors())
+	for (const auto& [SourceFilePath, Classes, Enums] : GetMirrors())
 	{
-		for (auto& klass : mirror.Classes)
+		for (auto& klass : Classes)
 		{
 			//if (!klass.Flags.is_set(ClassFlags::Struct))
 			classes_file << "ReflectClass(" << klass.Name << ", " << klass.FullType() << ")" << std::endl;
 		}
-		for (auto& henum : mirror.Enums)
+		for (auto& henum : Enums)
 			classes_file << "ReflectEnum(" << henum.Name << ", " << henum.FullType() << ")" << std::endl;
 	}
 	return true;
@@ -358,17 +358,17 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 
 	/// Property visitor
 	output.StartDefine("#define {0}_VISIT_{1}_PROPERTIES({0}_VISITOR)", options.MacroPrefix, klass.FullName());
-	for (auto& prop : klass.Properties)
+	for (const auto& snd : klass.Properties | std::views::values)
 	{
-		auto& property = prop.second;
+		const auto& [Name, SetterName, SetterLine, GetterName, GetterLine, Type] = snd;
 		std::string getter_name = "nullptr";
-		if (!property.GetterName.empty())
-			getter_name = std::format("&{}::{}", klass.FullType(), property.GetterName);
+		if (!GetterName.empty())
+			getter_name = std::format("&{}::{}", klass.FullType(), GetterName);
 		std::string setter_name = "nullptr";
-		if (!property.SetterName.empty())
-			setter_name = std::format("&{}::{}", klass.FullType(), property.SetterName);
+		if (!SetterName.empty())
+			setter_name = std::format("&{}::{}", klass.FullType(), SetterName);
 		output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData(), \"{2}\", {3}, {4}, ::Reflector::CompileTimePropertyData<{5}, {1}, 0ULL, {6}>{{}});",
-			options.MacroPrefix, klass.FullType(), property.Name, getter_name, setter_name, property.Type, BuildCompileTimeLiteral(property.Name));
+			options.MacroPrefix, klass.FullType(), Name, getter_name, setter_name, Type, BuildCompileTimeLiteral(Name));
 	}
 	output.EndDefine("");
 
@@ -518,7 +518,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 
 bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& henum, const Options& options)
 {
-	auto has_any_enumerators = (henum.Enumerators.size() > 0);
+	const auto has_any_enumerators = (henum.Enumerators.size() > 0);
 	output.WriteLine("/// From enum: {}", henum.FullType());
 
 	WriteForwardDeclaration(output, henum, options);
@@ -684,7 +684,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	return true;
 }
 
-void FileWriter::WriteLine()
+void FileWriter::WriteLine() const
 {
 	*mOutFile << '\n';
 }
@@ -728,7 +728,7 @@ bool BuildMirrorFile(path const& file_path, const Options& options, FileMirror c
 	f.WriteLine("/// Source file: {}", file.SourceFilePath.string());
 	f.WriteLine("#pragma once");
 
-	auto rel = final_path.parent_path().lexically_relative(options.ArtifactPath);
+	const auto rel = final_path.parent_path().lexically_relative(options.ArtifactPath);
 	f.WriteLine("#include \"{}/Reflector.h\"", rel.string());
 
 	for (auto& klass : file.Classes)

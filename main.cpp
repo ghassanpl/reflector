@@ -7,7 +7,6 @@
 #include "Parse.h"
 #include "ReflectionDataBuilding.h"
 //#include <args.hxx>
-#include <sstream>
 #include <vector>
 #include <thread>
 #include <future>
@@ -32,16 +31,15 @@ struct Artifactory
 		ArtifactToBuild& operator=(ArtifactToBuild&&) noexcept = default;
 	};
 
-	bool FilesAreDifferent(path const& f1, path const& f2)
+	bool FilesAreDifferent(path const& f1, path const& f2) const
 	{
 		namespace fs = std::filesystem;
-		std::error_code ec{};
 		
 		if (fs::exists(f1) != fs::exists(f2)) return true;
 		if (fs::file_size(f1) != fs::file_size(f2)) return true;
 
-		auto f1map = ghassanpl::make_mmap_source<char>(f1);
-		auto f2map = ghassanpl::make_mmap_source<char>(f2);
+		const auto f1map = ghassanpl::make_mmap_source<char>(f1);
+		const auto f2map = ghassanpl::make_mmap_source<char>(f2);
 
 		const auto h1 = XXH64(f1map.data(), f1map.size(), 0);
 		const auto h2 = XXH64(f2map.data(), f2map.size(), 0);
@@ -72,7 +70,7 @@ struct Artifactory
 						PrintLine("Moved.");
 					std::filesystem::copy_file(artifact.TargetTempPath, artifact.TargetPath, std::filesystem::copy_options::overwrite_existing);
 					std::filesystem::remove(artifact.TargetTempPath);
-					this->mModifiedFiles++;
+					++this->mModifiedFiles;
 
 					if (!options.Quiet)
 						PrintLine("Written file {}", artifact.TargetPath.string());
@@ -132,13 +130,11 @@ int main(int argc, const char* argv[])
 			if (std::filesystem::is_directory(path))
 			{
 				auto add_files = [&](const std::filesystem::path& file) {
-					auto u8file = file.string();
-					auto full = string_view{ u8file };
-					if (full.ends_with(options.MirrorExtension)) return;
+					if (file.string().ends_with(options.MirrorExtension)) return;
 
 					auto ext = file.extension().string();
-					std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-					if (!std::filesystem::is_directory(file) && std::find(options.ExtensionsToScan.begin(), options.ExtensionsToScan.end(), ext) != options.ExtensionsToScan.end())
+					std::ranges::transform(ext, ext.begin(), ::tolower);
+					if (!std::filesystem::is_directory(file) && std::ranges::find(options.ExtensionsToScan, ext) != options.ExtensionsToScan.end())
 					{
 						final_files.push_back(file);
 					}
@@ -166,12 +162,12 @@ int main(int argc, const char* argv[])
 
 		std::vector<std::future<bool>> parsers;
 		/// Parse all types
-		for (auto& file : final_files)
+		for (const auto& file : final_files)
 		{
 			parsers.push_back(std::async(ParseClassFile, std::filesystem::path(file), options));
 		}
 
-		auto success = std::all_of(parsers.begin(), parsers.end(), [](auto& future) { return future.get(); });
+		const auto success = std::ranges::all_of(parsers, [](auto& future) { return future.get(); });
 		if (!success)
 			return -1;
 

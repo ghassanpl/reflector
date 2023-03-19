@@ -50,7 +50,7 @@ bool SwallowOptional(string_view& str, string_view swallow)
 std::string ParseIdentifier(string_view& str)
 {
 	auto p = str.begin();
-	for (; p != str.end(); p++)
+	for (; p != str.end(); ++p)
 		if (!ascii::isident(*p)) break;
 	std::string result = { str.begin(), p };
 	str = make_sv(p, str.end());
@@ -61,7 +61,7 @@ std::string ParseType(string_view& str)
 {
 	/// TODO: Unify all type parsing from entire codebase
 
-	auto start = str.begin();
+	const auto start = str.begin();
 	while (true)
 	{
 		if (SwallowOptional(str, "struct") || SwallowOptional(str, "class") || SwallowOptional(str, "enum") || SwallowOptional(str, "union") || SwallowOptional(str, "const"))
@@ -109,7 +109,7 @@ std::string ParseExpression(string_view& str)
 {
 	int brackets = 0, tris = 0, parens = 0;
 	auto p = str.begin();
-	for (; p != str.end(); p++)
+	for (; p != str.end(); ++p)
 	{
 		switch (*p)
 		{
@@ -177,10 +177,10 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 	auto header_line = TrimWhitespace(string_view{ lines[line_num] });
 
 	header_line = Expect(header_line, "enum class");
-	auto name_start = header_line.begin();
-	auto name_end = std::find_if_not(header_line.begin(), header_line.end(), ascii::isident);
+	auto enum_name_start = header_line.begin();
+	auto enum_name_end = std::ranges::find_if_not(header_line, ascii::isident);
 
-	henum.Name = TrimWhitespace(string_ops::make_sv(name_start, name_end));
+	henum.Name = TrimWhitespace(string_ops::make_sv(enum_name_start, enum_name_end));
 	///TODO: parse base type
 
 	line_num++;
@@ -208,19 +208,17 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 			continue;
 		}
 
-		auto name_start = enumerator_line.begin();
-		auto name_end = std::find_if_not(enumerator_line.begin(), enumerator_line.end(), ascii::isident);
+		auto enumerator_name_start = enumerator_line.begin();
+		auto enumerator_name_end = std::ranges::find_if_not(enumerator_line, ascii::isident);
 
-		auto rest = TrimWhitespace(make_sv(name_end, enumerator_line.end()));
-		if (consume(rest, '='))
+		if (auto rest = TrimWhitespace(make_sv(enumerator_name_end, enumerator_line.end())); consume(rest, '='))
 		{
 			rest = TrimWhitespace(rest);
 			std::from_chars(std::to_address(rest.begin()), std::to_address(rest.end()), enumerator_value);
 			/// TODO: Non-integer enumerator values (like 1<<5 and constexpr function calls/expression)
 		}
 
-		auto name = make_sv(name_start, name_end);
-		if (!name.empty())
+		if (auto name = make_sv(enumerator_name_start, enumerator_name_end); !name.empty())
 		{
 			Enumerator enumerator;
 			enumerator.Name = TrimWhitespace(name);
@@ -270,7 +268,7 @@ auto ParseClassDecl(string_view line)
 		auto start = line;
 		while (!line.empty() && !line.starts_with("{"))
 		{
-			auto ch = *line.begin();
+			const auto ch = *line.begin();
 			if (ch == '(') parens++;
 			else if (ch == ')') parens--;
 			else if (ch == '<') triangles++;
@@ -301,10 +299,10 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 	SwallowOptional(line, "mutable");
 
 	string_view eq = "=", open_brace = "{", colon = ";";
-	string_view type_and_name = "";
-	auto eq_start = std::find_first_of(line.begin(), line.end(), eq.begin(), eq.end());
-	auto brace_start = std::find_first_of(line.begin(), line.end(), open_brace.begin(), open_brace.end());
-	auto colon_start = std::find_first_of(line.begin(), line.end(), colon.begin(), colon.end());
+	string_view type_and_name;
+	const auto eq_start = std::ranges::find_first_of(line, eq);
+	const auto brace_start = std::ranges::find_first_of(line, open_brace);
+	const auto colon_start = std::ranges::find_first_of(line, colon);
 
 	if (colon_start != line.end() && !TrimWhitespace(string_ops::make_sv(colon_start + 1, line.end())).empty())
 	{
@@ -331,7 +329,7 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 		throw std::exception{ "Field() must be followed by a proper class field declaration" };
 	}
 
-	auto name_start = ++std::find_if_not(type_and_name.rbegin(), type_and_name.rend(), ascii::isident);
+	const auto name_start = ++std::find_if_not(type_and_name.rbegin(), type_and_name.rend(), ascii::isident);
 
 	std::get<0>(result) = TrimWhitespace(make_sv(type_and_name.begin(), name_start.base()));
 	std::get<1>(result) = TrimWhitespace(make_sv(name_start.base(), type_and_name.end()));
@@ -347,7 +345,7 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 	field.Attributes = ParseAttributeList(line);
 	field.DeclarationLine = line_num;
 	field.Comments = std::move(comments);
-	auto decl = ParseFieldDecl(next_line);
+	const auto decl = ParseFieldDecl(next_line);
 	std::tie(field.Type, field.Name, field.InitializingExpression) = decl;
 	if (field.Name.size() > 1 && field.Name[0] == 'm' && isupper(field.Name[1])) /// TODO: Change this to an optionable regex
 		field.DisplayName.assign(field.Name.begin() + 1, field.Name.end());
@@ -383,7 +381,7 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter);
 
 	/// ChildVector implies Setter = false
-	auto type = string_view{ field.Type };
+	const auto type = string_view{ field.Type };
 	if (type.starts_with("ChildVector<"))
 		field.Flags.set(Reflector::FieldFlags::NoSetter);
 
@@ -444,8 +442,6 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	method.Attributes = ParseAttributeList(line);
 	method.DeclarationLine = line_num;
 	
-	auto debug_copy = next_line;
-
 	while (true)
 	{
 		if (SwallowOptional(next_line, "virtual")) method.Flags += Reflector::MethodFlags::Virtual;
@@ -460,7 +456,7 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 	next_line = TrimWhitespace(next_line);
 
 	auto name_start = next_line.begin();
-	auto name_end = std::find_if_not(next_line.begin(), next_line.end(), ascii::isident);
+	auto name_end = std::ranges::find_if_not(next_line, ascii::isident);
 	method.Name = TrimWhitespace(make_sv(name_start, name_end));
 	int num_pars = 0;
 	auto start_args = name_end;
@@ -585,10 +581,10 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 		PrintLine("Analyzing file {}", path.string());
 
 	std::vector<std::string> lines;
-	std::string line;
+	std::string input_line;
 	std::ifstream infile{ path };
-	while (std::getline(infile, line))
-		lines.push_back(std::exchange(line, {}));
+	while (std::getline(infile, input_line))
+		lines.push_back(std::exchange(input_line, {}));
 	infile.close();
 
 	FileMirror mirror;
@@ -600,34 +596,34 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 
 	for (size_t line_num = 1; line_num < lines.size(); line_num++)
 	{
-		auto line = TrimWhitespace(string_view{ lines[line_num - 1] });
+		auto current_line = TrimWhitespace(string_view{ lines[line_num - 1] });
 		auto next_line = TrimWhitespace(string_view{ lines[line_num] });
 
 		try
 		{
-			if (line.starts_with("public:"))
+			if (current_line.starts_with("public:"))
 				current_access = AccessMode::Public;
-			else if (line.starts_with("protected:"))
+			else if (current_line.starts_with("protected:"))
 				current_access = AccessMode::Protected;
-			else if (line.starts_with("private:"))
+			else if (current_line.starts_with("private:"))
 				current_access = AccessMode::Private;
-			else if (line.starts_with(options.EnumPrefix))
+			else if (current_line.starts_with(options.EnumPrefix))
 			{
 				mirror.Enums.push_back(ParseEnum(lines, line_num, options));
 				mirror.Enums.back().Comments = std::exchange(comments, {});
 				mirror.Enums.back().UID = GenerateUID(path, line_num);
 			}
-			else if (line.starts_with(options.ClassPrefix))
+			else if (current_line.starts_with(options.ClassPrefix))
 			{
 				current_access = AccessMode::Private;
-				mirror.Classes.push_back(ParseClassDecl(line, next_line, line_num, std::exchange(comments, {}), options));
+				mirror.Classes.push_back(ParseClassDecl(current_line, next_line, line_num, std::exchange(comments, {}), options));
 				mirror.Classes.back().UID = GenerateUID(path, line_num);
 				if (options.Verbose)
 				{
 					PrintLine("Found class {}", mirror.Classes.back().FullType());
 				}
 			}
-			else if (line.starts_with(options.FieldPrefix))
+			else if (current_line.starts_with(options.FieldPrefix))
 			{
 				if (mirror.Classes.size() == 0)
 				{
@@ -636,10 +632,10 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				}
 
 				auto& klass = mirror.Classes.back();
-				klass.Fields.push_back(ParseFieldDecl(mirror, klass, line, next_line, line_num, current_access, std::exchange(comments, {}), options));
+				klass.Fields.push_back(ParseFieldDecl(mirror, klass, current_line, next_line, line_num, current_access, std::exchange(comments, {}), options));
 				klass.Fields.back().UID = GenerateUID(path, line_num);
 			}
-			else if (line.starts_with(options.MethodPrefix))
+			else if (current_line.starts_with(options.MethodPrefix))
 			{
 				if (mirror.Classes.size() == 0)
 				{
@@ -648,10 +644,10 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				}
 
 				auto& klass = mirror.Classes.back();
-				klass.Methods.push_back(ParseMethodDecl(klass, line, next_line, line_num, current_access, std::exchange(comments, {}), options));
+				klass.Methods.push_back(ParseMethodDecl(klass, current_line, next_line, line_num, current_access, std::exchange(comments, {}), options));
 				klass.Methods.back().UID = GenerateUID(path, line_num);
 			}
-			else if (line.starts_with(options.BodyPrefix))
+			else if (current_line.starts_with(options.BodyPrefix))
 			{
 				if (mirror.Classes.size() == 0)
 				{
@@ -664,9 +660,9 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				mirror.Classes.back().BodyLine = line_num;
 			}
 
-			if (line.starts_with("///"))
+			if (current_line.starts_with("///"))
 			{
-				comments.push_back((std::string)TrimWhitespace(line.substr(3)));
+				comments.push_back((std::string)TrimWhitespace(current_line.substr(3)));
 			}
 			else
 				comments.clear();

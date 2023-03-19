@@ -73,7 +73,7 @@ struct FileWriter
 		CurrentIndent--;
 	}
 
-	void WriteLine();
+	void WriteLine() const;
 
 	void Close();
 

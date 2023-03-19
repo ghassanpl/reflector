@@ -76,6 +76,8 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 
 	if (do_flags)
 	{
+		constexpr auto enum_getter_flags = enum_flags{ Reflector::MethodFlags::Const, Reflector::MethodFlags::Inline, Reflector::MethodFlags::Noexcept };
+		constexpr auto enum_setter_flags = enum_getter_flags - Reflector::MethodFlags::Const;
 		auto henum = FindEnum(string_view{ enum_name });
 		if (!henum)
 		{
@@ -90,17 +92,17 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 		for (auto& enumerator : henum->Enumerators)
 		{
 			klass.AddArtificialMethod("bool", "Is" + enumerator.Name, "", std::format("return (this->{} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator.Value),
-				{ "Checks whether the `" + enumerator.Name + "` flag is set in " + DisplayName }, Reflector::MethodFlags::Const, DeclarationLine);
+				{ "Checks whether the `" + enumerator.Name + "` flag is set in " + DisplayName }, enum_getter_flags, DeclarationLine);
 
 			if (auto opposite = atEnumeratorOpposite(enumerator.Attributes, ""s); !opposite.empty())
 			{
 				klass.AddArtificialMethod("bool", "Is" + opposite, "", std::format("return (this->{} & {}{{{}}}) == 0;", Name, Type, 1ULL << enumerator.Value),
-					{ "Checks whether the `" + enumerator.Name + "` flag is NOT set in " + DisplayName }, Reflector::MethodFlags::Const, DeclarationLine);
+					{ "Checks whether the `" + enumerator.Name + "` flag is NOT set in " + DisplayName }, enum_getter_flags, DeclarationLine);
 			}
 			else if (flag_nots)
 			{
 				klass.AddArtificialMethod("bool", "IsNot" + enumerator.Name, "", std::format("return (this->{} & {}{{{}}}) == 0;", Name, Type, 1ULL << enumerator.Value),
-					{ "Checks whether the `" + enumerator.Name + "` flag is set in " + DisplayName }, Reflector::MethodFlags::Const, DeclarationLine);
+					{ "Checks whether the `" + enumerator.Name + "` flag is set in " + DisplayName }, enum_getter_flags, DeclarationLine);
 			}
 		}
 
@@ -109,42 +111,42 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass)
 			for (auto& enumerator : henum->Enumerators)
 			{
 				klass.AddArtificialMethod("void", "Set" + enumerator.Name, "", std::format("this->{} |= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
-					{ "Sets the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+					{ "Sets the `" + enumerator.Name + "` flag in " + DisplayName }, enum_setter_flags, DeclarationLine);
 
 				if (auto opposite = atEnumeratorOpposite(enumerator.Attributes, ""s); !opposite.empty())
 				{
 					klass.AddArtificialMethod("void", "Set" + opposite, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator.Value),
-						{ "Clears the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+						{ "Clears the `" + enumerator.Name + "` flag in " + DisplayName }, enum_setter_flags, DeclarationLine);
 
 				}
 				else if (flag_nots)
 				{
 					klass.AddArtificialMethod("void", "SetNot" + enumerator.Name, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator.Value),
-						{ "Clears the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+						{ "Clears the `" + enumerator.Name + "` flag in " + DisplayName }, enum_setter_flags, DeclarationLine);
 				}
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
 				klass.AddArtificialMethod("void", "Unset" + enumerator.Name, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator.Value),
-					{ "Clears the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+					{ "Clears the `" + enumerator.Name + "` flag in " + DisplayName }, enum_setter_flags, DeclarationLine);
 
 
 				if (auto opposite = atEnumeratorOpposite(enumerator.Attributes, ""s); !opposite.empty())
 				{
 					klass.AddArtificialMethod("void", "Unset" + opposite, "", std::format("this->{} |= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
-						{ "Sets the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+						{ "Sets the `" + enumerator.Name + "` flag in " + DisplayName }, enum_setter_flags, DeclarationLine);
 
 				}
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
 				klass.AddArtificialMethod("void", "Toggle" + enumerator.Name, "", std::format("this->{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
-					{ "Toggles the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+					{ "Toggles the `" + enumerator.Name + "` flag in " + DisplayName }, enum_setter_flags, DeclarationLine);
 
 				if (auto opposite = atEnumeratorOpposite(enumerator.Attributes, ""s); !opposite.empty())
 				{
 					klass.AddArtificialMethod("void", "Toggle" + opposite, "", std::format("this->{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator.Value),
-						{ "Toggles the `" + enumerator.Name + "` flag in " + DisplayName }, {}, DeclarationLine);
+						{ "Toggles the `" + enumerator.Name + "` flag in " + DisplayName }, enum_setter_flags, DeclarationLine);
 				}
 			}
 		}
