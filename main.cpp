@@ -34,9 +34,11 @@ struct Artifactory
 	bool FilesAreDifferent(path const& f1, path const& f2) const
 	{
 		namespace fs = std::filesystem;
-		
+
 		if (fs::exists(f1) != fs::exists(f2)) return true;
-		if (fs::file_size(f1) != fs::file_size(f2)) return true;
+		auto f1filesize = fs::file_size(f1);
+		if (f1filesize != fs::file_size(f2)) return true;
+		if (f1filesize == 0) return false; /// This guard is here because we cannot map 0-sized files
 
 		const auto f1map = ghassanpl::make_mmap_source<char>(f1);
 		const auto f2map = ghassanpl::make_mmap_source<char>(f2);
@@ -93,8 +95,18 @@ struct Artifactory
 
 		for (auto& artifact : mArtifactsToBuild)
 			mFutures.push_back(std::async(std::launch::async, std::move(artifact.Builder), std::ref(artifact)));
-		for (auto& future : mFutures)
-			future.get(); /// to propagate exceptions
+		for (size_t i = 0; i < mFutures.size(); ++i)
+		{
+			try
+			{
+				mFutures[i].get(); /// to propagate exceptions
+			}
+			catch (std::exception const& e)
+			{
+				std::cerr << std::format("Exception when building artifact `{}`: {}\n", mArtifactsToBuild[i].TargetPath.string(), e.what());
+				throw;
+			}
+		}
 
 		mFutures.clear();
 		mArtifactsToBuild.clear();
@@ -107,7 +119,7 @@ int main(int argc, const char* argv[])
 {
 	/// If executable changed, it's newer than the files it created in the past, so they need to be rebuild
 	ChangeTime = std::filesystem::last_write_time(argv[0]).time_since_epoch().count();
-	
+
 	/*
 	args::PositionalList<std::filesystem::path> paths_list{ parser, "files", "Files or directories to scan", args::Options::Required };
 	*/
@@ -122,7 +134,7 @@ int main(int argc, const char* argv[])
 		Options options{ argv[0], argv[1] };
 
 		const auto artifact_path = options.ArtifactPath = std::filesystem::absolute(options.ArtifactPath.empty() ? std::filesystem::current_path() : path{ options.ArtifactPath });
-	
+
 		std::vector<std::filesystem::path> final_files;
 		for (auto& path : options.PathsToScan)
 		{
@@ -172,7 +184,7 @@ int main(int argc, const char* argv[])
 			return -1;
 
 		/// Create artificial methods, knowing all the reflected classes
-		CreateArtificialMethods();
+		CreateArtificialMethods(options);
 
 		Artifactory factory{ options };
 

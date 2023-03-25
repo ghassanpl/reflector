@@ -1,7 +1,14 @@
 #pragma once
 
+#if (__cplusplus < 202002L) && (defined(_MSVC_LANG) && _MSVC_LANG < 202002L)
+#error "Reflector requires C++20"
+#endif
+
 #include <typeindex>
 #include <vector>
+#include <compare>
+#include <iosfwd>
+#include <string_view>
 #if REFLECTOR_USES_JSON
 #include REFLECTOR_JSON_HEADER
 #endif
@@ -11,12 +18,20 @@ namespace Reflector
 	struct FieldReflectionData;
 	struct MethodReflectionData;
 
+	enum class ClassFlags
+	{
+		Struct,
+		DeclaredStruct,
+		NoConstructors,
+		HasProxy
+	};
+
 	struct ClassReflectionData
 	{
-		const char* Name = "";
-		const char* FullType = "";
-		const char* ParentClassName = "";
-		const char* Attributes = "{}";
+		std::string_view Name = "";
+		std::string_view FullType = "";
+		std::string_view ParentClassName = "";
+		std::string_view Attributes = "{}";
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
@@ -24,20 +39,20 @@ namespace Reflector
 		void* (*Constructor)(const ClassReflectionData&) = {};
 
 		/// These are vectors and not e.g. initializer_list's because you might want to create your own classes
-		std::vector<FieldReflectionData> Fields; 
+		std::vector<FieldReflectionData> Fields;
 		std::vector<MethodReflectionData> Methods;
+
+		auto FindField(std::string_view name) const -> FieldReflectionData const*;
+		auto FindMethod(std::string_view name) const -> MethodReflectionData const*;
 
 		std::type_index TypeIndex = typeid(void);
 
 		uint64_t Flags = 0;
-	};
 
-	enum class ClassFlags
-	{
-		Struct,
-		DeclaredStruct,
-		NoConstructors,
-		HasProxy
+		bool IsStruct() const { return (Flags & (1ULL << uint64_t(ClassFlags::Struct))) != 0; }
+		bool WasDeclaredStruct() const { return (Flags & (1ULL << uint64_t(ClassFlags::DeclaredStruct))) != 0; }
+		bool HasConstructors() const { return (Flags & (1ULL << uint64_t(ClassFlags::NoConstructors))) == 0; }
+		bool HasProxy() const { return (Flags & (1ULL << uint64_t(ClassFlags::HasProxy))) != 0; }
 	};
 
 	enum class FieldFlags
@@ -52,6 +67,9 @@ namespace Reflector
 
 		Required,
 		Artificial,
+		Static,
+		Mutable,
+		DeclaredPrivate,
 	};
 
 	enum class MethodFlags
@@ -90,7 +108,7 @@ namespace Reflector
 		using type = std::remove_cvref_t<FIELD_TYPE>;
 		using parent_type = PARENT_TYPE;
 		static constexpr uint64_t flags = FLAGS;
-		static constexpr const char* name = NAME_CTL.value;
+		static constexpr std::string_view name = NAME_CTL.value;
 
 		template <typename FLAG_TYPE>
 		static constexpr bool HasFlag(FLAG_TYPE flag_value) noexcept { return (flags & (1ULL << uint64_t(flag_value))) != 0; }
@@ -117,21 +135,23 @@ namespace Reflector
 		static auto VoidGetter(void const* obj) -> void const* { return &(obj->*(pointer)); }
 		static auto VoidSetter(void* obj, void const* value) -> void { (obj->*(pointer)) = reinterpret_cast<FIELD_TYPE const*>(value); };
 	};
-	template <uint64_t FLAGS, CompileTimeLiteral NAME_CTL>
+	template <typename RETURN_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL>
 	struct CompileTimeMethodData
 	{
 		static constexpr uint64_t flags = FLAGS;
-		static constexpr const char* name = NAME_CTL.value;
+		static constexpr std::string_view name = NAME_CTL.value;
+		using return_type = std::remove_cvref_t<RETURN_TYPE>;
+		using parent_type = PARENT_TYPE;
 
 		static constexpr bool HasFlag(MethodFlags flag_value) noexcept { return (flags & (1ULL << uint64_t(flag_value))) != 0; }
 	};
 
 	struct FieldReflectionData
 	{
-		const char* Name = "";
-		const char* FieldType = "";
-		const char* Initializer = "";
-		const char* Attributes = "{}";
+		std::string_view Name = "";
+		std::string_view FieldType = "";
+		std::string_view Initializer = "";
+		std::string_view Attributes = "{}";
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
@@ -143,15 +163,15 @@ namespace Reflector
 
 	struct MethodReflectionData
 	{
-		const char* Name = "";
-		const char* ReturnType = "";
-		const char* Parameters = "";
-		const char* Attributes = "{}";
+		std::string_view Name = "";
+		std::string_view ReturnType = "";
+		std::string_view Parameters = "";
+		std::string_view Attributes = "{}";
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
-		const char* UniqueName = "";
-		const char* Body = "";
+		std::string_view UniqueName = "";
+		std::string_view ArtificialBody = "";
 		std::type_index ReturnTypeIndex = typeid(void);
 		uint64_t Flags = 0;
 		uint64_t UID = 0;
@@ -161,16 +181,16 @@ namespace Reflector
 
 	struct EnumeratorReflectionData
 	{
-		const char* Name = "";
+		std::string_view Name = "";
 		int64_t Value;
 		uint64_t Flags = 0;
 	};
 
 	struct EnumReflectionData
 	{
-		const char* Name = "";
-		const char* FullType = "";
-		const char* Attributes = "{}";
+		std::string_view Name = "";
+		std::string_view FullType = "";
+		std::string_view Attributes = "{}";
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
@@ -184,7 +204,7 @@ namespace Reflector
 	{
 		virtual ClassReflectionData const& GetReflectionData() const
 		{
-			static const ClassReflectionData data = { 
+			static const ClassReflectionData data = {
 				.Name = "Reflectable",
 				.FullType = "Reflector::Reflectable",
 				.ParentClassName = "",
@@ -193,7 +213,7 @@ namespace Reflector
 				.AttributesJSON = {},
 #endif
 				.TypeIndex = typeid(Reflectable)
-			}; 
+			};
 			return data;
 		}
 
@@ -211,7 +231,7 @@ namespace Reflector
 		ClassReflectionData const* mClass = nullptr;
 	};
 
-	template <typename T, typename PROXY_OBJ> 
+	template <typename T, typename PROXY_OBJ>
 	struct ProxyFor
 	{
 		using Type = void;
@@ -222,16 +242,53 @@ namespace Reflector
 	{
 		return false;
 	}
+	template <typename ENUM>
+	inline ::Reflector::EnumReflectionData const& GetEnumReflectionData();
 
 	template <typename T> concept reflected_class = requires { T::StaticClassFlags(); };
 	template <typename T> concept reflected_enum = IsReflectedEnum<T>();
 
-	template <typename REFLECTABLE_CLASS>
-	ClassReflectionData const& Reflect();
-
-	template <typename REFLECTABLE_ENUM>
-	EnumReflectionData const& Reflect();
-
+	template <typename REFLECTABLE_TYPE>
+	auto const& Reflect()
+	{
+		if constexpr (reflected_class<REFLECTABLE_TYPE>)
+		{
+			return REFLECTABLE_TYPE::StaticGetReflectionData();
+		}
+		else if constexpr (reflected_enum<REFLECTABLE_TYPE>)
+		{
+			return GetEnumReflectionData<REFLECTABLE_TYPE>();
+		}
+		else
+		{
+			static_assert(!std::is_same_v<std::void_t<REFLECTABLE_TYPE>, void>, "Type must be marked as reflectable");
+		}
+	}
+	
+	template <reflected_class T, typename VISITOR>
+	void ForEachMethod(T&& object, VISITOR&& visitor)
+	{
+		throw "TODO:"; /// TODO: this
+	}
+	template <typename T, typename VISITOR>
+	void ForEachField(T&& object, VISITOR&& visitor)
+	{
+		static_assert(reflected_class<std::remove_cvref_t<T>>, "Type must be marked as reflectable");
+		std::remove_cvref_t<T>::ForEachField([&](auto&& properties, auto&& ptr, auto&& constexpr_properties) {
+			using ceprops = std::remove_cvref_t<decltype(constexpr_properties)>;
+			if constexpr (ceprops::HasFlag(FieldFlags::Static))
+				visitor(*ptr, properties, constexpr_properties);
+			else
+				visitor((object.*ptr), properties, constexpr_properties);
+		});
+	}
+	/*
+	template <reflected_class T, typename VISITOR>
+	void ForEachProperty(T&& object, VISITOR&& visitor) {
+		
+	}
+	*/
+	
 	extern ClassReflectionData const* Classes[];
 	extern EnumReflectionData const* Enums[];
 }

@@ -30,6 +30,8 @@ using nlohmann::json;
 using namespace ghassanpl;
 using namespace ghassanpl::string_ops;
 
+struct Options;
+
 inline string_view TrimWhitespace(std::string_view str)
 {
 	return ghassanpl::string_ops::trimmed_whitespace(str);
@@ -56,6 +58,7 @@ void Print(std::string_view fmt, ARGS&&... args)
 }
 
 std::string EscapeJSON(json const& json);
+std::string EscapeString(std::string_view str);
 
 enum class AccessMode { Unspecified, Public, Private, Protected };
 
@@ -74,6 +77,7 @@ struct Declaration
 	AccessMode Access = AccessMode::Unspecified;
 	std::vector<std::string> Comments;
 
+	/// TODO: Fill this in for every declaration!
 	uint64_t UID = 0;
 
 	std::string Namespace;
@@ -106,7 +110,7 @@ struct Field : public Declaration
 	std::string DisplayName;
 	std::string CleanName;
 
-	void CreateArtificialMethods(FileMirror& mirror, Class& klass);
+	void CreateArtificialMethods(FileMirror& mirror, Class& klass, Options const& options);
 
 	json ToJSON() const;
 };
@@ -151,7 +155,7 @@ public:
 	std::vector<MethodParameter> ParametersSplit;
 	std::string ParametersNamesOnly;
 	std::string ParametersTypesOnly;
-	std::string Body;
+	std::string ArtificialBody;
 	size_t SourceFieldDeclarationLine = 0;
 	std::string UniqueName;
 
@@ -162,7 +166,7 @@ public:
 
 	std::string GetSignature(Class const& parent_class) const;
 
-	void CreateArtificialMethods(FileMirror& mirror, Class& klass);
+	void CreateArtificialMethods(FileMirror& mirror, Class& klass, Options const& options);
 
 	json ToJSON() const;
 };
@@ -176,7 +180,7 @@ struct Property
 	size_t GetterLine = 0;
 	std::string Type;
 
-	void CreateArtificialMethods(FileMirror& mirror, Class& klass);
+	void CreateArtificialMethods(FileMirror& mirror, Class& klass, Options const& options);
 };
 
 struct Class : public Declaration
@@ -193,7 +197,7 @@ struct Class : public Declaration
 	size_t BodyLine = 0;
 
 	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {}, size_t source_field_declaration_line = 0);
-	void CreateArtificialMethods(FileMirror& mirror);
+	void CreateArtificialMethods(FileMirror& mirror, Options const& options);
 
 	std::map<std::string, std::vector<Method const*>> MethodsByName;
 
@@ -238,13 +242,13 @@ struct FileMirror
 
 	json ToJSON() const;
 
-	void CreateArtificialMethods();
+	void CreateArtificialMethods(Options const& options);
 };
 
 extern uint64_t ChangeTime;
 std::vector<FileMirror> const& GetMirrors();
 void AddMirror(FileMirror mirror);
-void CreateArtificialMethods();
+void CreateArtificialMethods(Options const& options);
 
 struct Options
 {
@@ -260,9 +264,11 @@ struct Options
 	/// TODO: Check if these work in combinations
 	bool CreateArtifacts = true;
 	bool CreateDatabase = true;
-	bool GenerateLuaFunctionBindings = false;
+	bool GenerateLuaFunctionBindings = false; /// Maybe instead of Lua function bindings, since this options is loaded from a JSON, we can have a nice JSON structure that defines how to create scripting bindings?
 	bool GenerateTypeIndices = false;
 	bool ForwardDeclare = true;
+
+	/// TODO: We should also load all these
 
 	std::string JSONHeaderPath = "<nlohmann/json.hpp>";
 	std::string JSONParseFunction = "::nlohmann::json::parse";
@@ -282,7 +288,7 @@ struct Options
 	std::string MacroPrefix = "REFLECT";
 
 	std::string MirrorExtension = ".mirror";
-	std::vector<std::string> ExtensionsToScan = { ".h", ".hpp", ".cpp" };
+	std::vector<std::string> ExtensionsToScan = { ".h", ".hpp" };
 
 	std::string EnumPrefix;
 	std::string EnumeratorPrefix;
@@ -293,6 +299,17 @@ struct Options
 
 	path OptionsFilePath;
 	json OptionsFile;
+
+	std::string GetterPrefix = "Get";
+	std::string SetterPrefix = "Set"; /// both for regular setters as well as flag setters
+	std::string IsPrefix = "Is";
+	std::string IsNotPrefix = "IsNot";
+	std::string SetNotPrefix = "SetNot";
+	std::string UnsetPrefix = "Unset";
+	std::string TogglePrefix = "Toggle";
+	std::string ProxyMethodPrefix = "_proxy_";
+	std::string SingletonInstanceGetterName = "SingletonInstance";
+	std::string ProxyClassSuffix = "_Proxy";
 };
 
 inline std::string OnlyType(std::string str)

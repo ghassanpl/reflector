@@ -71,6 +71,7 @@ bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opt
 {
 	FileWriter database_file{ target_path };
 	
+	database_file.WriteLine("#include <iostream>");
 	database_file.WriteLine("#include \"Reflector.h\"");
 	database_file.WriteLine("#include \"Includes.reflect.h\"");
 	
@@ -207,15 +208,18 @@ void BuildStaticReflectionData(FileWriter& output, const Enum& henum, const Opti
 	}
 	output.CurrentIndent--;
 	output.WriteLine("}},");
-	output.WriteLine(".TypeIndex = typeid({}),", henum.FullType());
+	if (options.GenerateTypeIndices)
+		output.WriteLine(".TypeIndex = typeid({}),", henum.FullType());
 	output.WriteLine(".Flags = {},", henum.Flags.bits);
 	output.CurrentIndent--;
 	output.WriteLine("}}; return _data;");
 	output.CurrentIndent--;
 	output.WriteLine("}}");
 
-	output.WriteLine("template <>");
-	output.WriteLine("::Reflector::EnumReflectionData const& Reflector::Reflect<{}>() {{ return StaticGetReflectionData_For_{}(); }}", henum.FullType(), henum.GeneratedUniqueName());
+	output.WriteLine("std::ostream& operator<<(std::ostream& strm, {} v) {{ strm << GetEnumeratorName(v); return strm; }}", henum.Name);
+
+	//output.WriteLine("template <>");
+	//output.WriteLine("::Reflector::EnumReflectionData const& Reflector::Reflect<{}>() {{ return StaticGetReflectionData_For_{}(); }}", henum.FullType(), henum.GeneratedUniqueName());
 }
 
 void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Options& options)
@@ -227,7 +231,10 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 	output.CurrentIndent++;
 	output.WriteLine(".Name = \"{}\",", klass.Name);
 	output.WriteLine(".FullType = \"{}\",", klass.FullType());
-	output.WriteLine(".ParentClassName = \"{}\",", OnlyType(klass.ParentClass));
+
+	/// TODO: Comment and describe here why we should only give the type as the parent class name, since we support full namespaced names?
+	///output.WriteLine(".ParentClassName = \"{}\",", OnlyType(klass.ParentClass));
+	output.WriteLine(".ParentClassName = \"{}\",", klass.ParentClass);
 
 	if (!klass.Attributes.empty())
 	{
@@ -235,6 +242,7 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 		if (options.UseJSON)
 			output.WriteLine(".AttributesJSON = {}({}),", options.JSONParseFunction, EscapeJSON(klass.Attributes));
 	}
+	output.WriteLine(".UID = {}ULL,", klass.UID);
 	if (!klass.Flags.is_set(ClassFlags::NoConstructors))
 		output.WriteLine(".Constructor = +[](const ::Reflector::ClassReflectionData& klass){{ return (void*)new {}{{klass}}; }},", klass.FullType());
 
@@ -248,7 +256,7 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 		output.WriteLine(".Name = \"{}\",", field.Name);
 		output.WriteLine(".FieldType = \"{}\",", field.Type);
 		if (!field.InitializingExpression.empty())
-			output.WriteLine(".Initializer = {},", EscapeJSON(field.InitializingExpression));
+			output.WriteLine(".Initializer = {},", EscapeString(field.InitializingExpression));
 		if (!field.Attributes.empty())
 		{
 			output.WriteLine(".Attributes = {},", EscapeJSON(field.Attributes));
@@ -258,7 +266,7 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 		if (options.GenerateTypeIndices)
 			output.WriteLine(".FieldTypeIndex = typeid({}),", field.Type);
 		output.WriteLine(".Flags = {},", field.Flags.bits);
-		//output.WriteLine(".ParentClass = &_data");
+		output.WriteLine(".ParentClass = &_data");
 		output.CurrentIndent--;
 		output.WriteLine("}},");
 	}
@@ -275,7 +283,7 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 		output.WriteLine(".Name = \"{}\",", method.Name);
 		output.WriteLine(".ReturnType = \"{}\",", method.Type);
 		if (!method.GetParameters().empty())
-			output.WriteLine(".Parameters = {},", EscapeJSON(method.GetParameters()));
+			output.WriteLine(".Parameters = {},", EscapeString(method.GetParameters()));
 		if (!method.Attributes.empty())
 		{
 			output.WriteLine(".Attributes = {},", EscapeJSON(method.Attributes));
@@ -284,12 +292,12 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 		}
 		if (!method.UniqueName.empty())
 			output.WriteLine(".UniqueName = \"{}\",", method.UniqueName);
-		if (!method.Body.empty())
-			output.WriteLine(".Body = {},", EscapeJSON(method.Body));
+		if (!method.ArtificialBody.empty())
+			output.WriteLine(".ArtificialBody = {},", EscapeString(method.ArtificialBody));
 		if (options.GenerateTypeIndices)
 			output.WriteLine(".ReturnTypeIndex = typeid({}),", method.Type);
 		output.WriteLine(".Flags = {},", method.Flags.bits);
-		//output.WriteLine(".ParentClass = &_data");
+		output.WriteLine(".ParentClass = &_data");
 		output.CurrentIndent--;
 		output.WriteLine("}},");
 	}
@@ -304,8 +312,8 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 	output.CurrentIndent--;
 	output.WriteLine("}}");
 
-	output.WriteLine("template <>");
-	output.WriteLine("::Reflector::ClassReflectionData const& Reflector::Reflect<{}>() {{ return StaticGetReflectionData_For_{}(); }}", klass.FullType(), klass.GeneratedUniqueName());
+	//output.WriteLine("template <>");
+	//output.WriteLine("::Reflector::ClassReflectionData const& Reflector::Reflect<{}>() {{ return StaticGetReflectionData_For_{}(); }}", klass.FullType(), klass.GeneratedUniqueName());
 }
 
 bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
@@ -320,6 +328,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	{
 		WriteForwardDeclaration(output, klass, options);
 	}
+	/// TODO: Make the name of this function configurable?
 	output.WriteLine("::Reflector::ClassReflectionData const& StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
 
 	/// ///////////////////////////////////// ///
@@ -340,18 +349,23 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 
 	/// Method visitor
 	output.StartDefine("#define {0}_VISIT_{1}_METHODS({0}_VISITOR)", options.MacroPrefix, klass.FullName());
+	auto klass_full_type = klass.FullType();
 	for (size_t i = 0; i < klass.Methods.size(); i++)
 	{
 		const auto& method = klass.Methods[i];
+		
+		const auto method_pointer = std::format("({})&{}::{}", method.GetSignature(klass), klass_full_type, method.Name);
+		const auto compile_time_method_data = std::format("::Reflector::CompileTimeMethodData<{}, {}, {}, {}>{{}}", method.Type, klass_full_type, method.Flags.bits, BuildCompileTimeLiteral(method.Name));
+
 		if (options.GenerateLuaFunctionBindings && !method.Flags.is_set(Reflector::MethodFlags::NoCallable)) /// if callable
 		{
-			output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData().Methods[{2}], ({3})&{1}::{4}, &{1}::ScriptFunction_{5}, ::Reflector::CompileTimeMethodData<{6}, {7}>{{}});",
-				options.MacroPrefix, klass.FullType(), i, method.GetSignature(klass), method.Name, method.GeneratedUniqueName(), method.Flags.bits, BuildCompileTimeLiteral(method.Name));
+			output.WriteLine("{}_VISITOR(&{}::StaticGetReflectionData().Methods[{}], {}, &{}::ScriptFunction_{}, {});",
+				options.MacroPrefix, klass_full_type, i, method_pointer, klass_full_type, method.GeneratedUniqueName(), compile_time_method_data);
 		}
 		else
 		{
-			output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData().Methods[{2}], ({3})&{1}::{4}, ::Reflector::CompileTimeMethodData<{5}, {6}>{{}});",
-				options.MacroPrefix, klass.FullType(), i, method.GetSignature(klass), method.Name, method.Flags.bits, BuildCompileTimeLiteral(method.Name));
+			output.WriteLine("{}_VISITOR(&{}::StaticGetReflectionData().Methods[{}], {}, {});",
+				options.MacroPrefix, klass_full_type, i, method_pointer, compile_time_method_data);
 		}
 	}
 	output.EndDefine("");
@@ -363,18 +377,20 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		const auto& [Name, SetterName, SetterLine, GetterName, GetterLine, Type] = snd;
 		std::string getter_name = "nullptr";
 		if (!GetterName.empty())
-			getter_name = std::format("&{}::{}", klass.FullType(), GetterName);
+			getter_name = std::format("&{}::{}", klass_full_type, GetterName);
 		std::string setter_name = "nullptr";
 		if (!SetterName.empty())
-			setter_name = std::format("&{}::{}", klass.FullType(), SetterName);
+			setter_name = std::format("&{}::{}", klass_full_type, SetterName);
 		output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData(), \"{2}\", {3}, {4}, ::Reflector::CompileTimePropertyData<{5}, {1}, 0ULL, {6}>{{}});",
-			options.MacroPrefix, klass.FullType(), Name, getter_name, setter_name, Type, BuildCompileTimeLiteral(Name));
+			options.MacroPrefix, klass_full_type, Name, getter_name, setter_name, Type, BuildCompileTimeLiteral(Name));
 	}
 	output.EndDefine("");
 
 	/// ///////////////////////////////////// ///
 	/// Class body
 	/// ///////////////////////////////////// ///
+
+	/// TODO: Make the name of ALL these methods configurable
 
 	output.WriteLine("#undef {}_GENERATED_CLASS_BODY_{}", options.MacroPrefix, klass.BodyLine);
 	output.StartDefine("#define {}_GENERATED_CLASS_BODY_{}", options.MacroPrefix, klass.BodyLine);
@@ -385,10 +401,10 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	output.CurrentIndent++;
 
 	/// Typedefs
-	output.WriteLine("typedef {} self_type;", klass.Name);
+	output.WriteLine("using self_type = {};", klass.Name);
 	if (!klass.ParentClass.empty())
 	{
-		output.WriteLine("typedef {} parent_type;", klass.ParentClass);
+		output.WriteLine("using parent_type = {};", klass.ParentClass);
 		output.WriteLine("using parent_type::parent_type;");
 
 		/// Constructors
@@ -401,11 +417,16 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	}
 	else
 	{
-		output.WriteLine("typedef void parent_type;");
+		output.WriteLine("using parent_type = void;");
 	}
 
+
+	if (klass.Flags.is_set(ClassFlags::HasProxy))
+		output.WriteLine("template <typename PROXY_OBJ> using proxy_class = {0}{1}<{0}, PROXY_OBJ>;", klass.FullType(), options.ProxyClassSuffix);
+	
 	/// Flags
-	output.WriteLine("static constexpr int StaticClassFlags() {{ return {}; }}", klass.Flags.bits);
+	/// TODO: Should these be exposed as well as a virtual method? I don't think so, these are in ClassReflectionData, right? (CHECK)
+	output.WriteLine("static constexpr unsigned long long StaticClassFlags() {{ return {}; }}", klass.Flags.bits);
 
 	/// Other body lines
 	for (auto& line : klass.AdditionalBodyLines)
@@ -427,15 +448,15 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	/// ///////////////////////////////////// ///
 
 	/// - StaticVisitMethods
-	output.WriteLine("template <typename VISITOR> static void StaticVisitMethods(VISITOR&& visitor) {{");
+	output.WriteLine("template <typename VISITOR> static void ForEachMethod(VISITOR&& visitor) {{");
 	output.WriteLine("\t{}_VISIT_{}_METHODS(visitor);", options.MacroPrefix, klass.FullName());
 	output.WriteLine("}}");
 	/// - StaticVisitFields
-	output.WriteLine("template <typename VISITOR> static void StaticVisitFields(VISITOR&& visitor) {{");
+	output.WriteLine("template <typename VISITOR> static void ForEachField(VISITOR&& visitor) {{");
 	output.WriteLine("\t{}_VISIT_{}_FIELDS(visitor);", options.MacroPrefix, klass.FullName());
 	output.WriteLine("}}");
 	/// - StaticVisitProperties
-	output.WriteLine("template <typename VISITOR> static void StaticVisitProperties(VISITOR&& visitor) {{");
+	output.WriteLine("template <typename VISITOR> static void ForEachProperty(VISITOR&& visitor) {{");
 	output.WriteLine("\t{}_VISIT_{}_PROPERTIES(visitor);", options.MacroPrefix, klass.FullName());
 	output.WriteLine("}}");
 
@@ -467,7 +488,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 			output.WriteLine("{}_CALLABLE(({}), {}, ({}))", options.MacroPrefix, func.Type, func.GeneratedUniqueName(), func.GetParameters());
 		if (func.Flags.is_set(Reflector::MethodFlags::Artificial))
 		{
-			output.WriteLine("{} auto {}({}){} -> {} {{ {} }}", PrintPreFlags(func.Flags), func.Name, func.GetParameters(), PrintPostFlags(func.Flags), func.Type, func.Body);
+			output.WriteLine("{} auto {}({}){} -> {} {{ {} }}", PrintPreFlags(func.Flags), func.Name, func.GetParameters(), PrintPostFlags(func.Flags), func.Type, func.ArtificialBody);
 		}
 	}
 
@@ -481,7 +502,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	output.WriteLine("#undef {}_GENERATED_CLASS_{}", options.MacroPrefix, klass.DeclarationLine);
 	if (klass.Flags.is_set(ClassFlags::HasProxy))
 	{
-		output.StartDefine("#define {}_GENERATED_CLASS_{} template <typename T, typename PROXY_OBJ> struct {}_Proxy : T {{", options.MacroPrefix, klass.DeclarationLine, klass.Name);
+		output.StartDefine("#define {}_GENERATED_CLASS_{} template <typename T, typename PROXY_OBJ> struct {}{} : T {{", options.MacroPrefix, klass.DeclarationLine, klass.Name, options.ProxyClassSuffix);
 		output.CurrentIndent++;
 		output.WriteLine("mutable PROXY_OBJ ReflectionProxyObject;");
 		for (auto& func : klass.Methods)
@@ -507,8 +528,8 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 			output.WriteLine("}}");
 		}
 		output.CurrentIndent--;
-		output.WriteLine("}};");
-		output.EndDefine("namespace Reflector {{ template <typename PROXY_OBJ> struct ProxyFor<{0}, PROXY_OBJ> {{ using Type = {0}_Proxy<{0}, PROXY_OBJ>; }}; }}", klass.FullType());
+		output.EndDefine("}};");
+		//output.EndDefine("namespace Reflector {{ template <typename PROXY_OBJ> struct ProxyFor<{0}, PROXY_OBJ> {{ using Type = {0}_Proxy<{0}, PROXY_OBJ>; }}; }}", klass.FullType());
 	}
 	else
 		output.WriteLine("#define {}_GENERATED_CLASS_{}", options.MacroPrefix, klass.DeclarationLine);
@@ -522,7 +543,15 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.WriteLine("/// From enum: {}", henum.FullType());
 
 	WriteForwardDeclaration(output, henum, options);
-	output.WriteLine("namespace Reflector {{ template <> inline constexpr bool IsReflectedEnum<{}>() {{ return true; }} }}", henum.FullType());
+
+	/// TODO: Make the name of this function configurable
+	output.WriteLine("extern ::Reflector::EnumReflectionData const& StaticGetReflectionData_For_{}();", henum.GeneratedUniqueName());
+	output.WriteLine("namespace Reflector {{");
+	output.CurrentIndent++;
+	output.WriteLine("template <> inline ::Reflector::EnumReflectionData const& GetEnumReflectionData<{}>() {{ return StaticGetReflectionData_For_{}(); }}", henum.FullType(), henum.GeneratedUniqueName());
+	output.WriteLine("template <> inline constexpr bool IsReflectedEnum<{}>() {{ return true; }}", henum.FullType());
+	output.CurrentIndent--;
+	output.WriteLine("}}");
 
 	output.WriteLine("#undef {}_ENUM_{}", options.MacroPrefix, henum.DeclarationLine);
 	output.StartDefine("#define {}_ENUM_{}", options.MacroPrefix, henum.DeclarationLine);
@@ -533,6 +562,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 
 	output.WriteLine("enum class {};", henum.Name); /// forward decl;
 
+	/// TODO: Make the name of ALL these functions and values in the global namespace configurable
 	/// TODO: Instead, we could do something like:
 	/// 
 	/// static constexpr inline ::Reflector::EnumProperties EnumDataFor_ENUM_FULL_NAME = {
@@ -546,7 +576,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 		output.WriteLine("static constexpr inline size_t {}Count = {};", henum.Name, henum.Enumerators.size());
 		if (has_any_enumerators)
 		{
-			output.WriteLine("static constexpr inline const char* {}NamesByIndex[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](Enumerator const& enumerator) { return std::format("\"{}\"", enumerator.Name); }));
+			output.WriteLine("static constexpr inline std::string_view {}NamesByIndex[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](Enumerator const& enumerator) { return std::format("\"{}\"", enumerator.Name); }));
 			output.WriteLine("static constexpr inline {0} {0}ValuesByIndex[] = {{ {1} }} ;", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](Enumerator const& enumerator) {
 				return std::format("{}{{{}}}", henum.Name, enumerator.Value);
 				}));
@@ -556,9 +586,9 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 		}
 	}
 
-	output.WriteLine("inline constexpr const char* GetEnumName({0}) {{ return \"{0}\"; }}", henum.Name);
+	output.WriteLine("inline constexpr std::string_view GetEnumName({0}) {{ return \"{0}\"; }}", henum.Name);
 	output.WriteLine("inline constexpr size_t GetEnumCount({}) {{ return {}; }}", henum.Name, henum.Enumerators.size());
-	output.WriteLine("inline constexpr const char* GetEnumeratorName({} v) {{", henum.Name);
+	output.WriteLine("inline constexpr std::string_view GetEnumeratorName({} v) {{", henum.Name);
 	{
 		auto indent = output.Indent();
 
@@ -628,6 +658,8 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 			}
 		}
 	*/
+	/// TODO: Make the name of this function configurable
+	/// TODO: This depends on string_view :/
 	output.WriteLine("inline constexpr {0} GetEnumeratorFromName({0}, std::string_view name) {{", henum.Name);
 	{
 		auto indent = output.Indent();
@@ -641,6 +673,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 
 	if (has_any_enumerators && atEnumList(henum.Attributes, false))
 	{
+		/// TODO: Make the name of these functions configurable
 		output.WriteLine("inline constexpr {0} GetNext({0} v) {{ return {0}ValuesByIndex[(int64_t(v) + 1) % {0}Count]; }}", henum.Name);
 		output.WriteLine("inline constexpr {0} GetPrev({0} v) {{ return {0}ValuesByIndex[(int64_t(v) + ({0}Count - 1)) % {0}Count]; }}", henum.Name);
 
@@ -656,9 +689,11 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.WriteLine("inline constexpr auto operator==(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left == std::to_underlying(right); }}", henum.Name);
 	output.WriteLine("inline constexpr auto operator<=>(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left <=> std::to_underlying(right); }}", henum.Name);
 
-	output.WriteLine("inline std::ostream& operator<<(std::ostream& strm, {} v) {{ strm << GetEnumeratorName(v); return strm; }}", henum.Name);
-
-	/// TODO: Move the body of the below function to the DB
+	output.WriteLine("std::ostream& operator<<(std::ostream& strm, {} v);", henum.Name);
+	
+	/// TODO: Make the name of this function configurable
+	/// TODO: Move the body of the below function to the reflector header
+	/*
 	output.WriteLine("template <typename T>");
 	output.WriteLine("void OutputFlagsFor(std::ostream& strm, {}, T flags, std::string_view separator = \", \") {{ ", henum.Name);
 	output.CurrentIndent++;
@@ -669,6 +704,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	}
 	output.CurrentIndent--;
 	output.WriteLine("}}");
+	*/
 
 	output.EndDefine();
 

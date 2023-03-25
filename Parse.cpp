@@ -32,6 +32,11 @@ std::string EscapeJSON(json const& json)
 	return "R\"_REFLECT_(" + json.dump() + ")_REFLECT_\"";
 }
 
+std::string EscapeString(std::string_view string)
+{
+	return std::format("R\"_REFLECT_({})_REFLECT_\"", string);
+}
+
 uint64_t GenerateUID(std::filesystem::path const& file_path, size_t declaration_line)
 {
 	return ghassanpl::hash(file_path.string(), declaration_line);
@@ -64,7 +69,11 @@ std::string ParseType(string_view& str)
 	const auto start = str.begin();
 	while (true)
 	{
-		if (SwallowOptional(str, "struct") || SwallowOptional(str, "class") || SwallowOptional(str, "enum") || SwallowOptional(str, "union") || SwallowOptional(str, "const"))
+		if (SwallowOptional(str, "struct") ||
+			SwallowOptional(str, "class") ||
+			SwallowOptional(str, "enum") ||
+			SwallowOptional(str, "union") ||
+			SwallowOptional(str, "const"))
 			continue;
 		break;
 	}
@@ -290,13 +299,41 @@ auto ParseClassDecl(string_view line)
 	return result;
 }
 
-std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view line)
+struct ParsedFieldDecl
 {
-	std::tuple<std::string, std::string, std::string> result;
+	std::string Type;
+	std::string Name;
+	std::string Initializer;
+	enum_flags<FieldFlags> Flags{};
+};
+
+ParsedFieldDecl ParseFieldDecl(string_view line)
+{
+	ParsedFieldDecl result;
 
 	line = TrimWhitespace(line);
 
-	SwallowOptional(line, "mutable");
+	/// TODO: Parse attributes
+
+	/// thread_local? extern? inline?
+
+	while (true)
+	{
+		if (SwallowOptional(line, "mutable"))
+		{
+			result.Flags += FieldFlags::Mutable;
+			continue;
+		}
+		if (SwallowOptional(line, "static"))
+		{
+			result.Flags += FieldFlags::Static;
+			continue;
+		}
+		if (SwallowOptional(line, "inline"))
+			continue;
+		break;
+	}
+	
 
 	string_view eq = "=", open_brace = "{", colon = ";";
 	string_view type_and_name;
@@ -312,12 +349,12 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 	if (eq_start != line.end())
 	{
 		type_and_name = TrimWhitespace(string_ops::make_sv(line.begin(), eq_start));
-		std::get<2>(result) = TrimWhitespace(string_ops::make_sv(eq_start + 1, colon_start));
+		result.Initializer = TrimWhitespace(string_ops::make_sv(eq_start + 1, colon_start));
 	}
 	else if (brace_start != line.end())
 	{
 		type_and_name = TrimWhitespace(string_ops::make_sv(line.begin(), brace_start));
-		std::get<2>(result) = TrimWhitespace(string_ops::make_sv(brace_start, colon_start));
+		result.Initializer = TrimWhitespace(string_ops::make_sv(brace_start, colon_start));
 	}
 	else
 	{
@@ -331,8 +368,8 @@ std::tuple<std::string, std::string, std::string> ParseFieldDecl(string_view lin
 
 	const auto name_start = ++std::find_if_not(type_and_name.rbegin(), type_and_name.rend(), ascii::isident);
 
-	std::get<0>(result) = TrimWhitespace(make_sv(type_and_name.begin(), name_start.base()));
-	std::get<1>(result) = TrimWhitespace(make_sv(name_start.base(), type_and_name.end()));
+	result.Type = TrimWhitespace(make_sv(type_and_name.begin(), name_start.base()));
+	result.Name = TrimWhitespace(make_sv(name_start.base(), type_and_name.end()));
 
 	return result;
 }
@@ -342,11 +379,16 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 	Field field;
 	line.remove_prefix(options.FieldPrefix.size());
 	field.Access = mode;
+	if (field.Access != AccessMode::Public && field.Access != AccessMode::Unspecified)
+		field.Flags += FieldFlags::DeclaredPrivate;
 	field.Attributes = ParseAttributeList(line);
 	field.DeclarationLine = line_num;
 	field.Comments = std::move(comments);
-	const auto decl = ParseFieldDecl(next_line);
-	std::tie(field.Type, field.Name, field.InitializingExpression) = decl;
+	const auto&& [type, name, initializer, flags] = ParseFieldDecl(next_line);
+	field.Type = type;
+	field.Name = name;
+	field.InitializingExpression = initializer;
+	field.Flags += flags;
 	if (field.Name.size() > 1 && field.Name[0] == 'm' && isupper(field.Name[1])) /// TODO: Change this to an optionable regex
 		field.DisplayName.assign(field.Name.begin() + 1, field.Name.end());
 	else
@@ -381,7 +423,6 @@ Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, s
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter);
 
 	/// ChildVector implies Setter = false
-	const auto type = string_view{ field.Type };
 	if (type.starts_with("ChildVector<"))
 		field.Flags.set(Reflector::FieldFlags::NoSetter);
 

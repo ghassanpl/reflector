@@ -99,7 +99,7 @@ inline const AttributeProperties atMethodGetterFor{ "GetterFor", "This function 
 inline const AttributeProperties atMethodSetterFor{ "SetterFor", "This function is a setter for the named field", json::value_t::string };
 
 inline const AttributeProperties atRecordAbstract{ "Abstract", "This record is abstract (don't create special constructors)", json::value_t::boolean, false };
-inline const AttributeProperties atRecordSingleton{ "Singleton", "This record is a singleton. Adds a static function 'SingletonInstance' that returns the single instance of this record", json::value_t::boolean, false };
+inline const AttributeProperties atRecordSingleton{ "Singleton", "This record is a singleton. Adds a static function (default name 'SingletonInstance') that returns the single instance of this record", json::value_t::boolean, false };
 
 inline const AttributeProperties atRecordCreateProxy{ "CreateProxy", "If set to false, proxy classes are not built for classes with virtual methods", json::value_t::boolean, true };
 
@@ -115,17 +115,18 @@ inline const AttributeProperties atClassCreateIsChilds{ "CreateIsChilds", "Creat
 inline const AttributeProperties atFieldScriptAccess{ "ScriptAccess", "Whether or not to hook up the generated accessors (getter, setter) to the scripting system", json::value_t::boolean, true };
 
 /// [field] Optional - requires an optional type (like std::optional); will create Is#field_name and Reset#field_name in addition to regular accessors
+/// [any] Internal - do not document
 /// [field] ExposeMethods=[names,of,methods] - will create `template <typename... ARGS> auto method_name(ARGS&&... args) { return field_name.method_name(std::forward<ARGS>(args)...); }`
 ///		Or better yet, RField(ExposeMethods={GetSpeed=GetAnimationSpeed, ...}) Animation mAnimation;
+/// [record/field] OnAfterLoad=funcname, OnBeforeSave=funcname
+/// [record/field] CustomEditor=funcname
+/// [field] Min/Max/Step - how to handle?
+///		ForceLimits - will clamp the input value in the setter
+/// 
 /// [field] VectorGetters=true/element_name - creates Get#At(), Get#Count()
 /// [field] VectorSetters=true/element_name - creates Set#At(), Push#(), Erase#(), Insert#(), Clear#s(), Resize#(), Pop#()
 /// [field] MapGetters - Find#()
 /// [field] MapSetters
-/// [any] Internal - do not document
-/// [field] Min/Max/Step - how to handle?
-///		ForceLimits - will clamp the input value in the setter
-/// [record/field] OnAfterLoad=funcname, OnBeforeSave=funcname
-/// [record/field] CustomEditor=funcname
 /// [field] Validator=funcname - will generate a ValidateFields(callback) function for the class (customizable)
 /// [any] Plural/Singular - whether to create Is or Are prefixes and such
 
