@@ -22,11 +22,11 @@ namespace Reflector
 	template<size_t N>
 	struct CompileTimeLiteral
 	{
-		constexpr CompileTimeLiteral(char const (&s)[N]) { std::copy_n(s, N, this->value); }
+		constexpr CompileTimeLiteral(char const (&s)[N]) { std::copy_n(s, N, this->Value); }
 		constexpr std::strong_ordering operator<=>(CompileTimeLiteral const&) const = default;
 		constexpr bool operator==(CompileTimeLiteral const&) const = default;
-		constexpr bool operator==(std::string_view str) const { return str == value; }
-		char value[N];
+		constexpr bool operator==(std::string_view str) const { return str == Value; }
+		char Value[N];
 	};
 
 	/// TODO: We could technically put attributes in here as well (at least top-level bool ones, as flags or something)
@@ -34,58 +34,63 @@ namespace Reflector
 	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL>
 	struct CompileTimePropertyData
 	{
-		using type = std::remove_cvref_t<FIELD_TYPE>;
-		using parent_type = PARENT_TYPE;
-		static constexpr uint64_t flags = FLAGS;
-		static constexpr std::string_view name = NAME_CTL.value;
+		using Type = std::remove_cvref_t<FIELD_TYPE>;
+		using ParentType = PARENT_TYPE;
+		static constexpr uint64_t Flags = FLAGS;
+		static constexpr std::string_view Name = NAME_CTL.Value;
 
 		template <typename FLAG_TYPE>
-		static constexpr bool HasFlag(FLAG_TYPE flag_value) noexcept { return (flags & (1ULL << uint64_t(flag_value))) != 0; }
+		static constexpr bool HasFlag(FLAG_TYPE flag_value) noexcept { return (Flags & (1ULL << uint64_t(flag_value))) != 0; }
 	};
 	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER>
 	struct CompileTimeFieldData : CompileTimePropertyData<FIELD_TYPE, PARENT_TYPE, FLAGS, NAME_CTL>
 	{
-		static constexpr PTR_TYPE pointer = POINTER;
+		using PointerType = PTR_TYPE;
+		static constexpr PTR_TYPE Pointer = POINTER;
 
-		static auto Getter(PARENT_TYPE const* obj) -> FIELD_TYPE const& { return (obj->*(pointer)); }
+		/// TODO: Test these (esp. for static fields)
+		static auto Getter(PARENT_TYPE const* obj) -> FIELD_TYPE const& { return (obj->*(Pointer)); }
 		template <typename PARENT = PARENT_TYPE, typename FIELD = FIELD_TYPE>
-		static auto GenericGetter(PARENT const* obj) -> FIELD const& { return (obj->*(pointer)); }
+		static auto GenericGetter(PARENT const* obj) -> FIELD const& { return (obj->*(Pointer)); }
 
 		template <typename PARENT = PARENT_TYPE, typename VALUE>
-		static auto GenericSetter(PARENT* obj, VALUE&& value) -> void { (obj->*(pointer)) = std::forward<VALUE>(value); };
+		static auto GenericSetter(PARENT* obj, VALUE&& value) -> void { (obj->*(Pointer)) = std::forward<VALUE>(value); };
 
-		static auto CopySetter(PARENT_TYPE* obj, FIELD_TYPE const& value) -> void { (obj->*(pointer)) = value; };
-		static auto MoveSetter(PARENT_TYPE* obj, FIELD_TYPE&& value) -> void { (obj->*(pointer)) = std::move(value); };
+		static auto CopySetter(PARENT_TYPE* obj, FIELD_TYPE const& value) -> void { (obj->*(Pointer)) = value; };
+		static auto MoveSetter(PARENT_TYPE* obj, FIELD_TYPE&& value) -> void { (obj->*(Pointer)) = std::move(value); };
 		template <typename PARENT = PARENT_TYPE, typename FIELD = FIELD_TYPE>
-		static auto GenericCopySetter(PARENT* obj, FIELD const& value) -> void { (obj->*(pointer)) = value; };
+		static auto GenericCopySetter(PARENT* obj, FIELD const& value) -> void { (obj->*(Pointer)) = value; };
 		template <typename PARENT = PARENT_TYPE, typename FIELD = FIELD_TYPE>
-		static auto GenericMoveSetter(PARENT* obj, FIELD&& value) -> void { (obj->*(pointer)) = std::move(value); };
+		static auto GenericMoveSetter(PARENT* obj, FIELD&& value) -> void { (obj->*(Pointer)) = std::move(value); };
 
-		static auto VoidGetter(void const* obj) -> void const* { return &(obj->*(pointer)); }
-		static auto VoidSetter(void* obj, void const* value) -> void { (obj->*(pointer)) = reinterpret_cast<FIELD_TYPE const*>(value); };
+		static auto VoidGetter(void const* obj) -> void const* { return &(obj->*(Pointer)); }
+		static auto VoidSetter(void* obj, void const* value) -> void { (obj->*(Pointer)) = reinterpret_cast<FIELD_TYPE const*>(value); };
 	};
-	template <typename RETURN_TYPE, typename PARAMETER_TUPLE_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL>
+
+	template <typename RETURN_TYPE, typename PARAMETER_TUPLE_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER>
 	struct CompileTimeMethodData
 	{
-		static inline constexpr uint64_t flags = FLAGS;
-		static inline constexpr std::string_view name = NAME_CTL.value;
-		using return_type = std::remove_cvref_t<RETURN_TYPE>;
-		using parent_type = PARENT_TYPE;
-		using parameter_tuple_type = PARAMETER_TUPLE_TYPE;
-		static inline constexpr auto parameter_count = std::tuple_size_v<PARAMETER_TUPLE_TYPE>;
-		using parameter_index_sequence = std::make_index_sequence<parameter_count>;
+		static inline constexpr uint64_t Flags = FLAGS;
+		static inline constexpr std::string_view Name = NAME_CTL.Value;
+		using ReturnType = std::remove_cvref_t<RETURN_TYPE>;
+		using ParentType = PARENT_TYPE;
+		using ParameterTupleType = PARAMETER_TUPLE_TYPE;
+		static inline constexpr auto ParameterCount = std::tuple_size_v<PARAMETER_TUPLE_TYPE>;
+		using ParameterIndexSequence = std::make_index_sequence<ParameterCount>;
 		template <size_t INDEX>
-		using parameter_type = std::tuple_element_t<INDEX, PARAMETER_TUPLE_TYPE>;
+		using ParameterType = std::tuple_element_t<INDEX, PARAMETER_TUPLE_TYPE>;
+		using PointerType = PTR_TYPE;
+		static inline constexpr PointerType Pointer = POINTER;
 
 		template <typename... GIVEN_ARG_TYPES>
 		static constexpr bool CanTake()
 		{
 			/// TODO: This function could technically check for the number of optional arguments in the method
-			if constexpr (std::tuple_size_v<parameter_tuple_type> == sizeof...(GIVEN_ARG_TYPES))
+			if constexpr (ParameterCount == sizeof...(GIVEN_ARG_TYPES))
 			{
 				using given_tuple_type = std::tuple<GIVEN_ARG_TYPES...>;
 				return []<size_t... INDICES>(std::index_sequence<INDICES...>) {
-					return (std::convertible_to<std::tuple_element_t<INDICES, given_tuple_type>, parameter_type<INDICES>> && ...);
+					return (std::convertible_to<std::tuple_element_t<INDICES, given_tuple_type>, ParameterType<INDICES>> && ...);
 				}(std::make_index_sequence<sizeof...(GIVEN_ARG_TYPES)>{});
 			}
 			else
@@ -96,22 +101,24 @@ namespace Reflector
 		static constexpr void CallForEachParameter(FUNC&& func)
 		{
 			[func]<size_t... INDICES>(std::index_sequence<INDICES...>) {
-				(func(ParameterInfo<INDICES, parameter_type<INDICES>>{}), ...);
-			}(parameter_index_sequence{});
+				(func(ParameterInfo<INDICES, ParameterType<INDICES>>{}), ...);
+			}(ParameterIndexSequence{});
 		}
 
-		static constexpr bool HasFlag(MethodFlags flag_value) noexcept { return (flags & (1ULL << uint64_t(flag_value))) != 0; }
+		static constexpr bool HasFlag(MethodFlags flag_value) noexcept { return (Flags & (1ULL << uint64_t(flag_value))) != 0; }
 
 	private:
 
 		template <size_t INDEX, typename TYPE/*, CompileTimeLiteral NAME*/> struct ParameterInfo
 		{
-			static constexpr size_t index = INDEX;
-			using type = TYPE;
-			//static constexpr std::string_view name = NAME_CTL.value;
+			static constexpr size_t Index = INDEX;
+			using Type = TYPE;
+			//static constexpr std::string_view name = NAME_CTL.Value;
 		};
 
 	};
+
+	/// TODO: We definitely should have CompileTimeClassData and a ForEachClass() function (same for enums)
 
 	enum class ClassFlags
 	{
@@ -197,6 +204,15 @@ namespace Reflector
 		ClassReflectionData const* ParentClass = nullptr;
 	};
 
+	template <typename CTRD>
+	struct FieldVisitorData : public CTRD
+	{
+		FieldVisitorData(FieldReflectionData const* data) : Data(data) {}
+
+		FieldReflectionData const* Data{};
+		CTRD::PointerType Pointer = CTRD::Pointer;
+	};
+
 	enum class MethodFlags
 	{
 		Explicit,
@@ -238,6 +254,15 @@ namespace Reflector
 		uint64_t UID = 0;
 
 		ClassReflectionData const* ParentClass = nullptr;
+	};
+
+	template <typename CTRD>
+	struct MethodVisitorData : public CTRD
+	{
+		MethodVisitorData(MethodReflectionData const* data) : Data(data) {}
+
+		MethodReflectionData const* Data{};
+		CTRD::PointerType Pointer = CTRD::Pointer;
 	};
 
 	struct EnumeratorReflectionData

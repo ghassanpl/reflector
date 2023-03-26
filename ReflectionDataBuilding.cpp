@@ -137,8 +137,10 @@ bool CreateReflectorHeaderArtifact(path const& target_path, const Options& optio
 	reflect_file.WriteLine("#define {}(...) REFLECTOR_TOKENPASTE2({}_ENUM_, __LINE__)", options.EnumPrefix, options.MacroPrefix);
 	reflect_file.WriteLine("#define {}(...)", options.EnumeratorPrefix);
 	reflect_file.WriteLine("");
+	/*
 	if (options.GenerateLuaFunctionBindings)
 		reflect_file.WriteLine("#define {}_CALLABLE(ret, name, args) static int ScriptFunction_ ## name(struct lua_State* thread) {{ return 0; }}", options.MacroPrefix);
+		*/
 	reflect_file.Close();
 	
 	return true;
@@ -347,8 +349,17 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		const auto& field = klass.Fields[i];
 		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", field.Name) : std::string{};
 		const auto ptr_str = "&" + klass.FullType() + "::" + field.Name;
-		output.WriteLine("{}{}_VISITOR(&{}::StaticGetReflectionData().Fields[{}], {}, ::Reflector::CompileTimeFieldData<{}, {}, {}, {}, decltype({}), {}>{{}});",
-			debugging_comment_prefix, options.MacroPrefix, klass.FullType(), i, ptr_str, field.Type, klass.FullType(), field.Flags.bits, BuildCompileTimeLiteral(field.Name), ptr_str, ptr_str);
+		output.WriteLine("{0}{1}_VISITOR(::Reflector::FieldVisitorData<::Reflector::CompileTimeFieldData<{2}, {3}, {4}, {5}, decltype({6}), {6}>>{{ &{3}::StaticGetReflectionData().Fields[{7}] }});",
+			debugging_comment_prefix, 
+			options.MacroPrefix, 
+			field.Type, /// 2
+			klass.FullType(), /// 3 
+			field.Flags.bits, /// 4
+			BuildCompileTimeLiteral(field.Name), /// 5
+			ptr_str, /// 6
+			i /// 7
+		);
+			//debugging_comment_prefix, options.MacroPrefix, klass.FullType(), i, ptr_str, field.Type, klass.FullType(), field.Flags.bits, BuildCompileTimeLiteral(field.Name), ptr_str, ptr_str);
 	}
 	output.EndDefine("");
 
@@ -361,20 +372,25 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		
 		const auto method_pointer = std::format("({})&{}::{}", method.GetSignature(klass), klass_full_type, method.Name);
 		const auto parameter_tuple = std::format("::std::tuple<{}>", method.ParametersTypesOnly);// string_ops::join(method.ParametersSplit, ", ", [](Method::MethodParameter const& parameter) { return parameter.Type; }));
-		const auto compile_time_method_data = std::format("::Reflector::CompileTimeMethodData<{}, {}, {}, {}, {}>{{}}", method.Type, parameter_tuple, klass_full_type, method.Flags.bits, BuildCompileTimeLiteral(method.Name));
+		const auto compile_time_method_data = std::format("::Reflector::CompileTimeMethodData<{0}, {1}, {2}, {3}, {4}, decltype({5}), {5}>", 
+			method.Type, parameter_tuple, klass_full_type, method.Flags.bits, BuildCompileTimeLiteral(method.Name), method_pointer
+		);
 
 		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", method.Name) : std::string{};
 
+		output.WriteLine("{}{}_VISITOR(::Reflector::MethodVisitorData<{}>{{ &{}::StaticGetReflectionData().Methods[{}] }});",
+			debugging_comment_prefix, options.MacroPrefix, compile_time_method_data, klass_full_type, i);
+
+		/*
 		if (options.GenerateLuaFunctionBindings && !method.Flags.is_set(Reflector::MethodFlags::NoCallable)) /// if callable
 		{
-			output.WriteLine("{}{}_VISITOR(&{}::StaticGetReflectionData().Methods[{}], {}, &{}::ScriptFunction_{}, {});",
-				debugging_comment_prefix, options.MacroPrefix, klass_full_type, i, method_pointer, klass_full_type, method.GeneratedUniqueName(), compile_time_method_data);
+			
 		}
 		else
 		{
 			output.WriteLine("{}{}_VISITOR(&{}::StaticGetReflectionData().Methods[{}], {}, {});",
 				debugging_comment_prefix, options.MacroPrefix, klass_full_type, i, method_pointer, compile_time_method_data);
-		}
+		}*/
 	}
 	output.EndDefine("");
 
@@ -477,8 +493,10 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (auto& func : klass.Methods)
 	{
 		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", func.Name) : std::string{};
+		/*
 		if (options.GenerateLuaFunctionBindings && !func.Flags.is_set(Reflector::MethodFlags::NoCallable))
 			output.WriteLine("{}{}_CALLABLE(({}), {}, ({}))", debugging_comment_prefix, options.MacroPrefix, func.Type, func.GeneratedUniqueName(), func.GetParameters());
+			*/
 	}
 
 	auto PrintPreFlags = [](enum_flags<Reflector::MethodFlags> flags) {

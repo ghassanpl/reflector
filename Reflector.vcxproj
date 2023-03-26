@@ -160,7 +160,13 @@
     <ClInclude Include="Common.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="CODE_OF_CONDUCT.md" />
+    <None Include="LICENSE" />
+    <None Include="README.md" />
     <None Include="vcpkg.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="todo.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

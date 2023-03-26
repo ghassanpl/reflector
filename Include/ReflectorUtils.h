@@ -95,12 +95,11 @@ namespace Reflector
 	void ForEachField(T&& object, VISITOR&& visitor)
 	{
 		static_assert(reflected_class<std::remove_cvref_t<T>>, "Type must be marked as reflectable");
-		std::remove_cvref_t<T>::ForEachField([&](auto&& properties, auto&& ptr, auto&& constexpr_properties) {
-			using ceprops = std::remove_cvref_t<decltype(constexpr_properties)>;
-			if constexpr (ceprops::HasFlag(FieldFlags::Static))
-				visitor(*ptr, properties, constexpr_properties);
+		std::remove_cvref_t<T>::ForEachField([&](auto properties) {
+			if constexpr (decltype(properties)::HasFlag(FieldFlags::Static))
+				visitor(*properties.Pointer, properties);
 			else
-				visitor((object.*ptr), properties, constexpr_properties);
+				visitor((object.*(properties.Pointer)), properties);
 		});
 	}
 
@@ -108,10 +107,9 @@ namespace Reflector
 	void WithMethodOverloadThatCanTake(auto&& func, std::string_view function_name, std::type_identity<std::tuple<ARGS...>> argument_types)
 	{
 		static_assert(reflected_class<std::remove_cvref_t<T>>, "Type must be marked as reflectable");
-		std::remove_cvref_t<T>::ForEachMethod([&](auto&& properties, auto&& ptr, auto&& lua_pointer, auto&& constexpr_properties) {
-			using ceprops = std::remove_cvref_t<decltype(constexpr_properties)>;
-			if constexpr (ceprops::template CanTake<ARGS...>())
-				if (function_name == properties->Name) func(properties, ptr, constexpr_properties);
+		std::remove_cvref_t<T>::ForEachMethod([&](auto properties) {
+			if constexpr (decltype(properties)::template CanTake<ARGS...>())
+				if (function_name == decltype(properties)::Name) func(properties);
 		});
 	}
 
@@ -119,10 +117,9 @@ namespace Reflector
 	void WithMethodOverloadThatCanTake(auto&& func, std::type_identity<std::tuple<ARGS...>> argument_types)
 	{
 		static_assert(reflected_class<std::remove_cvref_t<T>>, "Type must be marked as reflectable");
-		std::remove_cvref_t<T>::ForEachMethod([&](auto&& properties, auto&& ptr, auto&& lua_pointer, auto&& constexpr_properties) {
-			using ceprops = std::remove_cvref_t<decltype(constexpr_properties)>;
-			if constexpr (ceprops::template CanTake<ARGS...>() && ceprops::name == NAME)
-				func(properties, ptr, constexpr_properties);
+		std::remove_cvref_t<T>::ForEachMethod([&](auto properties) {
+			if constexpr (decltype(properties)::template CanTake<ARGS...>() && decltype(properties)::Name == NAME)
+				func(properties);
 		});
 	}
 }

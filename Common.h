@@ -115,22 +115,6 @@ struct Field : public Declaration
 	json ToJSON() const;
 };
 
-/*
-enum class MethodFlags
-{
-	Inline,
-	Virtual,
-	Static,
-	Const,
-	Noexcept,
-	Final,
-	Explicit,
-	Artificial,
-	HasBody,
-	NoCallable
-};*/
-//std::string DefaultValue;
-
 using MethodParameter = Reflector::MethodReflectionData::Parameter;
 
 inline json ToJSON(MethodParameter const& param)
@@ -260,7 +244,7 @@ struct Options
 	/// TODO: Check if these work in combinations
 	bool CreateArtifacts = true;
 	bool CreateDatabase = true;
-	bool GenerateLuaFunctionBindings = false; /// Maybe instead of Lua function bindings, since this options is loaded from a JSON, we can have a nice JSON structure that defines how to create scripting bindings?
+	//bool GenerateLuaFunctionBindings = false; /// Maybe instead of Lua function bindings, since this options is loaded from a JSON, we can have a nice JSON structure that defines how to create scripting bindings?
 	bool GenerateTypeIndices = false;
 	bool ForwardDeclare = true;
 
