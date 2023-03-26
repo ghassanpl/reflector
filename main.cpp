@@ -202,6 +202,13 @@ int main(int argc, const char* argv[])
 		}
 		files_changed += factory.Run();
 
+		static auto make_copy_file_artifact_func = [](path from) {
+			return [from = std::move(from)](path const& path, const Options& options) {
+				std::filesystem::copy_file(from, path, std::filesystem::copy_options::overwrite_existing);
+				return true;
+			};
+		};
+
 		std::filesystem::create_directories(artifact_path);
 		if (options.CreateArtifacts)
 		{
@@ -210,7 +217,8 @@ int main(int argc, const char* argv[])
 			if (options.CreateDatabase)
 				factory.QueueArtifact(artifact_path / "ReflectDatabase.json", CreateJSONDBArtifact);
 			factory.QueueArtifact(artifact_path / "Reflector.h", CreateReflectorHeaderArtifact, artifact_path / "Reflector.h");
-			factory.QueueArtifact(artifact_path / "ReflectorClasses.h", CreateReflectorClassesHeaderArtifact);
+			factory.QueueArtifact(artifact_path / "ReflectorClasses.h", make_copy_file_artifact_func(options.ExePath.parent_path() / "Include" / "ReflectorClasses.h"));
+			factory.QueueArtifact(artifact_path / "ReflectorUtils.h", make_copy_file_artifact_func(options.ExePath.parent_path() / "Include" / "ReflectorUtils.h"));
 			factory.QueueArtifact(artifact_path / "Database.reflect.cpp", CreateReflectorDatabaseArtifact);
 		}
 		files_changed += factory.Run();

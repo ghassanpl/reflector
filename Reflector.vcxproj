@@ -154,6 +154,7 @@
   <ItemGroup>
     <ClInclude Include="Attributes.h" />
     <ClInclude Include="Include\ReflectorClasses.h" />
+    <ClInclude Include="Include\ReflectorUtils.h" />
     <ClInclude Include="Parse.h" />
     <ClInclude Include="ReflectionDataBuilding.h" />
     <ClInclude Include="Common.h" />

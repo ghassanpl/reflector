@@ -1,4 +1,4 @@
-TODO: instead of sending 3/4 arguments (who can remember the order?!) to the visitor functions, just send one templated struct!
+- instead of sending 3/4 arguments (who can remember the order?!) to the visitor functions, just send one templated struct!
 
 template <typename PTR, typename CTRD>
 struct FieldVisitorData
@@ -7,3 +7,15 @@ struct FieldVisitorData
 	PTR Pointer{};
 	using compile_time = ctrd;
 };
+
+- check if we can't do something like:
+
+struct MaxAttribute { int Value; };
+...
+RField(CustomAttributes = { Max = 5 })
+
+that turns into
+
+REFL_VISITOR(..., ..., CompileTimeFieldData<..., MaxAttribute{5}>{});
+
+and adds that MaxAttribute to a `std::vector<std::any> CustomAttributes;` that's in the runtime class reflection data

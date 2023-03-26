@@ -18,7 +18,6 @@ bool CreateTypeListArtifact(path const& cwd, Options const& options);
 bool CreateIncludeListArtifact(path const& cwd, Options const& options);
 bool CreateJSONDBArtifact(path const& cwd, Options const& options);
 bool CreateReflectorHeaderArtifact(path const& target_path, const Options& options, path const& final_path);
-bool CreateReflectorClassesHeaderArtifact(path const& target_path, const Options& opts);
 bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opts);
 
 struct FileWriter

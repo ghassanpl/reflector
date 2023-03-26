@@ -61,12 +61,6 @@ bool CreateJSONDBArtifact(path const& path, Options const& options)
 	return true;
 }
 
-bool CreateReflectorClassesHeaderArtifact(path const& path, const Options& options)
-{
-	std::filesystem::copy_file(options.ExePath.parent_path() / "Include" / "ReflectorClasses.h", path, std::filesystem::copy_options::overwrite_existing);
-	return true;
-}
-
 bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opts)
 {
 	FileWriter database_file{ target_path };
@@ -81,7 +75,9 @@ bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opt
 			return false;
 	}
 
-	database_file.WriteLine("::Reflector::ClassReflectionData const* Reflector::Classes[] = {{");
+	database_file.WriteLine("namespace Reflector {{");
+	database_file.CurrentIndent++;
+	database_file.WriteLine("::Reflector::ClassReflectionData const* Classes[] = {{");
 	database_file.CurrentIndent++;
 	for (auto& mirror : GetMirrors())
 	{
@@ -93,7 +89,7 @@ bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opt
 	database_file.WriteLine("nullptr");
 	database_file.CurrentIndent--;
 	database_file.WriteLine("}};");
-	database_file.WriteLine("::Reflector::EnumReflectionData const* Reflector::Enums[] = {{");
+	database_file.WriteLine("::Reflector::EnumReflectionData const* Enums[] = {{");
 	database_file.CurrentIndent++;
 	for (const auto& [SourceFilePath, Classes, Enums] : GetMirrors())
 	{
@@ -103,6 +99,8 @@ bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opt
 		}
 	}
 	database_file.WriteLine("nullptr");
+	database_file.CurrentIndent--;
+	database_file.WriteLine("}};");
 	database_file.CurrentIndent--;
 	database_file.WriteLine("}};");
 
