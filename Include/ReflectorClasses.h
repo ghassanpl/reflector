@@ -24,8 +24,13 @@ namespace Reflector
 	{
 		constexpr CompileTimeLiteral(char const (&s)[N]) { std::copy_n(s, N, this->value); }
 		constexpr std::strong_ordering operator<=>(CompileTimeLiteral const&) const = default;
+		constexpr bool operator==(CompileTimeLiteral const&) const = default;
+		constexpr bool operator==(std::string_view str) const { return str == value; }
 		char value[N];
 	};
+
+	/// TODO: We could technically put attributes in here as well (at least top-level bool ones, as flags or something)
+
 	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL>
 	struct CompileTimePropertyData
 	{
@@ -68,6 +73,25 @@ namespace Reflector
 		using parent_type = PARENT_TYPE;
 		using parameter_tuple_type = PARAMETER_TUPLE_TYPE;
 
+		template <typename GIVEN_TUPLE, size_t... INDICES>
+		static constexpr bool CanTake(std::index_sequence<INDICES...>)
+		{
+			return (std::convertible_to<std::tuple_element_t<INDICES, GIVEN_TUPLE>, std::tuple_element_t<INDICES, parameter_tuple_type>> && ...);
+		}
+
+		template <typename... GIVEN_ARG_TYPES>
+		static constexpr bool CanTake()
+		{
+			/// TODO: This function could technically check for the number of optional arguments in the method
+			if constexpr (std::tuple_size_v<parameter_tuple_type> == sizeof...(GIVEN_ARG_TYPES))
+			{
+				using given_tuple_type = std::tuple<GIVEN_ARG_TYPES...>;
+				return CanTake<given_tuple_type>(std::make_index_sequence<sizeof...(GIVEN_ARG_TYPES)>{});
+			}
+			else
+				return false;
+		}
+
 		static constexpr bool HasFlag(MethodFlags flag_value) noexcept { return (flags & (1ULL << uint64_t(flag_value))) != 0; }
 	};
 
@@ -103,7 +127,7 @@ namespace Reflector
 		template <typename FUNC>
 		void ForAllMethodsWithName(std::string_view name, FUNC&& func) const;
 		template <typename... ARGS>
-		auto FindMethod(std::string_view name, std::type_identity<std::tuple<ARGS...>> = {}) const -> MethodReflectionData const*;
+		auto FindMethod(std::string_view name, std::type_identity<std::tuple<ARGS...>> = {}) const->MethodReflectionData const*;
 
 		std::type_index TypeIndex = typeid(void);
 
@@ -145,7 +169,7 @@ namespace Reflector
 		std::string_view Name = "";
 		std::string_view FieldType = "";
 		std::string_view Initializer = "";
-		std::string_view Attributes = "{}";
+		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
@@ -183,12 +207,12 @@ namespace Reflector
 		std::string_view Name = "";
 		std::string_view ReturnType = "";
 		std::string_view Parameters = "";
-		std::vector<Parameter> ParametersSplit {};
-		std::string_view Attributes = "{}";
+		std::vector<Parameter> ParametersSplit {}; /// TODO: Could be given at compile-time as well
+		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
-		std::string_view UniqueName = "";
+		std::string_view UniqueName = ""; /// TODO: Could be given at compile-time as well
 		std::string_view ArtificialBody = "";
 		std::type_index ReturnTypeIndex = typeid(void);
 		std::vector<std::type_index> ParameterTypeIndices = {};
@@ -209,7 +233,7 @@ namespace Reflector
 	{
 		std::string_view Name = "";
 		std::string_view FullType = "";
-		std::string_view Attributes = "{}";
+		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
@@ -283,24 +307,15 @@ namespace Reflector
 			static_assert(!std::is_same_v<std::void_t<REFLECTABLE_TYPE>, void>, "Type must be marked as reflectable");
 		}
 	}
-	
-	template <reflected_class T, typename VISITOR>
-	void ForEachMethod(T&& object, VISITOR&& visitor)
-	{
-		throw "TODO:"; /// TODO: this
-	}
+
 	template <typename T, typename VISITOR>
-	void ForEachField(T&& object, VISITOR&& visitor)
-	{
-		static_assert(reflected_class<std::remove_cvref_t<T>>, "Type must be marked as reflectable");
-		std::remove_cvref_t<T>::ForEachField([&](auto&& properties, auto&& ptr, auto&& constexpr_properties) {
-			using ceprops = std::remove_cvref_t<decltype(constexpr_properties)>;
-			if constexpr (ceprops::HasFlag(FieldFlags::Static))
-				visitor(*ptr, properties, constexpr_properties);
-			else
-				visitor((object.*ptr), properties, constexpr_properties);
-		});
-	}
+	void ForEachField(T&& object, VISITOR&& visitor);
+
+	template <typename T, typename... ARGS>
+	void WithMethodOverloadThatCanTake(auto&& func, std::string_view function_name, std::type_identity<std::tuple<ARGS...>> argument_types = {});
+	template <CompileTimeLiteral NAME, typename T, typename... ARGS>
+	void WithMethodOverloadThatCanTake(auto&& func, std::type_identity<std::tuple<ARGS...>> argument_types = {});
+
 	/*
 	template <reflected_class T, typename VISITOR>
 	void ForEachProperty(T&& object, VISITOR&& visitor) {
@@ -324,7 +339,7 @@ namespace Reflector
 	}
 
 	template<typename T>
-	inline auto ClassReflectionData::FindFirstFieldByType() const -> FieldReflectionData const*
+	auto ClassReflectionData::FindFirstFieldByType() const -> FieldReflectionData const*
 	{
 		for (auto& field : Fields)
 			if (field.FieldTypeIndex == typeid(T)) return &field;
@@ -347,19 +362,56 @@ namespace Reflector
 	}
 
 	template <typename FUNC>
-	inline void ClassReflectionData::ForAllMethodsWithName(std::string_view name, FUNC&& func) const
+	void ClassReflectionData::ForAllMethodsWithName(std::string_view name, FUNC&& func) const
 	{
 		for (auto& method : Methods)
 			if (method.Name == name) func(method);
 	}
 
 	template <typename... ARGS>
-	inline auto ClassReflectionData::FindMethod(std::string_view name, std::type_identity<std::tuple<ARGS...>>) const -> MethodReflectionData const*
+	auto ClassReflectionData::FindMethod(std::string_view name, std::type_identity<std::tuple<ARGS...>>) const -> MethodReflectionData const*
 	{
 		static const std::vector<std::type_index> parameter_ids = { std::type_index{typeid(ARGS)}... };
 		for (auto& method : Methods)
 			if (method.Name == name && method.ParameterTypeIndices == parameter_ids) return &method;
 		return nullptr;
 	}
+
+
+	template <typename T, typename VISITOR>
+	void ForEachField(T&& object, VISITOR&& visitor)
+	{
+		static_assert(reflected_class<std::remove_cvref_t<T>>, "Type must be marked as reflectable");
+		std::remove_cvref_t<T>::ForEachField([&](auto&& properties, auto&& ptr, auto&& constexpr_properties) {
+			using ceprops = std::remove_cvref_t<decltype(constexpr_properties)>;
+			if constexpr (ceprops::HasFlag(FieldFlags::Static))
+				visitor(*ptr, properties, constexpr_properties);
+			else
+				visitor((object.*ptr), properties, constexpr_properties);
+		});
+	}
+
+	template <typename T, typename... ARGS>
+	void WithMethodOverloadThatCanTake(auto&& func, std::string_view function_name, std::type_identity<std::tuple<ARGS...>> argument_types)
+	{
+		static_assert(reflected_class<std::remove_cvref_t<T>>, "Type must be marked as reflectable");
+		std::remove_cvref_t<T>::ForEachMethod([&](auto&& properties, auto&& ptr, auto&& lua_pointer, auto&& constexpr_properties) {
+			using ceprops = std::remove_cvref_t<decltype(constexpr_properties)>;
+			if constexpr (ceprops::template CanTake<ARGS...>())
+				if (function_name == properties->Name) func(properties, ptr, constexpr_properties);
+		});
+	}
+
+	template <CompileTimeLiteral NAME, typename T, typename... ARGS>
+	void WithMethodOverloadThatCanTake(auto&& func, std::type_identity<std::tuple<ARGS...>> argument_types)
+	{
+		static_assert(reflected_class<std::remove_cvref_t<T>>, "Type must be marked as reflectable");
+		std::remove_cvref_t<T>::ForEachMethod([&](auto&& properties, auto&& ptr, auto&& lua_pointer, auto&& constexpr_properties) {
+			using ceprops = std::remove_cvref_t<decltype(constexpr_properties)>;
+			if constexpr (ceprops::template CanTake<ARGS...>() && ceprops::name == NAME)
+				func(properties, ptr, constexpr_properties);
+		});
+	}
+
 
 }

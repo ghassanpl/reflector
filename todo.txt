@@ -1,0 +1,9 @@
+TODO: instead of sending 3/4 arguments (who can remember the order?!) to the visitor functions, just send one templated struct!
+
+template <typename PTR, typename CTRD>
+struct FieldVisitorData
+{
+	FieldReflectionData const* Data{};
+	PTR Pointer{};
+	using compile_time = ctrd;
+};
