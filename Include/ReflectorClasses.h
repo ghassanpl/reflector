@@ -15,85 +15,9 @@
 
 namespace Reflector
 {
+	enum class MethodFlags;
 	struct FieldReflectionData;
 	struct MethodReflectionData;
-
-	enum class ClassFlags
-	{
-		Struct,
-		DeclaredStruct,
-		NoConstructors,
-		HasProxy
-	};
-
-	struct ClassReflectionData
-	{
-		std::string_view Name = "";
-		std::string_view FullType = "";
-		std::string_view ParentClassName = "";
-		std::string_view Attributes = "{}";
-#if REFLECTOR_USES_JSON
-		REFLECTOR_JSON_TYPE AttributesJSON;
-#endif
-		uint64_t UID = 0;
-		void* (*Constructor)(const ClassReflectionData&) = {};
-
-		/// These are vectors and not e.g. initializer_list's because you might want to create your own classes
-		std::vector<FieldReflectionData> Fields;
-		std::vector<MethodReflectionData> Methods;
-
-		auto FindField(std::string_view name) const -> FieldReflectionData const*;
-		auto FindMethod(std::string_view name) const -> MethodReflectionData const*;
-
-		std::type_index TypeIndex = typeid(void);
-
-		uint64_t Flags = 0;
-
-		bool IsStruct() const { return (Flags & (1ULL << uint64_t(ClassFlags::Struct))) != 0; }
-		bool WasDeclaredStruct() const { return (Flags & (1ULL << uint64_t(ClassFlags::DeclaredStruct))) != 0; }
-		bool HasConstructors() const { return (Flags & (1ULL << uint64_t(ClassFlags::NoConstructors))) == 0; }
-		bool HasProxy() const { return (Flags & (1ULL << uint64_t(ClassFlags::HasProxy))) != 0; }
-	};
-
-	enum class FieldFlags
-	{
-		NoSetter,
-		NoGetter,
-		NoEdit,
-		NoScript,
-		NoSave,
-		NoLoad,
-		NoDebug,
-
-		Required,
-		Artificial,
-		Static,
-		Mutable,
-		DeclaredPrivate,
-	};
-
-	enum class MethodFlags
-	{
-		Inline,
-		Virtual,
-		Abstract,
-		Static,
-		Const,
-		Noexcept,
-		Final,
-		Explicit,
-		Artificial,
-		HasBody,
-		NoCallable
-	};
-
-	enum class EnumFlags
-	{
-	};
-
-	enum class EnumeratorFlags
-	{
-	};
 
 	template<size_t N>
 	struct CompileTimeLiteral
@@ -135,15 +59,85 @@ namespace Reflector
 		static auto VoidGetter(void const* obj) -> void const* { return &(obj->*(pointer)); }
 		static auto VoidSetter(void* obj, void const* value) -> void { (obj->*(pointer)) = reinterpret_cast<FIELD_TYPE const*>(value); };
 	};
-	template <typename RETURN_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL>
+	template <typename RETURN_TYPE, typename PARAMETER_TUPLE_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL>
 	struct CompileTimeMethodData
 	{
 		static constexpr uint64_t flags = FLAGS;
 		static constexpr std::string_view name = NAME_CTL.value;
 		using return_type = std::remove_cvref_t<RETURN_TYPE>;
 		using parent_type = PARENT_TYPE;
+		using parameter_tuple_type = PARAMETER_TUPLE_TYPE;
 
 		static constexpr bool HasFlag(MethodFlags flag_value) noexcept { return (flags & (1ULL << uint64_t(flag_value))) != 0; }
+	};
+
+	enum class ClassFlags
+	{
+		Struct,
+		DeclaredStruct,
+		NoConstructors,
+		HasProxy
+	};
+
+	struct ClassReflectionData
+	{
+		std::string_view Name = "";
+		std::string_view FullType = "";
+		std::string_view ParentClassName = "";
+		std::string_view Attributes = "{}";
+#if REFLECTOR_USES_JSON
+		REFLECTOR_JSON_TYPE AttributesJSON;
+#endif
+		uint64_t UID = 0;
+		void* (*Constructor)(const ClassReflectionData&) = {};
+
+		/// These are vectors and not e.g. initializer_list's because you might want to create your own classes
+		std::vector<FieldReflectionData> Fields;
+		std::vector<MethodReflectionData> Methods;
+
+		auto FindField(std::string_view name) const -> FieldReflectionData const*;
+		template <typename T>
+		auto FindFirstFieldByType() const -> FieldReflectionData const*;
+		auto FindFirstMethod(std::string_view name) const -> MethodReflectionData const*;
+		auto FindAllMethods(std::string_view name) const -> std::vector<MethodReflectionData const*>;
+		template <typename FUNC>
+		void ForAllMethodsWithName(std::string_view name, FUNC&& func) const;
+		template <typename... ARGS>
+		auto FindMethod(std::string_view name, std::type_identity<std::tuple<ARGS...>> = {}) const -> MethodReflectionData const*;
+
+		std::type_index TypeIndex = typeid(void);
+
+		uint64_t Flags = 0;
+
+		bool IsStruct() const { return (Flags & (1ULL << uint64_t(ClassFlags::Struct))) != 0; }
+		bool WasDeclaredStruct() const { return (Flags & (1ULL << uint64_t(ClassFlags::DeclaredStruct))) != 0; }
+		bool HasConstructors() const { return (Flags & (1ULL << uint64_t(ClassFlags::NoConstructors))) == 0; }
+		bool HasProxy() const { return (Flags & (1ULL << uint64_t(ClassFlags::HasProxy))) != 0; }
+	};
+
+	enum class EnumFlags
+	{
+	};
+
+	enum class EnumeratorFlags
+	{
+	};
+
+	enum class FieldFlags
+	{
+		NoSetter,
+		NoGetter,
+		NoEdit,
+		NoScript,
+		NoSave,
+		NoLoad,
+		NoDebug,
+
+		Required,
+		Artificial,
+		Static,
+		Mutable,
+		DeclaredPrivate,
 	};
 
 	struct FieldReflectionData
@@ -161,11 +155,35 @@ namespace Reflector
 		ClassReflectionData const* ParentClass = nullptr;
 	};
 
+	enum class MethodFlags
+	{
+		Explicit,
+		Inline,
+		Virtual,
+		Static,
+
+		Const,
+		Noexcept,
+		Final,
+		
+		Abstract,
+		Artificial,
+		HasBody,
+		NoCallable
+	};
+
 	struct MethodReflectionData
 	{
+		struct Parameter
+		{
+			std::string Name;
+			std::string Type;
+		};
+
 		std::string_view Name = "";
 		std::string_view ReturnType = "";
 		std::string_view Parameters = "";
+		std::vector<Parameter> ParametersSplit {};
 		std::string_view Attributes = "{}";
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
@@ -173,6 +191,7 @@ namespace Reflector
 		std::string_view UniqueName = "";
 		std::string_view ArtificialBody = "";
 		std::type_index ReturnTypeIndex = typeid(void);
+		std::vector<std::type_index> ParameterTypeIndices = {};
 		uint64_t Flags = 0;
 		uint64_t UID = 0;
 
@@ -291,4 +310,56 @@ namespace Reflector
 	
 	extern ClassReflectionData const* Classes[];
 	extern EnumReflectionData const* Enums[];
+}
+
+/// Method implementation
+
+namespace Reflector
+{
+	inline auto ClassReflectionData::FindField(std::string_view name) const -> FieldReflectionData const*
+	{
+		for (auto& field : Fields)
+			if (field.Name == name) return &field;
+		return nullptr;
+	}
+
+	template<typename T>
+	inline auto ClassReflectionData::FindFirstFieldByType() const -> FieldReflectionData const*
+	{
+		for (auto& field : Fields)
+			if (field.FieldTypeIndex == typeid(T)) return &field;
+		return nullptr;
+	}
+
+	inline auto ClassReflectionData::FindFirstMethod(std::string_view name) const -> MethodReflectionData const*
+	{
+		for (auto& method : Methods)
+			if (method.Name == name) return &method;
+		return nullptr;
+	}
+	
+	inline auto ClassReflectionData::FindAllMethods(std::string_view name) const -> std::vector<MethodReflectionData const*>
+	{
+		std::vector<MethodReflectionData const*> result;
+		for (auto& method : Methods)
+			if (method.Name == name) result.push_back(&method);
+		return result;
+	}
+
+	template <typename FUNC>
+	inline void ClassReflectionData::ForAllMethodsWithName(std::string_view name, FUNC&& func) const
+	{
+		for (auto& method : Methods)
+			if (method.Name == name) func(method);
+	}
+
+	template <typename... ARGS>
+	inline auto ClassReflectionData::FindMethod(std::string_view name, std::type_identity<std::tuple<ARGS...>>) const -> MethodReflectionData const*
+	{
+		static const std::vector<std::type_index> parameter_ids = { std::type_index{typeid(ARGS)}... };
+		for (auto& method : Methods)
+			if (method.Name == name && method.ParameterTypeIndices == parameter_ids) return &method;
+		return nullptr;
+	}
+
 }

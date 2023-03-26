@@ -283,7 +283,10 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 		output.WriteLine(".Name = \"{}\",", method.Name);
 		output.WriteLine(".ReturnType = \"{}\",", method.Type);
 		if (!method.GetParameters().empty())
+		{
 			output.WriteLine(".Parameters = {},", EscapeString(method.GetParameters()));
+			output.WriteLine(".ParametersSplit = {{ {} }},", join(method.ParametersSplit, ", ", [](MethodParameter const& param) { return format("{{ {}, {} }}", EscapeString(param.Name), EscapeString(param.Type)); }));
+		}
 		if (!method.Attributes.empty())
 		{
 			output.WriteLine(".Attributes = {},", EscapeJSON(method.Attributes));
@@ -295,7 +298,10 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 		if (!method.ArtificialBody.empty())
 			output.WriteLine(".ArtificialBody = {},", EscapeString(method.ArtificialBody));
 		if (options.GenerateTypeIndices)
+		{
 			output.WriteLine(".ReturnTypeIndex = typeid({}),", method.Type);
+			output.WriteLine(".ParameterTypeIndices = {{ {} }},", join(method.ParametersSplit, ", ", [](MethodParameter const& param) { return format("typeid({})", param.Type); }));
+		}
 		output.WriteLine(".Flags = {},", method.Flags.bits);
 		output.WriteLine(".ParentClass = &_data");
 		output.CurrentIndent--;
@@ -341,9 +347,10 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (size_t i = 0; i < klass.Fields.size(); i++)
 	{
 		const auto& field = klass.Fields[i];
+		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", field.Name) : std::string{};
 		const auto ptr_str = "&" + klass.FullType() + "::" + field.Name;
-		output.WriteLine("{}_VISITOR(&{}::StaticGetReflectionData().Fields[{}], {}, ::Reflector::CompileTimeFieldData<{}, {}, {}, {}, decltype({}), {}>{{}});"
-			, options.MacroPrefix, klass.FullType(), i, ptr_str, field.Type, klass.FullType(), field.Flags.bits, BuildCompileTimeLiteral(field.Name), ptr_str, ptr_str);
+		output.WriteLine("{}{}_VISITOR(&{}::StaticGetReflectionData().Fields[{}], {}, ::Reflector::CompileTimeFieldData<{}, {}, {}, {}, decltype({}), {}>{{}});",
+			debugging_comment_prefix, options.MacroPrefix, klass.FullType(), i, ptr_str, field.Type, klass.FullType(), field.Flags.bits, BuildCompileTimeLiteral(field.Name), ptr_str, ptr_str);
 	}
 	output.EndDefine("");
 
@@ -355,17 +362,20 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		const auto& method = klass.Methods[i];
 		
 		const auto method_pointer = std::format("({})&{}::{}", method.GetSignature(klass), klass_full_type, method.Name);
-		const auto compile_time_method_data = std::format("::Reflector::CompileTimeMethodData<{}, {}, {}, {}>{{}}", method.Type, klass_full_type, method.Flags.bits, BuildCompileTimeLiteral(method.Name));
+		const auto parameter_tuple = std::format("::std::tuple<{}>", method.ParametersTypesOnly);// string_ops::join(method.ParametersSplit, ", ", [](Method::MethodParameter const& parameter) { return parameter.Type; }));
+		const auto compile_time_method_data = std::format("::Reflector::CompileTimeMethodData<{}, {}, {}, {}, {}>{{}}", method.Type, parameter_tuple, klass_full_type, method.Flags.bits, BuildCompileTimeLiteral(method.Name));
+
+		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", method.Name) : std::string{};
 
 		if (options.GenerateLuaFunctionBindings && !method.Flags.is_set(Reflector::MethodFlags::NoCallable)) /// if callable
 		{
-			output.WriteLine("{}_VISITOR(&{}::StaticGetReflectionData().Methods[{}], {}, &{}::ScriptFunction_{}, {});",
-				options.MacroPrefix, klass_full_type, i, method_pointer, klass_full_type, method.GeneratedUniqueName(), compile_time_method_data);
+			output.WriteLine("{}{}_VISITOR(&{}::StaticGetReflectionData().Methods[{}], {}, &{}::ScriptFunction_{}, {});",
+				debugging_comment_prefix, options.MacroPrefix, klass_full_type, i, method_pointer, klass_full_type, method.GeneratedUniqueName(), compile_time_method_data);
 		}
 		else
 		{
-			output.WriteLine("{}_VISITOR(&{}::StaticGetReflectionData().Methods[{}], {}, {});",
-				options.MacroPrefix, klass_full_type, i, method_pointer, compile_time_method_data);
+			output.WriteLine("{}{}_VISITOR(&{}::StaticGetReflectionData().Methods[{}], {}, {});",
+				debugging_comment_prefix, options.MacroPrefix, klass_full_type, i, method_pointer, compile_time_method_data);
 		}
 	}
 	output.EndDefine("");
@@ -381,8 +391,9 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		std::string setter_name = "nullptr";
 		if (!SetterName.empty())
 			setter_name = std::format("&{}::{}", klass_full_type, SetterName);
-		output.WriteLine("{0}_VISITOR(&{1}::StaticGetReflectionData(), \"{2}\", {3}, {4}, ::Reflector::CompileTimePropertyData<{5}, {1}, 0ULL, {6}>{{}});",
-			options.MacroPrefix, klass_full_type, Name, getter_name, setter_name, Type, BuildCompileTimeLiteral(Name));
+		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", Name) : std::string{};
+		output.WriteLine("{7}{0}_VISITOR(&{1}::StaticGetReflectionData(), \"{2}\", {3}, {4}, ::Reflector::CompileTimePropertyData<{5}, {1}, 0ULL, {6}>{{}});",
+			options.MacroPrefix, klass_full_type, Name, getter_name, setter_name, Type, BuildCompileTimeLiteral(Name), debugging_comment_prefix);
 	}
 	output.EndDefine("");
 
@@ -464,32 +475,36 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	/// All methods
 	/// ///////////////////////////////////// ///
 
+	/// Callables for all methods
+	for (auto& func : klass.Methods)
+	{
+		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", func.Name) : std::string{};
+		if (options.GenerateLuaFunctionBindings && !func.Flags.is_set(Reflector::MethodFlags::NoCallable))
+			output.WriteLine("{}{}_CALLABLE(({}), {}, ({}))", debugging_comment_prefix, options.MacroPrefix, func.Type, func.GeneratedUniqueName(), func.GetParameters());
+	}
+
 	auto PrintPreFlags = [](enum_flags<Reflector::MethodFlags> flags) {
 		std::vector<std::string_view> prefixes;
-		if (flags.is_set(MethodFlags::Inline)) prefixes.push_back("inline");
-		if (flags.is_set(MethodFlags::Static)) prefixes.push_back("static");
-		if (flags.is_set(MethodFlags::Virtual)) prefixes.push_back("virtual");
-		if (flags.is_set(MethodFlags::Explicit)) prefixes.push_back("explicit");
-		return join(prefixes, " ");
+		if (flags.is_set(MethodFlags::Inline)) prefixes.push_back("inline ");
+		if (flags.is_set(MethodFlags::Static)) prefixes.push_back("static ");
+		if (flags.is_set(MethodFlags::Virtual)) prefixes.push_back("virtual ");
+		if (flags.is_set(MethodFlags::Explicit)) prefixes.push_back("explicit ");
+		return join(prefixes, "");
 	};
 
 	auto PrintPostFlags = [](enum_flags<Reflector::MethodFlags> flags) {
 		std::vector<std::string_view> suffixes;
-		if (flags.is_set(MethodFlags::Const)) suffixes.push_back("const");
-		if (flags.is_set(MethodFlags::Final)) suffixes.push_back("final");
-		if (flags.is_set(MethodFlags::Noexcept)) suffixes.push_back("noexcept");
-		return join(suffixes, " ");
+		if (flags.is_set(MethodFlags::Const)) suffixes.push_back(" const");
+		if (flags.is_set(MethodFlags::Final)) suffixes.push_back(" final");
+		if (flags.is_set(MethodFlags::Noexcept)) suffixes.push_back(" noexcept");
+		return join(suffixes, "");
 	};
 
+	/// Output artificial methods
 	for (auto& func : klass.Methods)
 	{
-		/// Callables for all methods
-		if (options.GenerateLuaFunctionBindings && !func.Flags.is_set(Reflector::MethodFlags::NoCallable))
-			output.WriteLine("{}_CALLABLE(({}), {}, ({}))", options.MacroPrefix, func.Type, func.GeneratedUniqueName(), func.GetParameters());
 		if (func.Flags.is_set(Reflector::MethodFlags::Artificial))
-		{
-			output.WriteLine("{} auto {}({}){} -> {} {{ {} }}", PrintPreFlags(func.Flags), func.Name, func.GetParameters(), PrintPostFlags(func.Flags), func.Type, func.ArtificialBody);
-		}
+			output.WriteLine("{}auto {}({}){} -> {} {{ {} }}", PrintPreFlags(func.Flags), func.Name, func.GetParameters(), PrintPostFlags(func.Flags), func.Type, func.ArtificialBody);
 	}
 
 	/// Back to public
@@ -713,7 +728,9 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	for (size_t i = 0; i < henum.Enumerators.size(); i++)
 	{
 		const auto& enumerator = henum.Enumerators[i];
-		output.WriteLine("{0}_VISITOR(&StaticGetReflectionData({1}{{}}).Enumerators[{2}], {1}::{3}, \"{3}\");", options.MacroPrefix, henum.FullName(), i, enumerator.Name);
+		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", enumerator.Name) : std::string{};
+		output.WriteLine("{4}{0}_VISITOR(&StaticGetReflectionData({1}{{}}).Enumerators[{2}], {1}::{3}, \"{3}\");", 
+			options.MacroPrefix, henum.FullName(), i, enumerator.Name, debugging_comment_prefix);
 	}
 	output.EndDefine("");
 

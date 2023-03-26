@@ -230,7 +230,7 @@ json Method::ToJSON() const
 {
 	json result = Declaration::ToJSON();
 	result["Type"] = Type;
-	std::transform(ParametersSplit.begin(), ParametersSplit.end(), std::back_inserter(result["Parameters"]), std::function<json(MethodParameter const&)>{ &MethodParameter::ToJSON });
+	std::transform(ParametersSplit.begin(), ParametersSplit.end(), std::back_inserter(result["Parameters"]), &::ToJSON);
 	if (!ArtificialBody.empty())
 		result["ArtificialBody"] = ArtificialBody;
 	if (SourceFieldDeclarationLine != 0)

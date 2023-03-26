@@ -129,21 +129,17 @@ enum class MethodFlags
 	HasBody,
 	NoCallable
 };*/
+//std::string DefaultValue;
+
+using MethodParameter = Reflector::MethodReflectionData::Parameter;
+
+inline json ToJSON(MethodParameter const& param)
+{
+	return { {"Name", param.Name}, {"Type", param.Type} };
+}
 
 struct Method : public Declaration
 {
-	struct MethodParameter
-	{
-		std::string Name;
-		std::string Type;
-		//std::string DefaultValue;
-		json ToJSON() const
-		{
-			//return { {"Name", Name}, {"Type", Type}, {"DefaultValue", DefaultValue} };
-			return { {"Name", Name}, {"Type", Type} };
-		}
-	};
-
 	std::string Type;
 	ghassanpl::enum_flags<Reflector::MethodFlags> Flags;
 private:
@@ -277,7 +273,8 @@ struct Options
 	/// TODO: Will create std::maps and such for easy access to database information
 	bool GenerateEasyDatabaseAccess = false;
 
-
+	bool DebuggingComments = true;
+	
 	path ExePath;
 
 	path ArtifactPath;
