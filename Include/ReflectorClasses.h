@@ -67,17 +67,15 @@ namespace Reflector
 	template <typename RETURN_TYPE, typename PARAMETER_TUPLE_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL>
 	struct CompileTimeMethodData
 	{
-		static constexpr uint64_t flags = FLAGS;
-		static constexpr std::string_view name = NAME_CTL.value;
+		static inline constexpr uint64_t flags = FLAGS;
+		static inline constexpr std::string_view name = NAME_CTL.value;
 		using return_type = std::remove_cvref_t<RETURN_TYPE>;
 		using parent_type = PARENT_TYPE;
 		using parameter_tuple_type = PARAMETER_TUPLE_TYPE;
-
-		template <typename GIVEN_TUPLE, size_t... INDICES>
-		static constexpr bool CanTake(std::index_sequence<INDICES...>)
-		{
-			return (std::convertible_to<std::tuple_element_t<INDICES, GIVEN_TUPLE>, std::tuple_element_t<INDICES, parameter_tuple_type>> && ...);
-		}
+		static inline constexpr auto parameter_count = std::tuple_size_v<PARAMETER_TUPLE_TYPE>;
+		using parameter_index_sequence = std::make_index_sequence<parameter_count>;
+		template <size_t INDEX>
+		using parameter_type = std::tuple_element_t<INDEX, PARAMETER_TUPLE_TYPE>;
 
 		template <typename... GIVEN_ARG_TYPES>
 		static constexpr bool CanTake()
@@ -86,13 +84,33 @@ namespace Reflector
 			if constexpr (std::tuple_size_v<parameter_tuple_type> == sizeof...(GIVEN_ARG_TYPES))
 			{
 				using given_tuple_type = std::tuple<GIVEN_ARG_TYPES...>;
-				return CanTake<given_tuple_type>(std::make_index_sequence<sizeof...(GIVEN_ARG_TYPES)>{});
+				return []<size_t... INDICES>(std::index_sequence<INDICES...>) {
+					return (std::convertible_to<std::tuple_element_t<INDICES, given_tuple_type>, parameter_type<INDICES>> && ...);
+				}(std::make_index_sequence<sizeof...(GIVEN_ARG_TYPES)>{});
 			}
 			else
 				return false;
 		}
 
+		template <typename FUNC>
+		static constexpr void CallForEachParameter(FUNC&& func)
+		{
+			[func]<size_t... INDICES>(std::index_sequence<INDICES...>) {
+				(func(ParameterInfo<INDICES, parameter_type<INDICES>>{}), ...);
+			}(parameter_index_sequence{});
+		}
+
 		static constexpr bool HasFlag(MethodFlags flag_value) noexcept { return (flags & (1ULL << uint64_t(flag_value))) != 0; }
+
+	private:
+
+		template <size_t INDEX, typename TYPE/*, CompileTimeLiteral NAME*/> struct ParameterInfo
+		{
+			static constexpr size_t index = INDEX;
+			using type = TYPE;
+			//static constexpr std::string_view name = NAME_CTL.value;
+		};
+
 	};
 
 	enum class ClassFlags
