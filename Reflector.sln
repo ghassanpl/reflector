@@ -9,12 +9,18 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ReflectorTests", "..\Reflec
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Bootstrap|x64 = Bootstrap|x64
+		Bootstrap|x86 = Bootstrap|x86
 		Debug|x64 = Debug|x64
 		Debug|x86 = Debug|x86
 		Release|x64 = Release|x64
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{84B6024C-5DF8-4276-82E1-B0A132744579}.Bootstrap|x64.ActiveCfg = Bootstrap|x64
+		{84B6024C-5DF8-4276-82E1-B0A132744579}.Bootstrap|x64.Build.0 = Bootstrap|x64
+		{84B6024C-5DF8-4276-82E1-B0A132744579}.Bootstrap|x86.ActiveCfg = Bootstrap|Win32
+		{84B6024C-5DF8-4276-82E1-B0A132744579}.Bootstrap|x86.Build.0 = Bootstrap|Win32
 		{84B6024C-5DF8-4276-82E1-B0A132744579}.Debug|x64.ActiveCfg = Debug|x64
 		{84B6024C-5DF8-4276-82E1-B0A132744579}.Debug|x64.Build.0 = Debug|x64
 		{84B6024C-5DF8-4276-82E1-B0A132744579}.Debug|x86.ActiveCfg = Debug|Win32
@@ -23,6 +29,10 @@ Global
 		{84B6024C-5DF8-4276-82E1-B0A132744579}.Release|x64.Build.0 = Release|x64
 		{84B6024C-5DF8-4276-82E1-B0A132744579}.Release|x86.ActiveCfg = Release|Win32
 		{84B6024C-5DF8-4276-82E1-B0A132744579}.Release|x86.Build.0 = Release|Win32
+		{BC96C59C-FF7D-42D9-B800-F2884508F1D6}.Bootstrap|x64.ActiveCfg = Bootstrap|x64
+		{BC96C59C-FF7D-42D9-B800-F2884508F1D6}.Bootstrap|x64.Build.0 = Bootstrap|x64
+		{BC96C59C-FF7D-42D9-B800-F2884508F1D6}.Bootstrap|x86.ActiveCfg = Bootstrap|Win32
+		{BC96C59C-FF7D-42D9-B800-F2884508F1D6}.Bootstrap|x86.Build.0 = Bootstrap|Win32
 		{BC96C59C-FF7D-42D9-B800-F2884508F1D6}.Debug|x64.ActiveCfg = Debug|x64
 		{BC96C59C-FF7D-42D9-B800-F2884508F1D6}.Debug|x64.Build.0 = Debug|x64
 		{BC96C59C-FF7D-42D9-B800-F2884508F1D6}.Debug|x86.ActiveCfg = Debug|Win32

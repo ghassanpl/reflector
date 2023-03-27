@@ -172,6 +172,9 @@ struct Class : public Declaration
 	std::map<std::string, Property, std::less<>> Properties;
 	std::vector<std::string> AdditionalBodyLines;
 
+	json DefaultFieldAttributes = json::object();
+	json DefaultMethodAttributes = json::object();
+
 	ghassanpl::enum_flags<ClassFlags> Flags;
 
 	size_t BodyLine = 0;
@@ -201,6 +204,8 @@ struct Enum : public Declaration
 {
 	std::vector<Enumerator> Enumerators;
 
+	json DefaultEnumeratorAttributes = json::object();
+
 	ghassanpl::enum_flags<EnumFlags> Flags;
 
 	bool IsConsecutive() const
@@ -229,69 +234,6 @@ extern uint64_t ChangeTime;
 std::vector<FileMirror> const& GetMirrors();
 void AddMirror(FileMirror mirror);
 void CreateArtificialMethods(Options const& options);
-
-struct Options
-{
-	/// TODO: We should document all of this
-
-	Options(path exe_path, path const& options_file_path);
-
-	bool Recursive = false;
-	bool Quiet = false;
-	bool Force = false;
-	bool Verbose = false;
-	bool UseJSON = true;
-	/// TODO: Check if these work in combinations
-	bool CreateArtifacts = true;
-	bool CreateDatabase = true;
-	//bool GenerateLuaFunctionBindings = false; /// Maybe instead of Lua function bindings, since this options is loaded from a JSON, we can have a nice JSON structure that defines how to create scripting bindings?
-	bool GenerateTypeIndices = false;
-	bool ForwardDeclare = true;
-
-	/// TODO: We should also load all these
-
-	std::string JSONHeaderPath = "<nlohmann/json.hpp>";
-	std::string JSONParseFunction = "::nlohmann::json::parse";
-	std::string JSONType = "::nlohmann::json";
-
-	/// TODO: Will create std::maps and such for easy access to database information
-	bool GenerateEasyDatabaseAccess = false;
-
-	bool DebuggingComments = true;
-	
-	path ExePath;
-
-	path ArtifactPath;
-
-	std::vector<path> PathsToScan;
-
-	std::string AnnotationPrefix = "R";
-	std::string MacroPrefix = "REFLECT";
-
-	std::string MirrorExtension = ".mirror";
-	std::vector<std::string> ExtensionsToScan = { ".h", ".hpp" };
-
-	std::string EnumPrefix;
-	std::string EnumeratorPrefix;
-	std::string ClassPrefix;
-	std::string FieldPrefix;
-	std::string MethodPrefix;
-	std::string BodyPrefix;
-
-	path OptionsFilePath;
-	json OptionsFile;
-
-	std::string GetterPrefix = "Get";
-	std::string SetterPrefix = "Set"; /// both for regular setters as well as flag setters
-	std::string IsPrefix = "Is";
-	std::string IsNotPrefix = "IsNot";
-	std::string SetNotPrefix = "SetNot";
-	std::string UnsetPrefix = "Unset";
-	std::string TogglePrefix = "Toggle";
-	std::string ProxyMethodPrefix = "_proxy_";
-	std::string SingletonInstanceGetterName = "SingletonInstance";
-	std::string ProxyClassSuffix = "_Proxy";
-};
 
 inline std::string OnlyType(std::string str)
 {

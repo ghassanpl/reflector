@@ -26,8 +26,14 @@ Not sure if this is necessary, optional already has a nice api of its own
 * [field] VectorSetters=true/element_name - creates Set#At(), Push#(), Erase#(), Insert#(), Clear#s(), Resize#(), Pop#()
 * [field] MapGetters - Find#()
 * [field] MapSetters
-* [field] Validator=funcname - will generate a ValidateFields(callback) function for the class (customizable)
+* [field] Validator=methodname - will generate a ValidateFields(callback) function for the class (customizable)
+	`methodname` must be a valid method in the class?
+	how to handle this? Should we also generate a Validate[FieldName] function? What's the callback for?
 * [any] Plural/Singular - whether to create Is or Are prefixes and such
+* [record] PublicFieldAccessors = false - will disable creation of Get/Set functions for public fields (also should be a global option)
+* [record] DefaultMethodAttributes = {}
+* [record] DefaultFieldAttributes = {}
+* [enum] DefaultEnumeratorAttributes = {}
 
 * Children/ParentPointer/NameInHierarchy - combine these with a `generic_path` type to create a general hierarchy system (maybe with named hierarchies?)
 	Maybe something like a class attribute RClass(Hierarchies=[list, of, hierarchies, ...]) that creates accessors like Get#Parent, Get#Root for each hierarchy

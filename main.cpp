@@ -56,6 +56,7 @@ struct Artifactory
 		artifact.TargetTempPath = std::filesystem::temp_directory_path() / std::format("{}", std::hash<std::filesystem::path>{}(artifact.TargetPath));
 		auto functor_args = std::tuple_cat(
 			std::make_tuple(path{ artifact.TargetTempPath }),
+			std::make_tuple(path{ artifact.TargetPath }),
 			std::make_tuple(std::ref(options)),
 			std::make_tuple(args...)
 		);
@@ -120,23 +121,33 @@ int main(int argc, const char* argv[])
 	/// If executable changed, it's newer than the files it created in the past, so they need to be rebuild
 	ChangeTime = std::filesystem::last_write_time(argv[0]).time_since_epoch().count();
 
-	/*
-	args::PositionalList<std::filesystem::path> paths_list{ parser, "files", "Files or directories to scan", args::Options::Required };
-	*/
-	if (argc != 2)
-	{
-		std::cerr << "Syntax: " << std::filesystem::path{ argv[0] }.filename() << " <options file>\n";
-		return 1;
-	}
-
 	try
 	{
-		Options options{ argv[0], argv[1] };
+		if (BootstrapBuild)
+		{
+			auto exe = std::filesystem::absolute(path{ argv[0] });
+			
+			if (argc > 1 || exe.parent_path() != std::filesystem::current_path())
+			{
+				std::cerr << format("Error: {} has been build in bootstrap mode. Run it from its directory ({}), and rebuild it to create the final executable. See https://github.com/ghassanpl/reflector/wiki/Building for more information on what this means.\n", exe.filename().string(), exe.parent_path().string());
+				return 1;
+			}
+		}
+		else
+		{
+			if (argc != 2)
+			{
+				std::cerr << "Syntax: " << std::filesystem::path{ argv[0] }.filename() << " <options file>\n";
+				return 1;
+			}
+		}
+
+		Options options{ argv[0], (BootstrapBuild ? "options_reflection.json" : argv[1])};
 
 		const auto artifact_path = options.ArtifactPath = std::filesystem::absolute(options.ArtifactPath.empty() ? std::filesystem::current_path() : path{ options.ArtifactPath });
 
 		std::vector<std::filesystem::path> final_files;
-		for (auto& path : options.PathsToScan)
+		for (auto& path : options.GetPathsToScan())
 		{
 			std::cout << std::format("Looking in '{}'...\n", std::filesystem::absolute(path).string());
 			if (std::filesystem::is_directory(path))
@@ -198,29 +209,29 @@ int main(int argc, const char* argv[])
 			auto file_change_time = FileNeedsUpdating(file_path, file.SourceFilePath, options);
 			if (file_change_time == 0) continue;
 
-			factory.QueueArtifact(file_path, BuildMirrorFile, file, file_change_time, file_path);
+			factory.QueueArtifact(file_path, BuildMirrorFile, file, file_change_time);
 		}
 		files_changed += factory.Run();
 
 		static auto make_copy_file_artifact_func = [](path from) {
-			return [from = std::move(from)](path const& path, const Options& options) {
-				std::filesystem::copy_file(from, path, std::filesystem::copy_options::overwrite_existing);
+			return [from = std::move(from)](path const& target_path, path const& final_path, const Options& options) {
+				std::filesystem::copy_file(from, target_path, std::filesystem::copy_options::overwrite_existing);
 				return true;
 			};
 		};
 
 		std::filesystem::create_directories(artifact_path);
+		factory.QueueArtifact(artifact_path / "Reflector.h", CreateReflectorHeaderArtifact);
+		factory.QueueArtifact(artifact_path / "Database.reflect.cpp", CreateReflectorDatabaseArtifact);
 		if (options.CreateArtifacts)
 		{
-			factory.QueueArtifact(artifact_path / "Classes.reflect.h", CreateTypeListArtifact);
 			factory.QueueArtifact(artifact_path / "Includes.reflect.h", CreateIncludeListArtifact);
-			if (options.CreateDatabase)
-				factory.QueueArtifact(artifact_path / "ReflectDatabase.json", CreateJSONDBArtifact);
-			factory.QueueArtifact(artifact_path / "Reflector.h", CreateReflectorHeaderArtifact, artifact_path / "Reflector.h");
-			factory.QueueArtifact(artifact_path / "ReflectorClasses.h", make_copy_file_artifact_func(options.ExePath.parent_path() / "Include" / "ReflectorClasses.h"));
-			factory.QueueArtifact(artifact_path / "ReflectorUtils.h", make_copy_file_artifact_func(options.ExePath.parent_path() / "Include" / "ReflectorUtils.h"));
-			factory.QueueArtifact(artifact_path / "Database.reflect.cpp", CreateReflectorDatabaseArtifact);
+			factory.QueueArtifact(artifact_path / "Classes.reflect.h", CreateTypeListArtifact);
+			factory.QueueArtifact(artifact_path / "ReflectorClasses.h", make_copy_file_artifact_func(options.GetExePath().parent_path() / "Include" / "ReflectorClasses.h"));
+			factory.QueueArtifact(artifact_path / "ReflectorUtils.h", make_copy_file_artifact_func(options.GetExePath().parent_path() / "Include" / "ReflectorUtils.h"));
 		}
+		if (options.CreateDatabase)
+			factory.QueueArtifact(artifact_path / "ReflectDatabase.json", CreateJSONDBArtifact);
 		files_changed += factory.Run();
 
 

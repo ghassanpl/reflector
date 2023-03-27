@@ -70,6 +70,8 @@ private:
 	AttributeProperties(AttributeProperties const& other) noexcept = default;
 };
 
+/// TODO: Change these to static fields of a reflected class (or classes), so that documentation is generated
+
 inline const AttributeProperties atDisplayName{ "DisplayName", "The name that is going to be displayed in editors and such", json::value_t::string };
 
 inline const AttributeProperties atTypeNamespace{ "Namespace", "A helper since we don't parse namespaces; set this to the full namespace of the following type, otherwise you might get errors", json::value_t::string };
@@ -100,6 +102,10 @@ inline const AttributeProperties atMethodSetterFor{ "SetterFor", "This function 
 
 inline const AttributeProperties atRecordAbstract{ "Abstract", "This record is abstract (don't create special constructors)", json::value_t::boolean, false };
 inline const AttributeProperties atRecordSingleton{ "Singleton", "This record is a singleton. Adds a static function (default name 'SingletonInstance') that returns the single instance of this record", json::value_t::boolean, false };
+
+inline const AttributeProperties atRecordDefaultFieldAttributes{ "DefaultFieldAttributes", "These attributes will be added as default to every reflected field of this class", json::value_t::discarded, json::object() };
+inline const AttributeProperties atRecordDefaultMethodAttributes{ "DefaultMethodAttributes", "These attributes will be added as default to every reflected method of this class", json::value_t::discarded, json::object() };
+inline const AttributeProperties atEnumDefaultEnumeratorAttributes{ "DefaultEnumeratorAttributes", "These attributes will be added as default to every enumerator of this enum", json::value_t::discarded, json::object() };
 
 inline const AttributeProperties atRecordCreateProxy{ "CreateProxy", "If set to false, proxy classes are not built for classes with virtual methods", json::value_t::boolean, true };
 

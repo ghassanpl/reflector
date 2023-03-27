@@ -1,3 +1,5 @@
+- make sure the compilation is bootstrappable - it can compile and load options properly without having the Options.h.mirror file
+
 - check if we can't do something like:
 
 struct MaxAttribute { int Value; };

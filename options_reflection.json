@@ -1,0 +1,11 @@
+{
+	"ArtifactPath": "./Reflection/",
+	"CreateArtifacts": false,
+	"MacroPrefix": "REFL",
+	"Files": ".",
+
+	"Quiet": true,
+	"Force": false,
+	"UseJSON": false,
+	"CreateDatabase": true
+}

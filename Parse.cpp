@@ -5,6 +5,7 @@
 
 #include "Parse.h"
 #include "Attributes.h"
+#include "Options.h"
 #include <ghassanpl/string_ops.h>
 #include <ghassanpl/wilson.h>
 #include <ghassanpl/hashes.h>
@@ -179,8 +180,10 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 	henum.DeclarationLine = line_num + 1;
 
 	auto line = TrimWhitespace(string_view{ lines[line_num] });
-	line.remove_prefix(options.EnumPrefix.size());
+	line.remove_prefix(options.EnumAnnotationName.size());
 	henum.Attributes = ParseAttributeList(line);
+
+	henum.DefaultEnumeratorAttributes = atEnumDefaultEnumeratorAttributes(henum.Attributes, json::object());
 
 	line_num++;
 	auto header_line = TrimWhitespace(string_view{ lines[line_num] });
@@ -195,7 +198,7 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 	line_num++;
 	Expect(TrimWhitespace(string_view{ lines[line_num] }), "{");
 
-	json attribute_list;
+	json attribute_list = json::object();
 
 	line_num++;
 	int64_t enumerator_value = 0;
@@ -208,9 +211,9 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 			continue;
 		}
 
-		if (enumerator_line.starts_with(options.EnumeratorPrefix))
+		if (enumerator_line.starts_with(options.EnumeratorAnnotationName))
 		{
-			enumerator_line.remove_prefix(options.EnumeratorPrefix.size());
+			enumerator_line.remove_prefix(options.EnumeratorAnnotationName.size());
 			attribute_list = ParseAttributeList(enumerator_line);
 
 			line_num++;
@@ -233,7 +236,8 @@ Enum ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options 
 			enumerator.Name = TrimWhitespace(name);
 			enumerator.Value = enumerator_value;
 			enumerator.DeclarationLine = line_num;
-			enumerator.Attributes = std::exchange(attribute_list, {});
+			enumerator.Attributes = henum.DefaultEnumeratorAttributes;
+			enumerator.Attributes.update(std::exchange(attribute_list, json::object()), true);
 			/// TODO: enumerator.Comments = "";
 			henum.Enumerators.push_back(std::move(enumerator));
 			enumerator_value++;
@@ -377,11 +381,12 @@ ParsedFieldDecl ParseFieldDecl(string_view line)
 Field ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, string_view next_line, size_t line_num, AccessMode mode, std::vector<std::string> comments, Options const& options)
 {
 	Field field;
-	line.remove_prefix(options.FieldPrefix.size());
+	line.remove_prefix(options.FieldAnnotationName.size());
 	field.Access = mode;
 	if (field.Access != AccessMode::Public && field.Access != AccessMode::Unspecified)
 		field.Flags += FieldFlags::DeclaredPrivate;
-	field.Attributes = ParseAttributeList(line);
+	field.Attributes = klass.DefaultFieldAttributes;
+	field.Attributes.update(ParseAttributeList(line), true);
 	field.DeclarationLine = line_num;
 	field.Comments = std::move(comments);
 	const auto&& [type, name, initializer, flags] = ParseFieldDecl(next_line);
@@ -478,9 +483,10 @@ std::vector<string_view> SplitArgs(string_view argstring)
 Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, size_t line_num, AccessMode mode, std::vector<std::string> comments, Options const& options)
 {
 	Method method;
-	line.remove_prefix(options.MethodPrefix.size());
+	line.remove_prefix(options.MethodAnnotationName.size());
 	method.Access = mode;
-	method.Attributes = ParseAttributeList(line);
+	method.Attributes = klass.DefaultMethodAttributes;
+	method.Attributes.update(ParseAttributeList(line), true);
 	method.DeclarationLine = line_num;
 	
 	while (true)
@@ -588,7 +594,7 @@ Method ParseMethodDecl(Class& klass, string_view line, string_view next_line, si
 Class ParseClassDecl(string_view line, string_view next_line, size_t line_num, std::vector<std::string> comments, Options const& options)
 {
 	Class klass;
-	line.remove_prefix(options.ClassPrefix.size());
+	line.remove_prefix(options.ClassAnnotationName.size());
 	klass.Attributes = ParseAttributeList(line);
 	klass.DeclarationLine = line_num;
 	auto [name, parent, is_struct] = ParseClassDecl(next_line);
@@ -599,6 +605,9 @@ Class ParseClassDecl(string_view line, string_view next_line, size_t line_num, s
 		klass.Flags += ClassFlags::Struct;
 	if (is_struct)
 		klass.Flags += ClassFlags::DeclaredStruct;
+
+	klass.DefaultFieldAttributes = atRecordDefaultFieldAttributes(klass.Attributes, json::object());
+	klass.DefaultMethodAttributes = atRecordDefaultMethodAttributes(klass.Attributes, json::object());
 
 	if (klass.Flags.is_set(ClassFlags::Struct) || atRecordAbstract(klass.Attributes, false) == true || atRecordSingleton(klass.Attributes, false) == true)
 		klass.Flags += ClassFlags::NoConstructors;
@@ -648,13 +657,13 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				current_access = AccessMode::Protected;
 			else if (current_line.starts_with("private:"))
 				current_access = AccessMode::Private;
-			else if (current_line.starts_with(options.EnumPrefix))
+			else if (current_line.starts_with(options.EnumAnnotationName))
 			{
 				mirror.Enums.push_back(ParseEnum(lines, line_num, options));
 				mirror.Enums.back().Comments = std::exchange(comments, {});
 				mirror.Enums.back().UID = GenerateUID(path, line_num);
 			}
-			else if (current_line.starts_with(options.ClassPrefix))
+			else if (current_line.starts_with(options.ClassAnnotationName))
 			{
 				current_access = AccessMode::Private;
 				mirror.Classes.push_back(ParseClassDecl(current_line, next_line, line_num, std::exchange(comments, {}), options));
@@ -664,11 +673,11 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 					PrintLine("Found class {}", mirror.Classes.back().FullType());
 				}
 			}
-			else if (current_line.starts_with(options.FieldPrefix))
+			else if (current_line.starts_with(options.FieldAnnotationName))
 			{
 				if (mirror.Classes.size() == 0)
 				{
-					ReportError(path, line_num + 1, "{}() not in class", options.FieldPrefix);
+					ReportError(path, line_num + 1, "{}() not in class", options.FieldAnnotationName);
 					return false;
 				}
 
@@ -676,11 +685,11 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				klass.Fields.push_back(ParseFieldDecl(mirror, klass, current_line, next_line, line_num, current_access, std::exchange(comments, {}), options));
 				klass.Fields.back().UID = GenerateUID(path, line_num);
 			}
-			else if (current_line.starts_with(options.MethodPrefix))
+			else if (current_line.starts_with(options.MethodAnnotationName))
 			{
 				if (mirror.Classes.size() == 0)
 				{
-					ReportError(path, line_num + 1, "{}() not in class", options.MethodPrefix);
+					ReportError(path, line_num + 1, "{}() not in class", options.MethodAnnotationName);
 					return false;
 				}
 
@@ -688,11 +697,11 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				klass.Methods.push_back(ParseMethodDecl(klass, current_line, next_line, line_num, current_access, std::exchange(comments, {}), options));
 				klass.Methods.back().UID = GenerateUID(path, line_num);
 			}
-			else if (current_line.starts_with(options.BodyPrefix))
+			else if (current_line.starts_with(options.BodyAnnotationName))
 			{
 				if (mirror.Classes.size() == 0)
 				{
-					ReportError(path, line_num + 1, "{}() not in class", options.BodyPrefix);
+					ReportError(path, line_num + 1, "{}() not in class", options.BodyAnnotationName);
 					return false;
 				}
 

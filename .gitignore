@@ -12,3 +12,5 @@ Reflector.ilk
 Reflector.iobj
 Reflector.ipdb
 vcpkg_installed/
+Reflection/
+Options.h.mirror

@@ -27,6 +27,12 @@
     <ClCompile Include="ReflectionDataBuilding.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="DB.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Options.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Parse.h">
@@ -47,12 +53,17 @@
     <ClInclude Include="Include\ReflectorUtils.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="Options.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="vcpkg.json" />
     <None Include="CODE_OF_CONDUCT.md" />
     <None Include="LICENSE" />
     <None Include="README.md" />
+    <None Include="AttributeIdeas.md" />
+    <None Include="options_reflection.json" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="todo.txt" />

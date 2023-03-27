@@ -9,6 +9,11 @@
 
 bool BuildDatabaseEntriesForMirror(FileWriter& output, const Options& options, FileMirror const& file);
 
+static path RelativePath(path const& writing_file, path const& referenced_file)
+{
+	return referenced_file.lexically_relative(writing_file.parent_path());
+}
+
 uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, const Options& opts)
 {
 	const auto stat = std::filesystem::status(target_path);
@@ -45,7 +50,7 @@ void WriteForwardDeclaration(FileWriter& output, const Enum& henum, const Option
 	output.WriteLine("enum class {};", henum.FullType());
 }
 
-bool CreateJSONDBArtifact(path const& path, Options const& options)
+bool CreateJSONDBArtifact(path const& target_path, path const& final_path, Options const& options)
 {
 	json db;
 
@@ -54,20 +59,27 @@ bool CreateJSONDBArtifact(path const& path, Options const& options)
 		db[mirror.SourceFilePath.string()] = mirror.ToJSON();
 	}
 
-	std::ofstream jsondb{ path, std::ios_base::openmode{ std::ios_base::trunc } };
+	std::ofstream jsondb{ target_path, std::ios_base::openmode{ std::ios_base::trunc } };
 	jsondb << db.dump(1, '\t');
 	jsondb.close();
 
 	return true;
 }
 
-bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opts)
+bool CreateReflectorDatabaseArtifact(path const& target_path, path const& final_path, const Options& opts)
 {
 	FileWriter database_file{ target_path };
 	
 	database_file.WriteLine("#include <iostream>");
 	database_file.WriteLine("#include \"Reflector.h\"");
-	database_file.WriteLine("#include \"Includes.reflect.h\"");
+
+	if (opts.CreateArtifacts)
+		database_file.WriteLine("#include \"Includes.reflect.h\"");
+	else
+	{
+		for (const auto& [SourceFilePath, Classes, Enums] : GetMirrors())
+			database_file.WriteLine("#include \"{}\"", RelativePath(final_path, SourceFilePath).string());
+	}
 	
 	for (auto& mirror : GetMirrors())
 	{
@@ -110,32 +122,33 @@ bool CreateReflectorDatabaseArtifact(path const& target_path, const Options& opt
 	return true;
 }
 
-bool CreateReflectorHeaderArtifact(path const& target_path, const Options& options, path const& final_path)
+bool CreateReflectorHeaderArtifact(path const& target_path, path const& final_path, const Options& options)
 {
-	const auto rel = final_path.parent_path().lexically_relative(options.ArtifactPath);
+	const auto reflector_classes_relative_path = RelativePath(final_path, options.ArtifactPath / "ReflectorClasses.h");
 
 	FileWriter reflect_file{ target_path };
 	reflect_file.WriteLine("#pragma once");
-	if (options.UseJSON)
+	if (options.JSON.Use)
 	{
-		reflect_file.WriteLine("#include {}", options.JSONHeaderPath);
+		reflect_file.WriteLine("#include {}", options.JSON.HeaderPath);
 		reflect_file.WriteLine("#define REFLECTOR_USES_JSON 1", options.MacroPrefix);
-		reflect_file.WriteLine("#define REFLECTOR_JSON_TYPE {}", options.JSONType);
-		reflect_file.WriteLine("#define REFLECTOR_JSON_HEADER {}", options.JSONHeaderPath);
-		reflect_file.WriteLine("#define REFLECTOR_JSON_PARSE_FUNC {}", options.JSONParseFunction);
+		reflect_file.WriteLine("#define REFLECTOR_JSON_TYPE {}", options.JSON.Type);
+		reflect_file.WriteLine("#define REFLECTOR_JSON_HEADER {}", options.JSON.HeaderPath);
+		reflect_file.WriteLine("#define REFLECTOR_JSON_PARSE_FUNC {}", options.JSON.ParseFunction);
 	}
-	reflect_file.WriteLine("#include \"{}/ReflectorClasses.h\"", rel.string());
+	reflect_file.WriteLine("#include \"{}\"", reflector_classes_relative_path.string());
 	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE3_IMPL(x, y, z) x ## y ## z");
 	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE3(x, y, z) REFLECTOR_TOKENPASTE3_IMPL(x, y, z)");
 	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE2_IMPL(x, y) x ## y");
 	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE2(x, y) REFLECTOR_TOKENPASTE2_IMPL(x, y)");
 	reflect_file.WriteLine("");
-	reflect_file.WriteLine("#define {}(...) REFLECTOR_TOKENPASTE2({}_GENERATED_CLASS_, __LINE__)", options.ClassPrefix, options.MacroPrefix);
-	reflect_file.WriteLine("#define {}(...)", options.FieldPrefix);
-	reflect_file.WriteLine("#define {}(...)", options.MethodPrefix);
-	reflect_file.WriteLine("#define {}(...) REFLECTOR_TOKENPASTE2({}_GENERATED_CLASS_BODY_, __LINE__)", options.BodyPrefix, options.MacroPrefix);
-	reflect_file.WriteLine("#define {}(...) REFLECTOR_TOKENPASTE2({}_ENUM_, __LINE__)", options.EnumPrefix, options.MacroPrefix);
-	reflect_file.WriteLine("#define {}(...)", options.EnumeratorPrefix);
+	reflect_file.WriteLine("#define {}(...) REFLECTOR_TOKENPASTE2({}_GENERATED_CLASS_, __LINE__)", options.ClassAnnotationName, options.MacroPrefix);
+	reflect_file.WriteLine("#define {}(...)", options.FieldAnnotationName);
+	reflect_file.WriteLine("#define {}(...)", options.MethodAnnotationName);
+	reflect_file.WriteLine("#define {}(...) REFLECTOR_TOKENPASTE2({}_GENERATED_CLASS_BODY_, __LINE__)", options.BodyAnnotationName, options.MacroPrefix);
+	//reflect_file.WriteLine("#define {}(...) REFLECTOR_TOKENPASTE2({}_ENUM_, __LINE__)", options.EnumAnnotationName, options.MacroPrefix);
+	reflect_file.WriteLine("#define {}(...) ", options.EnumAnnotationName);
+	reflect_file.WriteLine("#define {}(...)", options.EnumeratorAnnotationName);
 	reflect_file.WriteLine("");
 	/*
 	if (options.GenerateLuaFunctionBindings)
@@ -146,19 +159,20 @@ bool CreateReflectorHeaderArtifact(path const& target_path, const Options& optio
 	return true;
 }
 
-bool CreateIncludeListArtifact(path const& path, Options const& options)
+bool CreateIncludeListArtifact(path const& target_path, path const& final_path, Options const& options)
 {
-	std::ofstream includes_file(path, std::ios_base::openmode{ std::ios_base::trunc });
+	std::ofstream includes_file(target_path, std::ios_base::openmode{ std::ios_base::trunc });
 	for (const auto& [SourceFilePath, Classes, Enums] : GetMirrors())
 	{
+		/// TODO: Make these relative
 		includes_file << "#include " << SourceFilePath << "" << std::endl;
 	}
 	return true;
 }
 
-bool CreateTypeListArtifact(path const& path, Options const& options)
+bool CreateTypeListArtifact(path const& target_path, path const& final_path, Options const& options)
 {
-	std::ofstream classes_file(path, std::ios_base::openmode{ std::ios_base::trunc });
+	std::ofstream classes_file(target_path, std::ios_base::openmode{ std::ios_base::trunc });
 
 	for (const auto& [SourceFilePath, Classes, Enums] : GetMirrors())
 	{
@@ -191,8 +205,8 @@ void BuildStaticReflectionData(FileWriter& output, const Enum& henum, const Opti
 	if (!henum.Attributes.empty())
 	{
 		output.WriteLine(".Attributes = {},", EscapeJSON(henum.Attributes));
-		if (options.UseJSON)
-			output.WriteLine(".AttributesJSON = {}({}),", options.JSONParseFunction, EscapeJSON(henum.Attributes));
+		if (options.JSON.Use)
+			output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(henum.Attributes));
 	}
 	output.WriteLine(".Enumerators = {{");
 	output.CurrentIndent++;
@@ -239,8 +253,8 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 	if (!klass.Attributes.empty())
 	{
 		output.WriteLine(".Attributes = {},", EscapeJSON(klass.Attributes));
-		if (options.UseJSON)
-			output.WriteLine(".AttributesJSON = {}({}),", options.JSONParseFunction, EscapeJSON(klass.Attributes));
+		if (options.JSON.Use)
+			output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(klass.Attributes));
 	}
 	output.WriteLine(".UID = {}ULL,", klass.UID);
 	if (!klass.Flags.is_set(ClassFlags::NoConstructors))
@@ -260,8 +274,8 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 		if (!field.Attributes.empty())
 		{
 			output.WriteLine(".Attributes = {},", EscapeJSON(field.Attributes));
-			if (options.UseJSON)
-				output.WriteLine(".AttributesJSON = {}({}),", options.JSONParseFunction, EscapeJSON(field.Attributes));
+			if (options.JSON.Use)
+				output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(field.Attributes));
 		}
 		if (options.GenerateTypeIndices)
 			output.WriteLine(".FieldTypeIndex = typeid({}),", field.Type);
@@ -290,8 +304,8 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 		if (!method.Attributes.empty())
 		{
 			output.WriteLine(".Attributes = {},", EscapeJSON(method.Attributes));
-			if (options.UseJSON)
-				output.WriteLine(".AttributesJSON = {}({}),", options.JSONParseFunction, EscapeJSON(method.Attributes));
+			if (options.JSON.Use)
+				output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(method.Attributes));
 		}
 		if (!method.UniqueName.empty())
 			output.WriteLine(".UniqueName = \"{}\",", method.UniqueName);
@@ -584,12 +598,18 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.CurrentIndent--;
 	output.WriteLine("}}");
 
-	output.WriteLine("#undef {}_ENUM_{}", options.MacroPrefix, henum.DeclarationLine);
-	output.StartDefine("#define {}_ENUM_{}", options.MacroPrefix, henum.DeclarationLine);
+	//output.WriteLine("#undef {}_ENUM_{}", options.MacroPrefix, henum.DeclarationLine);
+	//output.StartDefine("#define {}_ENUM_{}", options.MacroPrefix, henum.DeclarationLine);
 
 	/// ///////////////////////////////////// ///
 	/// Declaration and Artificials
 	/// ///////////////////////////////////// ///
+
+	if (!henum.Namespace.empty())
+	{
+		output.WriteLine("namespace {} {{", henum.Namespace);
+		output.CurrentIndent++;
+	}
 
 	output.WriteLine("enum class {};", henum.Name); /// forward decl;
 
@@ -737,7 +757,11 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.WriteLine("}}");
 	*/
 
-	output.EndDefine();
+	if (!henum.Namespace.empty())
+	{
+		output.CurrentIndent--;
+		output.WriteLine("}}"); /// end namespace
+	}
 
 
 	output.StartDefine("#define {0}_VISIT_{1}_ENUMERATORS({0}_VISITOR)", options.MacroPrefix, henum.FullName());
@@ -790,15 +814,16 @@ bool BuildDatabaseEntriesForMirror(FileWriter& output, const Options& options, F
 	return true;
 }
 
-bool BuildMirrorFile(path const& file_path, const Options& options, FileMirror const& file, uint64_t file_change_time, path const& final_path)
+bool BuildMirrorFile(path const& file_path, path const& final_path, const Options& options, FileMirror const& file, uint64_t file_change_time)
 {
 	FileWriter f(file_path);
 	f.WriteLine("{}{}", TIMESTAMP_TEXT, file_change_time);
 	f.WriteLine("/// Source file: {}", file.SourceFilePath.string());
 	f.WriteLine("#pragma once");
 
-	const auto rel = final_path.parent_path().lexically_relative(options.ArtifactPath);
-	f.WriteLine("#include \"{}/Reflector.h\"", rel.string());
+	//const auto rel = options.ArtifactPath.lexically_relative(final_path.parent_path());
+	const auto rel = RelativePath(final_path, options.ArtifactPath / "Reflector.h");
+	f.WriteLine("#include \"{}\"", rel.string());
 
 	for (auto& klass : file.Classes)
 	{
