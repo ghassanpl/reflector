@@ -1,6 +1,6 @@
 # reflector
 
-> **NOTE**: This is still a major work in progress. Right now the tool mostly works, but is ugly, generates crappy code, and has bugs. Use at your own risk.
+> **NOTE**: This is still a work in progress. Right now the tool mostly works, but is imperfect, generates imperfect code, and has bugs. Use at your own risk.
 
 > Pull requests welcomed and encouraged and begged for!
 
@@ -11,29 +11,32 @@ Reflector is a tool similar to the Unreal Header Tool. It will scan the headers 
 ```c++
 #include "Component.h.mirror"
 
-RClass()
+RClass();
 class Component : public Reflector::Reflectable
 {
-	RBody()
+	RBody();
 
-	RField({"ReadOnly": true, "Required": true, "Setter": false})
+	RField(ReadOnly, Required, Setter = false);
 	std::string Name;
 
-	RMethod()
+	RMethod();
 	void SetName(std::string_view name) { Name = name; }
 	
 protected:
 
-	RField({"ParentPointer": true})
+	RField(ParentPointer = true);
 	class Object* mParentObject = nullptr;
 };
 
-REnum()
+REnum();
 enum class TestEnum
 {
-	A = 5,
-	B,
-	C
+	Open = 5,
+	
+	Visible,
+
+	REnumerator(Opposite = Dead);
+	Alive,
 };
 ```
 
@@ -47,7 +50,9 @@ See the [example in the wiki](https://github.com/ghassanpl/reflector/wiki/Exampl
 
 ## Dependencies
 
-* C++17 (C++20 even)
-* [nlohmann/json](https://github.com/nlohmann/json/)
-* [args](https://github.com/Taywee/args)
-* my personal [baselib](https://github.com/ghassanpl/baselib)
+* C++20 even
+* [nlohmann/json](https://github.com/nlohmann/json)
+* [xxhash](https://github.com/Cyan4973/xxHash)
+* my personal [header_utils](https://github.com/ghassanpl/header_utils) library
+
+See [the vcpkg.json file](https://github.com/ghassanpl/reflector/blob/master/vcpkg.json) for up-to date dependency information.
