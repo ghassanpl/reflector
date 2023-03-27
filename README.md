@@ -53,6 +53,7 @@ See the [example in the wiki](https://github.com/ghassanpl/reflector/wiki/Exampl
 * C++20 even
 * [nlohmann/json](https://github.com/nlohmann/json)
 * [xxhash](https://github.com/Cyan4973/xxHash)
+* [magic_enum](https://github.com/Neargye/magic_enum)
 * my personal [header_utils](https://github.com/ghassanpl/header_utils) library
 
 See [the vcpkg.json file](https://github.com/ghassanpl/reflector/blob/master/vcpkg.json) for up-to date dependency information.
