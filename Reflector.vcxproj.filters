@@ -33,6 +33,12 @@
     <ClCompile Include="Options.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="Documentation.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="FileWriter.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Parse.h">
@@ -56,6 +62,12 @@
     <ClInclude Include="Options.h">
       <Filter>Source Files</Filter>
     </ClInclude>
+    <ClInclude Include="Documentation.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="FileWriter.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="vcpkg.json" />
@@ -64,6 +76,7 @@
     <None Include="README.md" />
     <None Include="AttributeIdeas.md" />
     <None Include="options_reflection.json" />
+    <None Include="documentation_default_css.json" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="todo.txt" />

@@ -68,6 +68,8 @@ uint64_t GenerateUID(std::filesystem::path const& file_path, size_t declaration_
 
 struct FileMirror;
 struct Class;
+struct Method;
+struct Enum;
 
 struct Declaration
 {
@@ -82,12 +84,7 @@ struct Declaration
 
 	std::string Namespace;
 
-	std::string FullName() const
-	{
-		if (Namespace.empty())
-			return Name;
-		return std::format("{}_{}", ghassanpl::string_ops::replaced(Namespace, "::", "_"), Name);
-	}
+	std::vector<Method const*> AssociatedArtificialMethods;
 
 	std::string FullType() const
 	{
@@ -98,21 +95,45 @@ struct Declaration
 
 	std::string GeneratedUniqueName() const { return std::format("{}_{:016x}", Name, UID); }
 
+	virtual std::string FullName(std::string_view sep = "_") const
+	{
+		if (Namespace.empty())
+			return Name;
+		return std::format("{}{}{}", ghassanpl::string_ops::replaced(Namespace, "::", sep), sep, Name);
+	}
+
+	virtual ~Declaration() noexcept = default;
+
+	virtual std::string_view DeclarationType() const = 0;
+
 	json ToJSON() const;
 };
 
 
 struct Field : public Declaration
 {
+	Class* ParentClass{};
+
+	Field(Class* parent) : ParentClass(parent) {}
+
 	ghassanpl::enum_flags<Reflector::FieldFlags> Flags;
 	std::string Type;
 	std::string InitializingExpression;
+
+	/// A name to be displayed in editors and such
 	std::string DisplayName;
+
+	/// A identifier name without any member prefixes
 	std::string CleanName;
 
+	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
 	void CreateArtificialMethods(FileMirror& mirror, Class& klass, Options const& options);
 
+	virtual std::string FullName(std::string_view sep = "_") const override;
+
 	json ToJSON() const;
+
+	virtual std::string_view DeclarationType() const { return "Field"; }
 };
 
 using MethodParameter = Reflector::MethodReflectionData::Parameter;
@@ -124,31 +145,43 @@ inline json ToJSON(MethodParameter const& param)
 
 struct Method : public Declaration
 {
-	std::string Type;
+	Class* ParentClass{};
+
+	Method(Class* parent);
+
+	std::string ReturnType;
 	ghassanpl::enum_flags<Reflector::MethodFlags> Flags;
-private:
-	std::string mParameters;
-	void Split();
-public:
+
 	void SetParameters(std::string params);
 	auto const& GetParameters() const { return mParameters; }
+
 	std::vector<MethodParameter> ParametersSplit;
 	std::string ParametersNamesOnly;
 	std::string ParametersTypesOnly;
 	std::string ArtificialBody;
-	size_t SourceFieldDeclarationLine = 0;
+	//size_t SourceFieldDeclarationLine = 0;
+	Declaration const* SourceDeclaration{}; /// TODO: This
 	std::string UniqueName;
 
 	size_t ActualDeclarationLine() const
 	{
-		return DeclarationLine ? DeclarationLine : SourceFieldDeclarationLine;
+		return DeclarationLine ? DeclarationLine : SourceDeclaration->DeclarationLine;
 	}
 
 	std::string GetSignature(Class const& parent_class) const;
 
+	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
 	void CreateArtificialMethods(FileMirror& mirror, Class& klass, Options const& options);
 
+	virtual std::string FullName(std::string_view sep = "_") const override;
+
 	json ToJSON() const;
+
+	virtual std::string_view DeclarationType() const { return "Method"; }
+
+private:
+	std::string mParameters;
+	void Split();
 };
 
 struct Property
@@ -165,10 +198,10 @@ struct Property
 
 struct Class : public Declaration
 {
-	std::string ParentClass;
+	std::string BaseClass;
 
-	std::vector<Field> Fields;
-	std::vector<Method> Methods;
+	std::vector<std::unique_ptr<Field>> Fields;
+	std::vector<std::unique_ptr<Method>> Methods;
 	std::map<std::string, Property, std::less<>> Properties;
 	std::vector<std::string> AdditionalBodyLines;
 
@@ -179,30 +212,54 @@ struct Class : public Declaration
 
 	size_t BodyLine = 0;
 
-	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {}, size_t source_field_declaration_line = 0);
-	void CreateArtificialMethods(FileMirror& mirror, Options const& options);
-
 	std::map<std::string, std::vector<Method const*>> MethodsByName;
+
+	Method* AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
+	void CreateArtificialMethods(FileMirror& mirror, Options const& options);
 
 	json ToJSON() const;
 
+	static Class const* FindClassByPossiblyQualifiedName(std::string_view class_name, Class const* search_context)
+	{
+		return nullptr;
+	}
+
+	std::vector<Class const*> GetInheritanceList() const
+	{
+		std::vector<Class const*> result;
+		auto current = this;
+		while (auto parent = FindClassByPossiblyQualifiedName(current->BaseClass, current))
+		{
+			result.push_back(parent);
+		}
+		return result;
+	}
+
+	virtual std::string_view DeclarationType() const { return "Class"; }
+
 private:
 
-	std::vector<Method> mArtificialMethods;
+	std::vector<std::unique_ptr<Method>> mArtificialMethods;
 };
 
 struct Enumerator : Declaration
 {
+	Enum* ParentEnum{};
+
+	Enumerator(Enum* parent) : ParentEnum(parent) {}
+
 	int64_t Value = 0;
 
 	ghassanpl::enum_flags<EnumeratorFlags> Flags;
 
 	json ToJSON() const;
+
+	virtual std::string_view DeclarationType() const { return "Enumerator"; }
 };
 
 struct Enum : public Declaration
 {
-	std::vector<Enumerator> Enumerators;
+	std::vector<std::unique_ptr<Enumerator>> Enumerators;
 
 	json DefaultEnumeratorAttributes = json::object();
 
@@ -211,24 +268,56 @@ struct Enum : public Declaration
 	bool IsConsecutive() const
 	{
 		for (size_t i = 1; i < Enumerators.size(); ++i)
-			if (Enumerators[i].Value != Enumerators[i - 1].Value + 1)
+			if (Enumerators[i]->Value != Enumerators[i - 1]->Value + 1)
 				return false;
 		return true;
 	}
 
 	json ToJSON() const;
+
+	virtual std::string_view DeclarationType() const { return "Enum"; }
 };
 
 struct FileMirror
 {
 	path SourceFilePath;
-	std::vector<Class> Classes;
-	std::vector<Enum> Enums;
+	std::vector<std::unique_ptr<Class>> Classes;
+	std::vector<std::unique_ptr<Enum>> Enums;
 
 	json ToJSON() const;
 
 	void CreateArtificialMethods(Options const& options);
+	
+	FileMirror();
+	FileMirror(FileMirror const&) = delete;
+	FileMirror(FileMirror&&) noexcept = default;
+	FileMirror& operator=(FileMirror const&) = delete;
+	FileMirror& operator=(FileMirror&&) noexcept = default;
 };
+
+inline auto FormatPreFlags(enum_flags<Reflector::FieldFlags> flags) {
+	std::vector<std::string_view> prefixes;
+	if (flags.is_set(FieldFlags::Mutable)) prefixes.push_back("mutable ");
+	if (flags.is_set(FieldFlags::Static)) prefixes.push_back("static ");
+	return join(prefixes, "");
+}
+
+inline auto FormatPreFlags(enum_flags<Reflector::MethodFlags> flags) {
+	std::vector<std::string_view> prefixes;
+	if (flags.is_set(MethodFlags::Inline)) prefixes.push_back("inline ");
+	if (flags.is_set(MethodFlags::Static)) prefixes.push_back("static ");
+	if (flags.is_set(MethodFlags::Virtual)) prefixes.push_back("virtual ");
+	if (flags.is_set(MethodFlags::Explicit)) prefixes.push_back("explicit ");
+	return join(prefixes, "");
+}
+
+inline auto FormatPostFlags(enum_flags<Reflector::MethodFlags> flags) {
+	std::vector<std::string_view> suffixes;
+	if (flags.is_set(MethodFlags::Const)) suffixes.push_back(" const");
+	if (flags.is_set(MethodFlags::Final)) suffixes.push_back(" final");
+	if (flags.is_set(MethodFlags::Noexcept)) suffixes.push_back(" noexcept");
+	return join(suffixes, "");
+}
 
 extern uint64_t ChangeTime;
 std::vector<FileMirror> const& GetMirrors();

@@ -6,6 +6,7 @@
 #include "Common.h"
 #include "Parse.h"
 #include "ReflectionDataBuilding.h"
+#include "Documentation.h"
 //#include <args.hxx>
 #include <vector>
 #include <thread>
@@ -71,6 +72,7 @@ struct Artifactory
 				{
 					if (options.Verbose)
 						PrintLine("Moved.");
+					std::filesystem::create_directories(artifact.TargetPath.parent_path());
 					std::filesystem::copy_file(artifact.TargetTempPath, artifact.TargetPath, std::filesystem::copy_options::overwrite_existing);
 					std::filesystem::remove(artifact.TargetTempPath);
 					++this->mModifiedFiles;
@@ -144,8 +146,6 @@ int main(int argc, const char* argv[])
 
 		Options options{ argv[0], (BootstrapBuild ? "options_reflection.json" : argv[1])};
 
-		const auto artifact_path = options.ArtifactPath = std::filesystem::absolute(options.ArtifactPath.empty() ? std::filesystem::current_path() : path{ options.ArtifactPath });
-
 		std::vector<std::filesystem::path> final_files;
 		for (auto& path : options.GetPathsToScan())
 		{
@@ -209,7 +209,7 @@ int main(int argc, const char* argv[])
 			auto file_change_time = FileNeedsUpdating(file_path, file.SourceFilePath, options);
 			if (file_change_time == 0) continue;
 
-			factory.QueueArtifact(file_path, BuildMirrorFile, file, file_change_time);
+			factory.QueueArtifact(file_path, BuildMirrorFile, std::ref(file), file_change_time);
 		}
 		files_changed += factory.Run();
 
@@ -220,20 +220,29 @@ int main(int argc, const char* argv[])
 			};
 		};
 
-		std::filesystem::create_directories(artifact_path);
-		factory.QueueArtifact(artifact_path / "Reflector.h", CreateReflectorHeaderArtifact);
-		factory.QueueArtifact(artifact_path / "Database.reflect.cpp", CreateReflectorDatabaseArtifact);
+		std::filesystem::create_directories(options.ArtifactPath);
+		factory.QueueArtifact(options.ArtifactPath / "Reflector.h", CreateReflectorHeaderArtifact);
+		factory.QueueArtifact(options.ArtifactPath / "Database.reflect.cpp", CreateReflectorDatabaseArtifact);
 		if (options.CreateArtifacts)
 		{
-			factory.QueueArtifact(artifact_path / "Includes.reflect.h", CreateIncludeListArtifact);
-			factory.QueueArtifact(artifact_path / "Classes.reflect.h", CreateTypeListArtifact);
-			factory.QueueArtifact(artifact_path / "ReflectorClasses.h", make_copy_file_artifact_func(options.GetExePath().parent_path() / "Include" / "ReflectorClasses.h"));
-			factory.QueueArtifact(artifact_path / "ReflectorUtils.h", make_copy_file_artifact_func(options.GetExePath().parent_path() / "Include" / "ReflectorUtils.h"));
+			factory.QueueArtifact(options.ArtifactPath / "Includes.reflect.h", CreateIncludeListArtifact);
+			factory.QueueArtifact(options.ArtifactPath / "Classes.reflect.h", CreateTypeListArtifact);
+			factory.QueueArtifact(options.ArtifactPath / "ReflectorClasses.h", make_copy_file_artifact_func(options.GetExePath().parent_path() / "Include" / "ReflectorClasses.h"));
+			factory.QueueArtifact(options.ArtifactPath / "ReflectorUtils.h", make_copy_file_artifact_func(options.GetExePath().parent_path() / "Include" / "ReflectorUtils.h"));
 		}
 		if (options.CreateDatabase)
-			factory.QueueArtifact(artifact_path / "ReflectDatabase.json", CreateJSONDBArtifact);
-		files_changed += factory.Run();
+			factory.QueueArtifact(options.ArtifactPath / "ReflectDatabase.json", CreateJSONDBArtifact);
 
+		if (options.Documentation.Generate)
+		{
+			auto doc_files = GenerateDocumentation(options);
+			for (auto& doc_file : doc_files)
+			{
+				factory.QueueArtifact(doc_file.TargetPath, CreateDocFileArtifact, std::ref(doc_file));
+			}
+		}
+
+		files_changed += factory.Run();
 
 		if (!options.Quiet)
 		{

@@ -221,6 +221,8 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="DB.cpp" />
+    <ClCompile Include="Documentation.cpp" />
+    <ClCompile Include="FileWriter.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Options.cpp" />
     <ClCompile Include="Parse.cpp" />
@@ -229,6 +231,8 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Attributes.h" />
+    <ClInclude Include="Documentation.h" />
+    <ClInclude Include="FileWriter.h" />
     <ClInclude Include="Include\ReflectorClasses.h" />
     <ClInclude Include="Include\ReflectorUtils.h" />
     <ClInclude Include="Options.h" />
@@ -239,6 +243,7 @@
   <ItemGroup>
     <None Include="AttributeIdeas.md" />
     <None Include="CODE_OF_CONDUCT.md" />
+    <None Include="documentation_default_css.json" />
     <None Include="LICENSE" />
     <None Include="options_reflection.json" />
     <None Include="README.md" />

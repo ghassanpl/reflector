@@ -132,7 +132,7 @@ namespace Reflector
 	{
 		std::string_view Name = "";
 		std::string_view FullType = "";
-		std::string_view ParentClassName = "";
+		std::string_view BaseClassName = "";
 		std::string_view Attributes = "{}";
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
@@ -227,7 +227,8 @@ namespace Reflector
 		Abstract,
 		Artificial,
 		HasBody,
-		NoCallable
+		NoCallable,
+		Proxy
 	};
 
 	struct MethodReflectionData
@@ -293,7 +294,7 @@ namespace Reflector
 			static const ClassReflectionData data = {
 				.Name = "Reflectable",
 				.FullType = "Reflector::Reflectable",
-				.ParentClassName = "",
+				.BaseClassName = "",
 				.Attributes = "",
 #if REFLECTOR_USES_JSON
 				.AttributesJSON = {},

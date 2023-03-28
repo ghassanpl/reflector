@@ -37,6 +37,16 @@ struct JSONOptions
 	std::string ParseFunction = "::nlohmann::json::parse";
 };
 
+RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
+struct DocumentationOptions
+{
+	RBody();
+
+	/// Whether or not to generate documentation
+	RField();
+	bool Generate = true;
+};
+
 RClass(DefaultFieldAttributes = {Setter = false, Getter = false});
 struct Options
 {

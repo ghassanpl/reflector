@@ -26,6 +26,8 @@ Options::Options(path exe_path, path const& options_file_path)
 	OPTION(CreateDatabase, true);
 #endif
 
+	ArtifactPath = std::filesystem::absolute(ArtifactPath.empty() ? std::filesystem::current_path() : path{ ArtifactPath });
+
 	if (Files.is_null())
 		throw std::exception{ "Options file missing `Files' entry" };
 
