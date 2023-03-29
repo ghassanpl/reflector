@@ -14,6 +14,7 @@ inline const AttributeProperties atFieldScriptAccess{ "ScriptAccess", "Whether o
 ```
 
 * [field] Optional - requires an optional type (like std::optional); will create Is#field_name and Reset#field_name in addition to regular accessors
+Not sure if this is necessary, optional already has a nice api of its own
 * [any] Internal - do not document
 * [field] ExposeMethods=[names,of,methods] - will create `template <typename... ARGS> auto method_name(ARGS&&... args) { return field_name.method_name(std::forward<ARGS>(args)...); }`
 		Or better yet, RField(ExposeMethods={GetSpeed=GetAnimationSpeed, ...}) Animation mAnimation;
