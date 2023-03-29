@@ -23,13 +23,11 @@
     "font-size": "150%"
   },
   "h3": {
-    "margin-top": "0.5em"
+    "margin-top": "0.5em",
+    "margin-bottom": "0"
   },
   "p": {
     "font-size": "10pt"
-  },
-  "pre": {
-    "margin": "0"
   },
   "table": {
     "width": "100%",
@@ -53,6 +51,15 @@
     "margin-left": "0",
     "list-style-type": "none"
   },
+  "dl": {
+    "margin": "0"
+  },
+  "dt": {
+    "font-size": "120%"
+  },
+  "dd": {
+    "margin-left": "0"
+  },
   ".declnamecol": {
     "width": "33%"
   },
@@ -63,11 +70,23 @@
     "color": "gray",
     "font-family": "Consolas, Courier, monospace"
   },
+  "pre": {
+    "display": "inline",
+    "margin": "0"
+  },
+  "code": {
+    "margin": "0",
+    "background-color": "rgb(40,40,40)",
+    "display": "inline !important",
+    "padding": "0 !important"
+  },
   "code.example": {
     "font-size": "100%",
     "border": "1px solid gray",
-    "background-color": "rgb(40,40,40)",
-    "padding": "0.5em",
-    "display": "block"
+    "padding": "0.5em !important",
+    "display": "block !important"
+  },
+  ".paramname": {
+    "font-weight": "bold"
   }
 }

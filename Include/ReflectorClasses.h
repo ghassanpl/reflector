@@ -166,10 +166,12 @@ namespace Reflector
 
 	enum class EnumFlags
 	{
+		Dummy
 	};
 
 	enum class EnumeratorFlags
 	{
+		Dummy
 	};
 
 	enum class FieldFlags

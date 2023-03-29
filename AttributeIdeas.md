@@ -13,6 +13,10 @@ inline const AttributeProperties atClassCreateIsChilds{ "CreateIsChilds", "Creat
 inline const AttributeProperties atFieldScriptAccess{ "ScriptAccess", "Whether or not to hook up the generated accessors (getter, setter) to the scripting system", json::value_t::boolean, true };
 ```
 
+* [field] **Delegate** - creates Is*FieldName*Set() and Call*FieldName*() script-callable functions that check for std::function assignment and (optionally) call it
+* [any] **Document** = true/false - whether or not to generate documentation for the entity
+* [record] GenerateResetFunctions - will generate a Reset*FieldName* for each field in the class (see below), unless it has the Reset = false attribute
+* [field] Reset/Resettable - will generate a Reset[FieldName] function that sets the field value to its initial value); having any of these in a class will create a Reset() function that resets every field
 * [field] Optional - requires an optional type (like std::optional); will create Is#field_name and Reset#field_name in addition to regular accessors
 Not sure if this is necessary, optional already has a nice api of its own
 * [any] Internal - do not document

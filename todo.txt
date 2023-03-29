@@ -1,5 +1,21 @@
 - make sure we're ensuring field `CleanName`s are unique
 
+- see if we can't change this:
+		RClass(Abstract, CreateIsChilds=[Door,Decoration,Item,Enemy,Hero,Creature]);
+into
+		[[RClass(Abstract, CreateIsChilds=[Door,Decoration,Item,Enemy,Hero,Creature])]] 
+
+- check if we can use __COUNTER__ instead of __LINE__ in RBody() macros (will make it so that intellisense only fails when order of classes is changed, not the line their body is at)
+
+- support C++ attributes (nodiscard, noreturn, deprecated)
+
+- RConstructor() ?
+- RUsing(); - for commenting `using X = ...;` declarations, so that generated documentation is better (probably other things too)
+- RNamespace() ?
+- RTest() ? - for marking static methods as tests
+- RVersion() ? - or should we get that information from, in order: git tags, git commit, datetime
+- RContext() ?
+
 - check if we can't do something like:
 
 struct MaxAttribute { int Value; };

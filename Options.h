@@ -31,7 +31,7 @@ struct JSONOptions
 	/// The type that stores the JSON attribute data
 	RField();
 	std::string Type = "::nlohmann::json";
-	
+
 	/// The function that takes the stringified attribute data and turns into the JSON type
 	RField();
 	std::string ParseFunction = "::nlohmann::json::parse";
@@ -45,9 +45,53 @@ struct DocumentationOptions
 	/// Whether or not to generate documentation
 	RField();
 	bool Generate = true;
+
+	/// TODO: A structure that somehow turns filenames into github (or other) links
+	RField();
+	bool FileLinkResolve = false;
+
+	/// Will be added to the end of page titles
+	RField();
+	std::string PageTitleSuffix = " - Documentation";
+
+	/// TODO: Will be used in addition to and instead of the default styles
+	RField();
+	json AdditionalStyles = json::object();
+	
+	/// TODO: Will be added directly to the <head> tag of each page
+	RField();
+	std::string AdditionalHeadTags {};
+
+	/// TODO: language tag (e.g. "en") to add to the <html> tag to define the language of the page
+	RField();
+	std::string Language = "en";
+
+	/// TODO: The directory to put documentation into, (relative to artifact directory or options.json file)?
+	RField();
+	path DocumentationDirectory = "Documentation";
+
+	/// TODO: Types in signatures to replace, e.g "ImageResolvable" -> "Resolvable<Image>", or smth
+	RField();
+	std::map<std::string, std::string> TypeAliases {};
+
+	/// TODO: Enables syntax highlighting of additional types
+	RField();
+	std::vector<std::string> AdditionalTypesToHighlight {};
+
+	/// TODO: If true, will generate a .html for each reflected header, with syntax highlighting and line anchors, so we can easily reference them
+	RField();
+	bool GenerateSyntaxHighlightedSourceFiles = false;
+
+	/// TODO: Will generate a warning on execution for each reflected entity that isn't documented but has `Document` attribute set to true (the default)
+	RField();
+	bool WarnOnUndocumentedEntites = false;
+
+	/// TODO: If a method has comments (like \param or <param>) that describe its parameters, validates that the names are the same as the actual method parameters
+	RField();
+	bool ValidateMethodArgumentComments = false;
 };
 
-RClass(DefaultFieldAttributes = {Setter = false, Getter = false});
+RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
 struct Options
 {
 	RBody();
@@ -111,11 +155,15 @@ struct Options
 	RField();
 	bool DebuggingComments = true;
 
+	/// Documentation options
+	RField();
+	DocumentationOptions Documentation = {};
+
 	/// Prefix for all the annotation macros, e.g. X => XClass, XBody, XField, XMethod, etc
 	RField();
 	std::string AnnotationPrefix = "R";
 
-	/// Prefix for all the generated special macros, like **REFLECT**_VISIT_Class_METHODS
+	/// Prefix for all the generated special macros, like *REFLECT*\_VISIT\_Class\_METHODS
 	RField();
 	std::string MacroPrefix = "REFLECT";
 
@@ -127,6 +175,11 @@ struct Options
 	RField();
 	std::vector<std::string> ExtensionsToScan = { ".h", ".hpp" };
 
+	/// If true, will keep the history of all reflected entities (timestamps of when they were added/changed/removed),
+	/// in an artifact file. If this is true, the generated documentation will provide the information as well.
+	RField();
+	bool KeepEntityHistory = false;
+
 	/// Name of enum annotation macro. If not set, will be `AnnotationPrefix + "Enum"`.
 	RField();
 	std::string EnumAnnotationName;
@@ -134,51 +187,51 @@ struct Options
 	/// Name of enumerator annotation macro. If not set, will be `AnnotationPrefix + "Enumerator"`.
 	RField();
 	std::string EnumeratorAnnotationName;
-	
+
 	/// Name of class annotation macro. If not set, will be `AnnotationPrefix + "Class"`.
 	RField();
 	std::string ClassAnnotationName;
-	
+
 	/// Name of field annotation macro. If not set, will be `AnnotationPrefix + "Field"`.
 	RField();
 	std::string FieldAnnotationName;
-	
+
 	/// Name of method annotation macro. If not set, will be `AnnotationPrefix + "Method"`.
 	RField();
 	std::string MethodAnnotationName;
-	
+
 	/// Name of class body macro. If not set, will be `AnnotationPrefix + "Body"`.
 	RField();
 	std::string BodyAnnotationName;
-	
+
 	RField();
 	std::string GetterPrefix = "Get";
 
 	/// Both for regular setters as well as flag setters
 	RField();
-	std::string SetterPrefix = "Set"; 
-	
+	std::string SetterPrefix = "Set";
+
 	RField();
 	std::string IsPrefix = "Is";
-	
+
 	RField();
 	std::string IsNotPrefix = "IsNot";
-	
+
 	RField();
 	std::string SetNotPrefix = "SetNot";
-	
+
 	RField();
 	std::string UnsetPrefix = "Unset";
-	
+
 	RField();
 	std::string TogglePrefix = "Toggle";
-	
+
 	RField();
 	std::string ProxyMethodPrefix = "_proxy_";
-	
+
 	RField();
 	std::string SingletonInstanceGetterName = "SingletonInstance";
-	
+
 	RField();
 	std::string ProxyClassSuffix = "_Proxy";
 

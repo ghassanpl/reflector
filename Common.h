@@ -29,6 +29,8 @@ using nlohmann::json;
 
 using namespace ghassanpl;
 using namespace ghassanpl::string_ops;
+using namespace std::string_literals;
+using namespace std::string_view_literals;
 
 struct Options;
 

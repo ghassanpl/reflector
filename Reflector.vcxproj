@@ -182,7 +182,8 @@
       </Command>
     </PreBuildEvent>
     <PostBuildEvent>
-      <Command>Reflector.exe</Command>
+      <Command>
+      </Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">

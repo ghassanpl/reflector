@@ -11,6 +11,8 @@ enum class AttributeFor
 	Field,
 };
 
+using AttributeDocFunc = std::function<std::string(json const&, Declaration const&)>;
+
 struct AttributeProperties
 {
 	std::string Name;
@@ -18,14 +20,20 @@ struct AttributeProperties
 	json::value_t ValueType{};
 	json DefaultValueIfAny = nullptr;
 
-	AttributeProperties(std::string name, std::string desc, json::value_t type, json default_value = nullptr) noexcept
+	AttributeDocFunc DocumentationDescriptionGenerator;
+
+	static inline std::vector<AttributeProperties const*> AllAttributes;
+
+	AttributeProperties(std::string name, std::string desc, json::value_t type, json default_value = nullptr, AttributeDocFunc docfunc = {}) noexcept
 		: Name(move(name))
 		, Description(move(desc))
 		, ValueType(type)
 		, DefaultValueIfAny(std::move(default_value))
+		, DocumentationDescriptionGenerator(std::move(docfunc))
 	{
-
+		AllAttributes.push_back(this);
 	}
+
 	AttributeProperties(std::string name, AttributeProperties const& copy) noexcept
 		: AttributeProperties(copy)
 	{
@@ -65,10 +73,21 @@ struct AttributeProperties
 		return true;
 	}
 
+	json const& TryGet(json const& attrs) const
+	{
+		static const json empty_json;
+		const auto it = attrs.find(this->Name);
+		if (it == attrs.end())
+			return empty_json;
+		return *it;
+	}
+
 private:
 
 	AttributeProperties(AttributeProperties const& other) noexcept = default;
 };
+
+/// TODO: Move these to a .cpp file. Since we're autoregistering them anyway, might as well output the documentation for these at bootstrap.
 
 /// TODO: Change these to static fields of a reflected class (or classes), so that documentation is generated
 
@@ -88,20 +107,28 @@ inline const AttributeProperties atFieldLoad{ "Load", "Whether or not this field
 inline const AttributeProperties atFieldSerialize{ "Serialize", "False means both 'Save' and 'Load' are false", json::value_t::boolean, true };
 inline const AttributeProperties atFieldPrivate{ "Private", "True sets 'Edit', 'Setter', 'Getter' to false", json::value_t::boolean, false };
 inline const AttributeProperties atFieldParentPointer{ "ParentPointer", "Whether or not this field is a pointer to parent object, in a tree hierarchy; implies Edit = false, Setter = false", json::value_t::boolean, false };
-inline const AttributeProperties atFieldRequired{ "Required", "A helper flag for the serialization system - will set the FieldFlags::Required flag", json::value_t::boolean, false };
+inline const AttributeProperties atFieldRequired{ "Required", "A helper flag for the serialization system - will set the FieldFlags::Required flag", json::value_t::boolean, false,
+	[](json const& value, Declaration const& decl) { if (value) { return std::format("This field is required to be present when deserializing class {}.", static_cast<Field const&>(decl).ParentClass->Name); } return std::string{}; } 
+};
 
-inline const AttributeProperties atFieldOnChange{ "OnChange", "Calls the specified method when this field changes", json::value_t::string };
+inline const AttributeProperties atFieldOnChange{ "OnChange", "Calls the specified method when this field changes", json::value_t::string, {},
+	[](json const& value, Declaration const& decl) { return std::format("When this field is changed (via its setter and other such functions) it will call the `{}` method.", value.get<std::string>()); }
+};
 
 inline const AttributeProperties atFieldFlagGetters{ "FlagGetters", "If set to an (reflected) enum name, creates getter functions (IsFlag) for each Flag in this field; can't be set if 'Flags' is set", json::value_t::string };
 inline const AttributeProperties atFieldFlags{ "Flags", "If set to an (reflected) enum name, creates getter and setter functions (IsFlag, SetFlag, UnsetFlag, ToggleFlag) for each Flag in this field; can't be set if 'FlagGetters' is set", json::value_t::string };
 inline const AttributeProperties atFieldFlagNots{ "FlagNots", "Requires 'Flags' attribute. If set, creates IsNotFlag functions in addition to regular IsFlag (except for enumerators with Opposite attribute).", json::value_t::boolean, true };
 
-inline const AttributeProperties atMethodUniqueName{ "UniqueName", "A unique (for this type) name of this method; useful for overloaded functions", json::value_t::string };
+inline const AttributeProperties atMethodUniqueName{ "UniqueName", "A unique (for this type) name of this method; useful for overloaded functions", json::value_t::string, {},
+	[](json const& value, Declaration const& decl) { return std::format("This method's unique name will be `{}` in scripts.", value.get<std::string>()); }
+};
 inline const AttributeProperties atMethodGetterFor{ "GetterFor", "This function is a getter for the named field", json::value_t::string };
 inline const AttributeProperties atMethodSetterFor{ "SetterFor", "This function is a setter for the named field", json::value_t::string };
 
 inline const AttributeProperties atRecordAbstract{ "Abstract", "This record is abstract (don't create special constructors)", json::value_t::boolean, false };
-inline const AttributeProperties atRecordSingleton{ "Singleton", "This record is a singleton. Adds a static function (default name 'SingletonInstance') that returns the single instance of this record", json::value_t::boolean, false };
+inline const AttributeProperties atRecordSingleton{ "Singleton", "This record is a singleton. Adds a static function (default name 'SingletonInstance') that returns the single instance of this record", json::value_t::boolean, false,
+	[](json const& value, Declaration const& decl) { if (!value) return ""s; return "This class is a singleton. Call @see SingletonInstance to get the instance."s; } /// TODO: Instead of hardcoding the SingletonInstance name, get it from options
+};
 
 inline const AttributeProperties atRecordDefaultFieldAttributes{ "DefaultFieldAttributes", "These attributes will be added as default to every reflected field of this class", json::value_t::discarded, json::object() };
 inline const AttributeProperties atRecordDefaultMethodAttributes{ "DefaultMethodAttributes", "These attributes will be added as default to every reflected method of this class", json::value_t::discarded, json::object() };

@@ -59,12 +59,12 @@ struct Artifactory
 			std::make_tuple(path{ artifact.TargetTempPath }),
 			std::make_tuple(path{ artifact.TargetPath }),
 			std::make_tuple(std::ref(options)),
-			std::make_tuple(args...)
+			std::make_tuple(std::forward<ARGS>(args)...)
 		);
 		artifact.Builder = [functor = std::forward<FUNCTOR>(functor), args = std::move(functor_args), this](ArtifactToBuild const& artifact) mutable {
 			if (options.Verbose)
 				PrintLine("Creating file {} to be moved to {}...", artifact.TargetTempPath.string(), artifact.TargetPath.string());
-			if (std::apply(functor, args))
+			if (std::apply(functor, std::move(args)))
 			{
 				if (options.Verbose)
 					PrintLine("Created.");
@@ -238,7 +238,7 @@ int main(int argc, const char* argv[])
 			auto doc_files = GenerateDocumentation(options);
 			for (auto& doc_file : doc_files)
 			{
-				factory.QueueArtifact(doc_file.TargetPath, CreateDocFileArtifact, std::ref(doc_file));
+				factory.QueueArtifact(doc_file.TargetPath, CreateDocFileArtifact, std::move(doc_file));
 			}
 		}
 
