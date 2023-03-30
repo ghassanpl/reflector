@@ -22,6 +22,12 @@
   "h2": {
     "font-size": "150%"
   },
+  "summary.h2": {
+    "margin-left": "0",
+    "margin": "0.5em",
+    "font-size": "150%",
+    "font-weight": "bold"
+  },
   "h3": {
     "margin-top": "0.5em",
     "margin-bottom": "0"

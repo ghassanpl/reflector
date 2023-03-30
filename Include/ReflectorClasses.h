@@ -122,9 +122,9 @@ namespace Reflector
 
 	enum class ClassFlags
 	{
-		Struct,
-		DeclaredStruct,
-		NoConstructors,
+		Struct,         /// TODO: Should we docnote this?
+		DeclaredStruct, /// TODO: Should we docnote this?
+		NoConstructors, /// TODO: Should we docnote this?
 		HasProxy
 	};
 

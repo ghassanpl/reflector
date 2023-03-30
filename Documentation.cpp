@@ -8,6 +8,12 @@
 
 /// TODO: Documentation options
 
+std::string MakeLink(Declaration const* decl)
+{
+	assert(decl);
+	return std::format("<see link='{}'>{}</see>", decl->FullName("."), decl->Name);
+}
+
 struct HTMLFileWriter : public FileWriter
 {
 	Options const& options;
@@ -118,11 +124,6 @@ struct DocumentationGenerator
 		return GetPrettyComments(std::vector<std::string>{comment}, first_paragraph_only);
 	}
 
-	static std::string Escaped(std::string_view str)
-	{
-		return string_ops::replaced(std::string{str}, "<", "&lt;");
-	}
-
 	DocFile CreateCSSFile()
 	{
 		FileWriter out{};
@@ -178,6 +179,10 @@ struct DocumentationGenerator
 	template <typename T>
 	void OutDeclDesc(HTMLFileWriter& out, T const& decl, TypeDeclaration const& parent)
 	{
+		out.WriteLine("<h2>Details</h2>");
+
+		out.StartBlock("<ul class='desclist'>");
+
 		if (!parent.Namespace.empty())
 			out.WriteLine("<li><b>Namespace</b>: <a href='{}.html'>{}</a></li>", replaced(parent.Namespace, "::", "."), parent.Namespace);
 		if (decl.DeclarationLine != 0)
@@ -186,28 +191,52 @@ struct DocumentationGenerator
 			out.WriteLine("<li><b>Flags</b>: {}</li>", join(decl.Flags, ", ", [](auto v) { return std::format("<a href='Reflector.FieldFlags.html#{0}'>{0}</a>", magic_enum::enum_name(v)); }));
 		if (!decl.Attributes.empty())
 			out.WriteLine("<li><b>Attributes</b>: <code class='language-json'>{}</code></li>", decl.Attributes.dump());
+
+		if constexpr (std::same_as<T, Class>)
+		{
+			if (!decl.BaseClass.empty())
+			{
+				auto inhlist = decl.GetInheritanceList();// | std::views::reverse | std::ranges::to<std::vector>();
+				if (inhlist.empty())
+					out.WriteLine("<li><b>Inheritance</b>: <pre>{} : {}</pre></li>", decl.Name, Escaped(decl.BaseClass));
+				else
+					out.WriteLine("<li><b>Inheritance</b>: <pre>{} : {}</pre></li>", decl.Name, Escaped(join(inhlist, " -> ", [](Class const* klass) { return format("{}", klass->FullType()); })));
+			}
+		}
+		else if constexpr (std::same_as<T, Method>)
+		{
+			if (decl.SourceDeclaration && decl.SourceDeclaration != decl.ParentType)
+			{
+				out.WriteLine("<li><b>Source Declaration</b>: {} <a href='{}'>{}</a></li>", decl.SourceDeclaration->DeclarationType(), FilenameFor(*decl.SourceDeclaration), decl.SourceDeclaration->Name);
+			}
+
+			if (!decl.UniqueName.empty())
+				out.WriteLine("<li><b>Unique Name</b>: {}</li>", decl.UniqueName);
+		}
+		else if constexpr (std::same_as<T, Field>)
+		{
+			if (decl.DisplayName != decl.Name)
+				out.WriteLine("<li><b>Display Name</b>: '{}'</li>", decl.DisplayName);
+		}
+
+		out.EndBlock("</ul>");
 	}
 
 	void OutputAttributeDescriptors(HTMLFileWriter& out, Declaration const& decl)
 	{
-		std::map<std::string, std::string> attributes;
-		for (auto attr : AttributeProperties::AllAttributes)
-		{
-			if (auto attr_name = attr->ExistsIn(decl); attr_name && attr->DocumentationDescriptionGenerator)
-			{
-				auto desc = attr->DocumentationDescriptionGenerator(attr->TryGet(decl), decl);
-				if (!desc.empty())
-					attributes[*attr_name] = move(desc);
-			}
-		}
-		if (attributes.empty())
+		if (decl.DocNotes.empty())
 			return;
-		out.WriteLine("<h2>Attributes</h2>");
-		for (auto& [name, desc] : attributes)
+
+		//out.StartTag("details", "open");
+		//out.WriteLine("<summary class='h2'>Notes</summary>");
+		/// TODO: Maybe make an option that determines whether we create a <details> or just a simple header
+		out.WriteLine("<h2>Notes</h2>");
+		for (auto& [name, desc] : decl.DocNotes)
 		{
 			out.WriteLine("<h3>{}</h3>", name);
 			out.WriteLine("<md>{}</md>", desc);
 		}
+		//out.EndTag();
 	}
 
 	DocFile CreateClassFile(Class const& klass)
@@ -216,21 +245,12 @@ struct DocumentationGenerator
 		out.StartPage(klass.Name + " Class");
 		out.WriteLine("<h1><pre class='entityname class'>{}</pre> Class</h1>", klass.Name);
 		out.WriteLine("<h2>Description</h2>");
-		out.StartBlock("<ul class='desclist'>");
-		OutDeclDesc(out, klass, klass);
-		if (!klass.BaseClass.empty())
-		{
-			auto inhlist = klass.GetInheritanceList();// | std::views::reverse | std::ranges::to<std::vector>();
-			if (inhlist.empty())
-				out.WriteLine("<li><b>Inheritance</b>: <pre>{} : {}</pre></li>", klass.Name, Escaped(klass.BaseClass));
-			else
-				out.WriteLine("<li><b>Inheritance</b>: <pre>{} : {}</pre></li>", klass.Name, Escaped(join(inhlist, " -> ", [](Class const* klass) { return format("{}", klass->FullType()); })));
-		}
-		out.EndBlock("</ul>");
 
 		out.WriteLine(GetPrettyComments(klass));
 
-		auto documented_fields = klass.Fields | std::views::filter([](auto& field) { return !field->Flags.contain(FieldFlags::DeclaredPrivate); });
+		OutputAttributeDescriptors(out, klass);
+
+		auto documented_fields = klass.Fields | std::views::filter([](auto& field) { return field->Document; });
 		if (!documented_fields.empty())
 		{
 			out.WriteLine("<h2>Fields</h2>");
@@ -245,7 +265,7 @@ struct DocumentationGenerator
 			out.EndBlock("</table>");
 		}
 
-		auto documented_methods = klass.Methods | std::views::filter([](auto& method) { return !method->Flags.contain(MethodFlags::Proxy); });
+		auto documented_methods = klass.Methods | std::views::filter([](auto& method) { return method->Document; });
 		if (!documented_fields.empty())
 		{
 			out.WriteLine("<h2>Methods</h2>");
@@ -266,7 +286,7 @@ struct DocumentationGenerator
 			out.EndBlock("</table>");
 		}
 
-		OutputAttributeDescriptors(out, klass);
+		OutDeclDesc(out, klass, klass);
 
 		out.EndPage();
 		return DocFile{ .TargetPath = options.ArtifactPath / "Documentation" / FilenameFor(klass), .Contents = out.Finish() };
@@ -277,14 +297,6 @@ struct DocumentationGenerator
 		HTMLFileWriter out{options};
 		out.StartPage(field.ParentType->Name + "::" + field.Name + " Field");
 		out.WriteLine("<h1><pre class='entityname field'>{}::{}</pre> Field</h1>", field.ParentType->Name, field.Name);
-
-		auto& klass = *field.ParentType;
-		out.WriteLine("<h2>Description</h2>");
-		out.StartBlock("<ul class='desclist'>");
-		OutDeclDesc(out, field, klass);
-		if (field.DisplayName != field.Name)
-			out.WriteLine("<li><b>Display Name</b>: '{}'</li>", field.DisplayName);
-		out.EndBlock("</ul>");
 
 		out.WriteLine("<code class='example language-cpp'>{}{} {}{};</code>",
 			FormatPreFlags(field.Flags),
@@ -302,11 +314,13 @@ struct DocumentationGenerator
 		if (field.AssociatedArtificialMethods.size() > 0)
 		{
 			out.WriteLine("<h2>See Also</h2>");
-			for (auto& am : field.AssociatedArtificialMethods)
+			for (auto& [am_type, am] : field.AssociatedArtificialMethods)
 			{
 				out.WriteLine("<li><a href='{}'><small>{}</small>::{}({})</a></li>", FilenameFor(*am), am->ParentType->FullType(), am->Name, Escaped(am->ParametersTypesOnly));
 			}
 		}
+
+		OutDeclDesc(out, field, *field.ParentType);
 
 		out.EndPage();
 		return DocFile{ .TargetPath = options.ArtifactPath / "Documentation" / FilenameFor(field), .Contents = out.Finish() };
@@ -317,18 +331,6 @@ struct DocumentationGenerator
 		HTMLFileWriter out{options};
 		out.StartPage(method.ParentType->Name + "::" + method.Name + " Method");
 		out.WriteLine("<h1><pre class='entityname field'>{}::{}</pre> Method</h1>", method.ParentType->Name, method.Name);
-
-		auto& klass = *method.ParentType;
-		out.WriteLine("<h2>Description</h2>");
-		out.StartBlock("<ul class='desclist'>");
-		OutDeclDesc(out, method, klass);
-		if (method.SourceDeclaration && method.SourceDeclaration != method.ParentType)
-		{
-			out.WriteLine("<li><b>Source Declaration</b>: {} <a href='{}'>{}</a></li>", method.SourceDeclaration->DeclarationType(), FilenameFor(*method.SourceDeclaration), method.SourceDeclaration->Name);
-		}
-		if (!method.UniqueName.empty())
-			out.WriteLine("<li><b>Unique Name</b>: {}</li>", method.UniqueName);
-		out.EndBlock("</ul>");
 
 		out.WriteLine("<code class='example language-cpp'>{}{} {}({}){};</code>",
 			FormatPreFlags(method.Flags),
@@ -342,7 +344,7 @@ struct DocumentationGenerator
 
 		if (method.ParametersSplit.size() > 0)
 		{
-			out.WriteLine("<h3>Parameters</h3>");
+			out.WriteLine("<h2>Parameters</h2>");
 			out.StartTag("dl");
 			for (auto& param : method.ParametersSplit)
 			{
@@ -353,12 +355,14 @@ struct DocumentationGenerator
 
 		if (method.ReturnType != "void")
 		{
-			out.WriteLine("<h3>Return Value</h3>");
+			out.WriteLine("<h2>Return Value</h2>");
 			out.WriteLine("<code class='language-cpp'>{}</code>", method.ReturnType);
 			out.WriteLine(GetPrettyComments("*Undocumented*"));
 		}
 
 		OutputAttributeDescriptors(out, method);
+
+		OutDeclDesc(out, method, *method.ParentType);
 
 		out.EndPage();
 		return DocFile{ .TargetPath = options.ArtifactPath / "Documentation" / FilenameFor(method), .Contents = out.Finish() };
@@ -379,6 +383,8 @@ struct DocumentationGenerator
 
 		OutputAttributeDescriptors(out, henum);
 
+		OutDeclDesc(out, henum, henum);
+
 		out.EndPage();
 		return DocFile{ .TargetPath = options.ArtifactPath / "Documentation" / FilenameFor(henum), .Contents = out.Finish()};
 	}
@@ -398,9 +404,15 @@ struct DocumentationGenerator
 		for (auto& mirror : GetMirrors())
 		{
 			for (auto& klass : mirror->Classes)
-				classes.push_back(klass.get());
+			{
+				if (klass->Document)
+					classes.push_back(klass.get());
+			}
 			for (auto& henum : mirror->Enums)
-				enums.push_back(henum.get());
+			{
+				if (henum->Document)
+					enums.push_back(henum.get());
+			}
 		}
 
 		std::ranges::sort(classes, [](Class const* a, Class const* b) { return a->FullType() < b->FullType(); });

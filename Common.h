@@ -82,6 +82,15 @@ struct Class;
 struct Method;
 struct Enum;
 
+enum class DeclarationType
+{
+	Field,
+	Method,
+	Class,
+	Enum,
+	Enumerator,
+};
+
 struct Declaration
 {
 	json Attributes = json::object();
@@ -93,7 +102,19 @@ struct Declaration
 	/// TODO: Fill this in for every declaration!
 	uint64_t UID = 0;
 
-	std::vector<Method const*> AssociatedArtificialMethods;
+	bool Document = true;
+
+	/// TODO: Should we turn this back into a vector since the docs are no longer looking for them?
+	std::map<std::string, Method const*, std::less<>> AssociatedArtificialMethods;
+	Method const* GetAssociatedMethod(std::string_view function_type) const;
+	
+	/// TODO: We should probably list the possible doc notes somewhere so the IgnoreDocNotes option is easier to set
+	std::vector<std::pair<std::string, std::string>> DocNotes;
+	template <typename... ARGS>
+	void AddDocNote(std::string header, std::string_view str, ARGS&& ... args)
+	{
+		DocNotes.emplace_back(move(header), std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...)));
+	}
 
 	std::string GeneratedUniqueName() const { return std::format("{}_{:016x}", Name, UID); }
 
@@ -104,7 +125,7 @@ struct Declaration
 
 	virtual ~Declaration() noexcept = default;
 
-	virtual std::string_view DeclarationType() const = 0;
+	virtual DeclarationType DeclarationType() const = 0;
 
 	virtual json ToJSON() const;
 };
@@ -172,12 +193,12 @@ struct Field : public MemberDeclaration<Class>
 	/// A identifier name without any member prefixes
 	std::string CleanName;
 
-	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
-	void CreateArtificialMethods(FileMirror& mirror, Class& klass, Options const& options);
+	Method* AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
+	void CreateArtificialMethodsAndDocument(Options const& options);
 
 	virtual json ToJSON() const override;
 
-	virtual std::string_view DeclarationType() const { return "Field"; }
+	virtual ::DeclarationType DeclarationType() const { return DeclarationType::Field; }
 };
 
 using MethodParameter = Reflector::MethodReflectionData::Parameter;
@@ -212,14 +233,14 @@ struct Method : public MemberDeclaration<Class>
 
 	std::string GetSignature(Class const& parent_class) const;
 
-	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
-	void CreateArtificialMethods(FileMirror& mirror, Class& klass, Options const& options);
+	Method* AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
+	void CreateArtificialMethodsAndDocument(Options const& options);
 
 	virtual std::string FullName(std::string_view sep = "_") const override;
 
 	virtual json ToJSON() const override;
 
-	virtual std::string_view DeclarationType() const { return "Method"; }
+	virtual ::DeclarationType DeclarationType() const { return DeclarationType::Method; }
 
 private:
 	std::string mParameters;
@@ -235,7 +256,7 @@ struct Property
 	size_t GetterLine = 0;
 	std::string Type;
 
-	void CreateArtificialMethods(FileMirror& mirror, Class& klass, Options const& options);
+	void CreateArtificialMethodsAndDocument(Class& klass, Options const& options);
 };
 
 struct Class : public TypeDeclaration
@@ -246,7 +267,7 @@ struct Class : public TypeDeclaration
 
 	std::vector<std::unique_ptr<Field>> Fields;
 	std::vector<std::unique_ptr<Method>> Methods;
-	std::map<std::string, Property, std::less<>> Properties;
+	std::map<std::string, Property, std::less<>> Properties; /// TODO: Document these! These are generated via 'GetterFor'/'SetterFor' methods
 	std::vector<std::string> AdditionalBodyLines;
 
 	json DefaultFieldAttributes = json::object();
@@ -258,8 +279,17 @@ struct Class : public TypeDeclaration
 
 	std::map<std::string, std::vector<Method const*>> MethodsByName;
 
-	Method* AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
-	void CreateArtificialMethods(FileMirror& mirror, Options const& options);
+	Method* AddArtificialMethod(
+		Declaration& for_decl, 
+		std::string function_type, 
+		std::string results, 
+		std::string name, 
+		std::string parameters, 
+		std::string body, 
+		std::vector<std::string> comments, 
+		ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {}
+	);
+	void CreateArtificialMethodsAndDocument(Options const& options);
 
 	virtual json ToJSON() const override;
 
@@ -279,7 +309,7 @@ struct Class : public TypeDeclaration
 		return result;
 	}
 
-	virtual std::string_view DeclarationType() const { return "Class"; }
+	virtual ::DeclarationType DeclarationType() const { return DeclarationType::Class; }
 
 private:
 
@@ -292,11 +322,16 @@ struct Enumerator : public MemberDeclaration<Enum>
 
 	int64_t Value = 0;
 
+	std::string Opposite; /// TODO: Initialize this from options & attribute
+
 	ghassanpl::enum_flags<EnumeratorFlags> Flags;
 
 	json ToJSON() const;
 
-	virtual std::string_view DeclarationType() const { return "Enumerator"; }
+	/// TODO: We should also use the artificial method subsystem for enumerators, as it means they will get docnotes
+	void CreateArtificialMethodsAndDocument(Options const& options);
+
+	virtual ::DeclarationType DeclarationType() const { return DeclarationType::Enumerator; }
 };
 
 struct Enum : public TypeDeclaration
@@ -319,7 +354,11 @@ struct Enum : public TypeDeclaration
 
 	json ToJSON() const;
 
-	virtual std::string_view DeclarationType() const { return "Enum"; }
+	/// TODO: We should also use the artificial method subsystem to create functions like GetNext, etc.
+	/// as they will be documented/referenced that way!
+	void CreateArtificialMethodsAndDocument(Options const& options);
+
+	virtual ::DeclarationType DeclarationType() const { return DeclarationType::Enum; }
 };
 
 struct FileMirror
@@ -332,7 +371,7 @@ struct FileMirror
 
 	json ToJSON() const;
 
-	void CreateArtificialMethods(Options const& options);
+	void CreateArtificialMethodsAndDocument(Options const& options);
 	
 	FileMirror();
 	FileMirror(FileMirror const&) = delete;
@@ -369,7 +408,7 @@ extern uint64_t ChangeTime;
 std::vector<FileMirror const*> GetMirrors();
 FileMirror* AddMirror();
 void RemoveEmptyMirrors();
-void CreateArtificialMethods(Options const& options);
+void CreateArtificialMethodsAndDocument(Options const& options);
 
 inline std::string OnlyType(std::string str)
 {

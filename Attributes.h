@@ -4,46 +4,28 @@
 
 struct AttributeProperties;
 
-enum class AttributeFor
-{
-	Record,
-	Class,
-	Struct,
-	Enum,
-	Field,
-};
-
-using AttributeDocFunc = std::function<std::string(json const&, Declaration const&)>;
+//using AttributeDocFunc = std::function<std::string(json const&, Declaration const&)>;
 using AttributeValidatorFunc = std::function<expected<void, std::string>(json const&, Declaration const&)>;
 extern AttributeValidatorFunc IsString;
 extern AttributeValidatorFunc NotEmptyString;
-
-enum class AttributeTarget
-{
-	Field,
-	Method,
-	Class,
-	Enum,
-	Enumerator,
-
-	Any,
-};
 
 struct AttributeProperties
 {
 	std::vector<std::string> ValidNames;
 	std::string_view Name() const { return ValidNames[0]; }
 	std::string Description;
-	enum_flags<AttributeTarget> ValidTargets{};
+	enum_flags<DeclarationType> ValidTargets{};
+
+	bool AppliesTo(Declaration const& decl) const { return ValidTargets.contain(decl.DeclarationType()); }
+
 	json DefaultValueIfAny = nullptr;
 
-	AttributeDocFunc DocumentationDescriptionGenerator;
 	AttributeValidatorFunc Validator;
 
 	static inline std::vector<AttributeProperties const*> AllAttributes;
 
 	template <typename... ARGS>
-	AttributeProperties(std::string name, std::string desc, enum_flags<AttributeTarget> targets, json default_value = nullptr, ARGS&&... args) noexcept
+	AttributeProperties(std::string name, std::string desc, enum_flags<DeclarationType> targets, json default_value = nullptr, ARGS&&... args) noexcept
 		: ValidNames(string_ops::split<std::string>(name, ";"))
 		, Description(move(desc))
 		, ValidTargets(targets)
@@ -54,15 +36,8 @@ struct AttributeProperties
 		(this->Set(std::forward<ARGS>(args)), ...);
 	}
 
-	expected<void, std::string> Validate(json const& attr_value, Declaration const& decl) const
-	{
-		/// TODO: Validate target
-		if (Validator)
-			return Validator(attr_value, decl);
-		return {};
-	}
+	expected<void, std::string> Validate(json const& attr_value, Declaration const& decl) const;
 
-	void Set(AttributeDocFunc docfunc) { this->DocumentationDescriptionGenerator = move(docfunc); }
 	void Set(AttributeValidatorFunc validator) { this->Validator = move(validator); }
 
 	std::optional<std::string> ExistsIn(Declaration const& decl) const
@@ -142,7 +117,7 @@ struct TypedAttributeProperties : public AttributeProperties
 	T TypedDefaultValue{};
 
 	template <typename... ARGS>
-	TypedAttributeProperties(std::string name, std::string desc, enum_flags<AttributeTarget> targets, ARGS&&... args) noexcept
+	TypedAttributeProperties(std::string name, std::string desc, enum_flags<DeclarationType> targets, ARGS&&... args) noexcept
 		: AttributeProperties(move(name), move(desc), targets, {})
 	{
 		if constexpr (std::is_same_v<std::string, T>) this->Set(NotEmptyString); /// NOTE: String attributes cannot be empty by default!
@@ -151,7 +126,7 @@ struct TypedAttributeProperties : public AttributeProperties
 	}
 
 	template <typename U>
-	void Set(U default_value) requires std::same_as<std::remove_cvref_t<U>, T> { this->TypedDefaultValue = std::move(default_value); }
+	void Set(U default_value) requires std::same_as<std::remove_cvref_t<U>, T> { this->DefaultValueIfAny = default_value; this->TypedDefaultValue = std::move(default_value); }
 
 	/*
 	template <typename U = T>

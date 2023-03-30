@@ -387,7 +387,10 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 	line.remove_prefix(options.FieldAnnotationName.size());
 	field.Access = mode;
 	if (field.Access != AccessMode::Public && field.Access != AccessMode::Unspecified)
+	{
 		field.Flags += FieldFlags::DeclaredPrivate;
+		field.Document = false; /// Default
+	}
 	field.Attributes = klass.DefaultFieldAttributes;
 	field.Attributes.update(ParseAttributeList(line), true);
 	field.DeclarationLine = line_num;
@@ -431,8 +434,11 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter);
 
 	/// ChildVector implies Setter = false
+	/// TODO: This needs to go, move to hierarchies I guess
+	/*
 	if (type.starts_with("ChildVector<"))
 		field.Flags.set(Reflector::FieldFlags::NoSetter);
+		*/
 
 
 	/// Enable if explictly stated
@@ -561,6 +567,7 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 	if (auto getter = Attribute::UniqueName.SafeGet(method))
 		method.UniqueName = *getter;
 
+	/// TODO: How to docnote this?
 	if (auto getter = Attribute::GetterFor.SafeGet(method))
 	{
 		auto& property = klass.Properties[*getter];

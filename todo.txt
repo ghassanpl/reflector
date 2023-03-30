@@ -5,6 +5,8 @@
 into
 		[[RClass(Abstract, CreateIsChilds=[Door,Decoration,Item,Enemy,Hero,Creature])]] 
 
+- instead of FileWriter saving everything to a file that then has to be compared and copied to final destination, just save the data to a stringstream!
+
 - check if we can use __COUNTER__ instead of __LINE__ in RBody() macros (will make it so that intellisense only fails when order of classes is changed, not the line their body is at)
 
 - support C++ attributes (nodiscard, noreturn, deprecated)

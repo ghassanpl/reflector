@@ -198,7 +198,7 @@ int main(int argc, const char* argv[])
 
 
 		/// Create artificial methods, knowing all the reflected classes
-		CreateArtificialMethods(options);
+		CreateArtificialMethodsAndDocument(options);
 
 		Artifactory factory{ options };
 

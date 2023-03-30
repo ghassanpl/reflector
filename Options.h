@@ -89,6 +89,10 @@ struct DocumentationOptions
 	/// TODO: If a method has comments (like \param or <param>) that describe its parameters, validates that the names are the same as the actual method parameters
 	RField();
 	bool ValidateMethodArgumentComments = false;
+
+	/// TODO: List all the doc note headers (like "On Change" or "Not Editable") that should not be output for any entities
+	RField();
+	std::vector<std::string> IgnoreDocNotes {};
 };
 
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
@@ -234,6 +238,10 @@ struct Options
 
 	RField();
 	std::string ProxyClassSuffix = "_Proxy";
+
+	/// TODO: Will add `Opposite` attributes to every flag enumerator with the given values (e.g. if you set this to {'Alive': 'Dead'}, any flag enumerator called Alive will get an opposite called 'Dead')
+	RField();
+	std::map<std::string, std::string> DefaultFlagOpposites;
 
 	/// For later
 	std::map<std::string, json> DefaultClassAttributes;
