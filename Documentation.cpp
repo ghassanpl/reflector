@@ -69,7 +69,7 @@ struct DocumentationGenerator
 {
 	Options const& options;
 	json styles;
-	std::map<void const*, path> file_for_mirror;
+	//std::map<void const*, path> file_for_mirror;
 	std::vector<Class const*> classes;
 	std::vector<Enum const*> enums;
 
@@ -176,12 +176,12 @@ struct DocumentationGenerator
 	}
 
 	template <typename T>
-	void OutDeclDesc(HTMLFileWriter& out, T const& decl, Declaration const& parent)
+	void OutDeclDesc(HTMLFileWriter& out, T const& decl, TypeDeclaration const& parent)
 	{
 		if (!parent.Namespace.empty())
 			out.WriteLine("<li><b>Namespace</b>: <a href='{}.html'>{}</a></li>", replaced(parent.Namespace, "::", "."), parent.Namespace);
 		if (decl.DeclarationLine != 0)
-			out.WriteLine("<li><b>Declaration</b>: <a href='file:///{2}#{1}' class='srclink'>{0} at line {1}</a></li>", file_for_mirror[&parent].filename().string(), decl.DeclarationLine, file_for_mirror[&parent].string());
+			out.WriteLine("<li><b>Declaration</b>: <a href='file:///{2}#{1}' class='srclink'>{0} at line {1}</a></li>", parent.ParentMirror->SourceFilePath.filename().string(), decl.DeclarationLine, parent.ParentMirror->SourceFilePath.string());
 		if (decl.Flags.bits)
 			out.WriteLine("<li><b>Flags</b>: {}</li>", join(decl.Flags, ", ", [](auto v) { return std::format("<a href='Reflector.FieldFlags.html#{0}'>{0}</a>", magic_enum::enum_name(v)); }));
 		if (!decl.Attributes.empty())
@@ -193,11 +193,11 @@ struct DocumentationGenerator
 		std::map<std::string, std::string> attributes;
 		for (auto attr : AttributeProperties::AllAttributes)
 		{
-			if (attr->ExistsIn(decl.Attributes) && attr->DocumentationDescriptionGenerator)
+			if (auto attr_name = attr->ExistsIn(decl); attr_name && attr->DocumentationDescriptionGenerator)
 			{
-				auto desc = attr->DocumentationDescriptionGenerator(attr->TryGet(decl.Attributes), decl);
+				auto desc = attr->DocumentationDescriptionGenerator(attr->TryGet(decl), decl);
 				if (!desc.empty())
-					attributes[attr->Name] = move(desc);
+					attributes[*attr_name] = move(desc);
 			}
 		}
 		if (attributes.empty())
@@ -275,10 +275,10 @@ struct DocumentationGenerator
 	DocFile CreateFieldFile(Field const& field)
 	{
 		HTMLFileWriter out{options};
-		out.StartPage(field.ParentClass->Name + "::" + field.Name + " Field");
-		out.WriteLine("<h1><pre class='entityname field'>{}::{}</pre> Field</h1>", field.ParentClass->Name, field.Name);
+		out.StartPage(field.ParentType->Name + "::" + field.Name + " Field");
+		out.WriteLine("<h1><pre class='entityname field'>{}::{}</pre> Field</h1>", field.ParentType->Name, field.Name);
 
-		auto& klass = *field.ParentClass;
+		auto& klass = *field.ParentType;
 		out.WriteLine("<h2>Description</h2>");
 		out.StartBlock("<ul class='desclist'>");
 		OutDeclDesc(out, field, klass);
@@ -304,7 +304,7 @@ struct DocumentationGenerator
 			out.WriteLine("<h2>See Also</h2>");
 			for (auto& am : field.AssociatedArtificialMethods)
 			{
-				out.WriteLine("<li><a href='{}'><small>{}</small>::{}({})</a></li>", FilenameFor(*am), am->ParentClass->FullType(), am->Name, Escaped(am->ParametersTypesOnly));
+				out.WriteLine("<li><a href='{}'><small>{}</small>::{}({})</a></li>", FilenameFor(*am), am->ParentType->FullType(), am->Name, Escaped(am->ParametersTypesOnly));
 			}
 		}
 
@@ -315,14 +315,14 @@ struct DocumentationGenerator
 	DocFile CreateMethodFile(Method const& method)
 	{
 		HTMLFileWriter out{options};
-		out.StartPage(method.ParentClass->Name + "::" + method.Name + " Method");
-		out.WriteLine("<h1><pre class='entityname field'>{}::{}</pre> Method</h1>", method.ParentClass->Name, method.Name);
+		out.StartPage(method.ParentType->Name + "::" + method.Name + " Method");
+		out.WriteLine("<h1><pre class='entityname field'>{}::{}</pre> Method</h1>", method.ParentType->Name, method.Name);
 
-		auto& klass = *method.ParentClass;
+		auto& klass = *method.ParentType;
 		out.WriteLine("<h2>Description</h2>");
 		out.StartBlock("<ul class='desclist'>");
 		OutDeclDesc(out, method, klass);
-		if (method.SourceDeclaration && method.SourceDeclaration != method.ParentClass)
+		if (method.SourceDeclaration && method.SourceDeclaration != method.ParentType)
 		{
 			out.WriteLine("<li><b>Source Declaration</b>: {} <a href='{}'>{}</a></li>", method.SourceDeclaration->DeclarationType(), FilenameFor(*method.SourceDeclaration), method.SourceDeclaration->Name);
 		}
@@ -395,18 +395,12 @@ struct DocumentationGenerator
 		/// styles.update(options.Documentation.CustomStyles);
 
 		/// Prepare the lists of types
-		for (auto& [SourceFilePath, Classes, Enums] : GetMirrors())
+		for (auto& mirror : GetMirrors())
 		{
-			for (auto& klass : Classes)
-			{
+			for (auto& klass : mirror->Classes)
 				classes.push_back(klass.get());
-				file_for_mirror[klass.get()] = SourceFilePath;
-			}
-			for (auto& henum : Enums)
-			{
+			for (auto& henum : mirror->Enums)
 				enums.push_back(henum.get());
-				file_for_mirror[henum.get()] = SourceFilePath;
-			}
 		}
 
 		std::ranges::sort(classes, [](Class const* a, Class const* b) { return a->FullType() < b->FullType(); });

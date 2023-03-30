@@ -172,9 +172,9 @@ json ParseAttributeList(string_view line)
 	return ghassanpl::formats::wilson::parse_object(line, ')');
 }
 
-std::unique_ptr<Enum> ParseEnum(const std::vector<std::string>& lines, size_t& line_num, Options const& options)
+std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::string>& lines, size_t& line_num, Options const& options)
 {
-	auto result = std::make_unique<Enum>();
+	auto result = std::make_unique<Enum>(mirror);
 	Enum& henum = *result;
 
 	line_num--;
@@ -184,7 +184,7 @@ std::unique_ptr<Enum> ParseEnum(const std::vector<std::string>& lines, size_t& l
 	line.remove_prefix(options.EnumAnnotationName.size());
 	henum.Attributes = ParseAttributeList(line);
 
-	henum.DefaultEnumeratorAttributes = atEnumDefaultEnumeratorAttributes(henum.Attributes, json::object());
+	henum.DefaultEnumeratorAttributes = Attribute::DefaultEnumeratorAttributes(henum, json::object());
 
 	line_num++;
 	auto header_line = TrimWhitespace(string_view{ lines[line_num] });
@@ -247,12 +247,12 @@ std::unique_ptr<Enum> ParseEnum(const std::vector<std::string>& lines, size_t& l
 		line_num++;
 	}
 
-	henum.Namespace = atTypeNamespace(henum.Attributes, ""s);
+	henum.Namespace = Attribute::Namespace(henum);
 
 	return result;
 }
 
-auto ParseClassDecl(string_view line)
+auto ParseClassLine(string_view line)
 {
 	std::tuple<std::string, std::string, bool> result;
 
@@ -404,30 +404,30 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 	field.CleanName = field.DisplayName;
 
 	/// Get display name from attributes if set
-	atDisplayName.TryGet(field.Attributes, field.DisplayName);
+	Attribute::DisplayName.TryGet(field, field.DisplayName);
 
 	/// Disable if explictly stated
-	if (atFieldGetter(field.Attributes, true) == false)
+	if (Attribute::Getter.GetOr(field, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoGetter);
-	if (atFieldSetter(field.Attributes, true) == false)
+	if (Attribute::Setter.GetOr(field, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoSetter);
-	if (atFieldEditor(field.Attributes, true) == false || atFieldEdit(field.Attributes, true) == false)
+	if (Attribute::Editor.GetOr(field, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoEdit);
-	if (atFieldSave(field.Attributes, true) == false)
+	if (Attribute::Save.GetOr(field, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoSave);
-	if (atFieldLoad(field.Attributes, true) == false)
+	if (Attribute::Load.GetOr(field, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoLoad);
 
 	/// Serialize = false implies Save = false, Load = false
-	if (atFieldSerialize(field.Attributes, true) == false)
+	if (Attribute::Serialize.GetOr(field, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoSave, Reflector::FieldFlags::NoLoad);
 
 	/// Private implies Getter = false, Setter = false, Editor = false
-	if (atFieldPrivate(field.Attributes, false))
+	if (Attribute::Private.GetOr(field, false))
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
 
 	/// ParentPointer implies Editor = false, Setter = false
-	if (atFieldParentPointer(field.Attributes, false))
+	if (Attribute::ParentPointer.GetOr(field, false))
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter);
 
 	/// ChildVector implies Setter = false
@@ -436,18 +436,18 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 
 
 	/// Enable if explictly stated
-	if (atFieldGetter(field.Attributes, false) == true)
+	if (Attribute::Getter.GetOr(field, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoGetter);
-	if (atFieldSetter(field.Attributes, false) == true)
+	if (Attribute::Setter.GetOr(field, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoSetter);
-	if (atFieldEditor(field.Attributes, false) == true || atFieldEdit(field.Attributes, false) == true)
+	if (Attribute::Editor.GetOr(field, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoEdit);
-	if (atFieldSave(field.Attributes, false) == true)
+	if (Attribute::Save.GetOr(field, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoSave);
-	if (atFieldLoad(field.Attributes, false) == true)
+	if (Attribute::Load.GetOr(field, false) == true)
 		field.Flags.unset(Reflector::FieldFlags::NoLoad);
 
-	if (atFieldRequired(field.Attributes, false))
+	if (Attribute::Required(field))
 		field.Flags.set(Reflector::FieldFlags::Required);
 
 	return result;
@@ -558,24 +558,24 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 			method.Flags += MethodFlags::Abstract;
 	}
 
-	if (auto getter = method.Attributes.find(atMethodUniqueName.Name); getter != method.Attributes.end())
-		method.UniqueName = getter->get<std::string>();
+	if (auto getter = Attribute::UniqueName.SafeGet(method))
+		method.UniqueName = *getter;
 
-	if (auto getter = method.Attributes.find(atMethodGetterFor.Name); getter != method.Attributes.end())
+	if (auto getter = Attribute::GetterFor.SafeGet(method))
 	{
-		auto& property = klass.Properties[getter.value()];
+		auto& property = klass.Properties[*getter];
 		if (!property.GetterName.empty())
 			throw std::exception(std::format("Getter for this property already declared at line {}", property.GetterLine).c_str());
 		property.GetterName = method.Name;
 		property.GetterLine = line_num;
 		/// TODO: Match getter/setter types
 		property.Type = method.ReturnType;
-		if (property.Name.empty()) property.Name = getter.value();
+		if (property.Name.empty()) property.Name = *getter;
 	}
 
-	if (auto setter = method.Attributes.find(atMethodSetterFor.Name); setter != method.Attributes.end())
+	if (auto setter = Attribute::SetterFor.SafeGet(method))
 	{
-		auto& property = klass.Properties[setter.value()];
+		auto& property = klass.Properties[*setter];
 		if (!property.SetterName.empty())
 			throw std::exception(std::format("Setter for this property already declared at line {}", property.SetterLine).c_str());
 		property.SetterName = method.Name;
@@ -587,7 +587,7 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 				throw std::exception("Setter must have at least 1 argument");
 			property.Type = method.ParametersSplit[0].Type;
 		}
-		if (property.Name.empty()) property.Name = setter.value();
+		if (property.Name.empty()) property.Name = *setter;
 	}
 
 	method.Comments = std::move(comments);
@@ -595,14 +595,14 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 	return result;
 }
 
-std::unique_ptr<Class> ParseClassDecl(string_view line, string_view next_line, size_t line_num, std::vector<std::string> comments, Options const& options)
+std::unique_ptr<Class> ParseClassDecl(FileMirror* mirror, string_view line, string_view next_line, size_t line_num, std::vector<std::string> comments, Options const& options)
 {
-	auto result = std::make_unique<Class>();
+	auto result = std::make_unique<Class>(mirror);
 	Class& klass = *result;
 	line.remove_prefix(options.ClassAnnotationName.size());
 	klass.Attributes = ParseAttributeList(line);
 	klass.DeclarationLine = line_num;
-	auto [name, parent, is_struct] = ParseClassDecl(next_line);
+	auto [name, parent, is_struct] = ParseClassLine(next_line);
 	klass.Name = name;
 	klass.BaseClass = parent;
 	klass.Comments = std::move(comments);
@@ -611,10 +611,10 @@ std::unique_ptr<Class> ParseClassDecl(string_view line, string_view next_line, s
 	if (is_struct)
 		klass.Flags += ClassFlags::DeclaredStruct;
 
-	klass.DefaultFieldAttributes = atRecordDefaultFieldAttributes(klass.Attributes, json::object());
-	klass.DefaultMethodAttributes = atRecordDefaultMethodAttributes(klass.Attributes, json::object());
+	klass.DefaultFieldAttributes = Attribute::DefaultFieldAttributes(klass, json::object());
+	klass.DefaultMethodAttributes = Attribute::DefaultMethodAttributes(klass, json::object());
 
-	if (klass.Flags.is_set(ClassFlags::Struct) || atRecordAbstract(klass.Attributes, false) == true || atRecordSingleton(klass.Attributes, false) == true)
+	if (klass.Flags.is_set(ClassFlags::Struct) || Attribute::Abstract(klass) == true || Attribute::Singleton(klass) == true)
 		klass.Flags += ClassFlags::NoConstructors;
 
 	/// If we declared an actual class it has to derive from Reflectable
@@ -623,7 +623,7 @@ std::unique_ptr<Class> ParseClassDecl(string_view line, string_view next_line, s
 		throw std::exception(std::format("Non-struct class '{}' must derive from Reflectable or a Reflectable class", klass.FullType()).c_str());
 	}
 
-	klass.Namespace = atTypeNamespace(klass.Attributes, ""s);
+	klass.Namespace = Attribute::Namespace(klass);
 
 	return result;
 }
@@ -642,7 +642,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 		lines.push_back(std::exchange(input_line, {}));
 	infile.close();
 
-	FileMirror mirror;
+	FileMirror& mirror = *AddMirror();
 	mirror.SourceFilePath = std::filesystem::absolute(path);
 
 	AccessMode current_access = AccessMode::Unspecified;
@@ -664,14 +664,18 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				current_access = AccessMode::Private;
 			else if (current_line.starts_with(options.EnumAnnotationName))
 			{
-				mirror.Enums.push_back(ParseEnum(lines, line_num, options));
+				mirror.Enums.push_back(ParseEnum(&mirror, lines, line_num, options));
 				mirror.Enums.back()->Comments = std::exchange(comments, {});
 				mirror.Enums.back()->UID = GenerateUID(path, line_num);
+				if (options.Verbose)
+				{
+					PrintLine("Found enum {}", mirror.Enums.back()->FullType());
+				}
 			}
 			else if (current_line.starts_with(options.ClassAnnotationName))
 			{
 				current_access = AccessMode::Private;
-				mirror.Classes.push_back(ParseClassDecl(current_line, next_line, line_num, std::exchange(comments, {}), options));
+				mirror.Classes.push_back(ParseClassDecl(&mirror, current_line, next_line, line_num, std::exchange(comments, {}), options));
 				mirror.Classes.back()->UID = GenerateUID(path, line_num);
 				if (options.Verbose)
 				{
@@ -728,9 +732,6 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 			return false;
 		}
 	}
-
-	if (mirror.Classes.size() > 0 || mirror.Enums.size() > 0)
-		AddMirror(std::move(mirror));
 
 	return true;
 }

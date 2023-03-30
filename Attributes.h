@@ -2,6 +2,8 @@
 
 #include "Common.h"
 
+struct AttributeProperties;
+
 enum class AttributeFor
 {
 	Record,
@@ -12,44 +14,148 @@ enum class AttributeFor
 };
 
 using AttributeDocFunc = std::function<std::string(json const&, Declaration const&)>;
+using AttributeValidatorFunc = std::function<expected<void, std::string>(json const&, Declaration const&)>;
+extern AttributeValidatorFunc IsString;
+extern AttributeValidatorFunc NotEmptyString;
+
+enum class AttributeTarget
+{
+	Field,
+	Method,
+	Class,
+	Enum,
+	Enumerator,
+
+	Any,
+};
 
 struct AttributeProperties
 {
-	std::string Name;
+	std::vector<std::string> ValidNames;
+	std::string_view Name() const { return ValidNames[0]; }
 	std::string Description;
-	json::value_t ValueType{};
+	enum_flags<AttributeTarget> ValidTargets{};
 	json DefaultValueIfAny = nullptr;
 
 	AttributeDocFunc DocumentationDescriptionGenerator;
+	AttributeValidatorFunc Validator;
 
 	static inline std::vector<AttributeProperties const*> AllAttributes;
 
-	AttributeProperties(std::string name, std::string desc, json::value_t type, json default_value = nullptr, AttributeDocFunc docfunc = {}) noexcept
-		: Name(move(name))
+	template <typename... ARGS>
+	AttributeProperties(std::string name, std::string desc, enum_flags<AttributeTarget> targets, json default_value = nullptr, ARGS&&... args) noexcept
+		: ValidNames(string_ops::split<std::string>(name, ";"))
 		, Description(move(desc))
-		, ValueType(type)
+		, ValidTargets(targets)
 		, DefaultValueIfAny(std::move(default_value))
-		, DocumentationDescriptionGenerator(std::move(docfunc))
 	{
 		AllAttributes.push_back(this);
+
+		(this->Set(std::forward<ARGS>(args)), ...);
 	}
 
-	AttributeProperties(std::string name, AttributeProperties const& copy) noexcept
-		: AttributeProperties(copy)
+	expected<void, std::string> Validate(json const& attr_value, Declaration const& decl) const
 	{
-		Name = std::move(name);
+		/// TODO: Validate target
+		if (Validator)
+			return Validator(attr_value, decl);
+		return {};
 	}
 
-	//operator std::string const&() const noexcept { return Name; }
-	//auto operator <=>(std::string const& other) const noexcept { return Name <=> other; }
+	void Set(AttributeDocFunc docfunc) { this->DocumentationDescriptionGenerator = move(docfunc); }
+	void Set(AttributeValidatorFunc validator) { this->Validator = move(validator); }
 
-	bool ExistsIn(json const& attrs) const
+	std::optional<std::string> ExistsIn(Declaration const& decl) const
 	{
-		return attrs.contains(this->Name);
+		auto it = std::ranges::find_if(ValidNames, [&](std::string const& name) { return decl.Attributes.contains(name); });
+		if (it != ValidNames.end())
+			return *it;
+		return std::nullopt;
 	}
 
 	template <typename T>
-	auto operator()(json const& attrs, T&& default_value) const
+	auto operator()(Declaration const& decl, T&& default_value) const
+	{
+		const auto it = Find(decl);
+		if (!it || it->is_null())
+			return std::forward<T>(default_value);
+		return (T)*it;
+	}
+
+	json const* operator()(Declaration const& decl) const
+	{
+		return Find(decl);
+	}
+
+	template <typename T>
+	bool TryGet(Declaration const& decl, T& dest) const
+	{
+		const auto it = Find(decl);
+		if (!it)
+			return false;
+		if (it->is_null())
+			return false;
+		dest = (T)*it;
+		return true;
+	}
+
+	json const& TryGet(Declaration const& decl) const
+	{
+		static const json empty_json;
+		const auto it = Find(decl);
+		if (!it)
+			return empty_json;
+		return *it;
+	}
+
+protected:
+
+	void ValidateThrowing(json const& attr_value, Declaration const& decl) const
+	{
+		if (auto exp = Validate(attr_value, decl); !exp)
+			ReportError(decl, "Invalid attribute '{}': {}", Name(), std::move(exp).error());
+	}
+
+	json const* Find(Declaration const& decl, bool validate = true) const
+	{
+		for (auto& name : ValidNames)
+		{
+			if (auto it = decl.Attributes.find(name); it != decl.Attributes.end() && !it->is_null())
+			{
+				if (validate)
+					ValidateThrowing(*it, decl);
+				return std::to_address(it);
+			}
+		}
+		return nullptr;
+	}
+
+	AttributeProperties(AttributeProperties const& other) noexcept = default;
+};
+
+template <typename T>
+struct TypedAttributeProperties : public AttributeProperties
+{
+	using AttributeProperties::AttributeProperties;
+	using AttributeProperties::Set;
+	using AttributeType = T;
+	T TypedDefaultValue{};
+
+	template <typename... ARGS>
+	TypedAttributeProperties(std::string name, std::string desc, enum_flags<AttributeTarget> targets, ARGS&&... args) noexcept
+		: AttributeProperties(move(name), move(desc), targets, {})
+	{
+		if constexpr (std::is_same_v<std::string, T>) this->Set(NotEmptyString); /// NOTE: String attributes cannot be empty by default!
+
+		(this->Set(std::forward<ARGS>(args)), ...);
+	}
+
+	template <typename U>
+	void Set(U default_value) requires std::same_as<std::remove_cvref_t<U>, T> { this->TypedDefaultValue = std::move(default_value); }
+
+	/*
+	template <typename U = T>
+	auto operator()(json const& attrs, U&& default_value) const
 	{
 		const auto it = attrs.find(this->Name);
 		if (it == attrs.end())
@@ -59,82 +165,71 @@ struct AttributeProperties
 		else
 			return (T)*it;
 	}
+	*/
 
-	template <typename T>
-	bool TryGet(json const& attrs, T& dest) const
+	T operator()(Declaration const& decl) const
 	{
-		const auto it = attrs.find(this->Name);
-		if (it == attrs.end())
-			return false;
-		if constexpr (std::is_same_v<T, bool>)
-			dest = it->is_null() ? true : (bool)*it;
-		else
-			dest = (T)*it;
-		return true;
+		if (auto found = Find(decl))
+			return (T)*found;
+		return TypedDefaultValue;
 	}
-
-	json const& TryGet(json const& attrs) const
+	std::optional<T> SafeGet(Declaration const& decl) const
 	{
-		static const json empty_json;
-		const auto it = attrs.find(this->Name);
-		if (it == attrs.end())
-			return empty_json;
-		return *it;
+		if (auto found = Find(decl))
+			return (T)*found;
+		return std::nullopt;
 	}
-
-private:
-
-	AttributeProperties(AttributeProperties const& other) noexcept = default;
+	T GetOr(Declaration const& decl, T default_value) const
+	{
+		if (auto found = Find(decl))
+			return (T)*found;
+		return default_value;
+	}
 };
 
-/// TODO: Move these to a .cpp file. Since we're autoregistering them anyway, might as well output the documentation for these at bootstrap.
+using StringAttributeProperties = TypedAttributeProperties<std::string>;
+using BoolAttributeProperties = TypedAttributeProperties<bool>;
+struct Attribute
+{
+	static const StringAttributeProperties DisplayName;
 
-/// TODO: Change these to static fields of a reflected class (or classes), so that documentation is generated
+	static const StringAttributeProperties Namespace;
 
-inline const AttributeProperties atDisplayName{ "DisplayName", "The name that is going to be displayed in editors and such", json::value_t::string };
+	/// TODO: Maybe instead of Getter and Setter, just have one attribute - ReadOnly - which also influences whether or not other setters are created (like flag, vector, optional setters)
 
-inline const AttributeProperties atTypeNamespace{ "Namespace", "A helper since we don't parse namespaces; set this to the full namespace of the following type, otherwise you might get errors", json::value_t::string };
+	static const BoolAttributeProperties Getter;
+	static const BoolAttributeProperties Setter;
+	static const BoolAttributeProperties Editor;
+	static const BoolAttributeProperties Save;
+	static const BoolAttributeProperties Load;
 
-/// TODO: Maybe instead of Getter and Setter, just have one attribute - ReadOnly - which also influences whether or not other setters are created (like flag, vector, optional setters)
+	static const BoolAttributeProperties Document; /// TODO: This
 
-inline const AttributeProperties atFieldGetter{ "Getter", "Whether or not to create a getter for this field", json::value_t::boolean, true };
-inline const AttributeProperties atFieldSetter{ "Setter", "Whether or not to create a setter for this field", json::value_t::boolean, true };
-inline const AttributeProperties atFieldEditor{ "Editor", "Whether or not this field should be editable", json::value_t::boolean, true };
-inline const AttributeProperties atFieldEdit{ "Edit", atFieldEditor };
-inline const AttributeProperties atFieldSave{ "Save", "Whether or not this field should be saveable", json::value_t::boolean, true };
-inline const AttributeProperties atFieldLoad{ "Load", "Whether or not this field should be loadable", json::value_t::boolean, true };
+	static const BoolAttributeProperties Serialize;
+	static const BoolAttributeProperties Private;
+	static const BoolAttributeProperties ParentPointer;
+	static const BoolAttributeProperties Required;
 
-inline const AttributeProperties atFieldSerialize{ "Serialize", "False means both 'Save' and 'Load' are false", json::value_t::boolean, true };
-inline const AttributeProperties atFieldPrivate{ "Private", "True sets 'Edit', 'Setter', 'Getter' to false", json::value_t::boolean, false };
-inline const AttributeProperties atFieldParentPointer{ "ParentPointer", "Whether or not this field is a pointer to parent object, in a tree hierarchy; implies Edit = false, Setter = false", json::value_t::boolean, false };
-inline const AttributeProperties atFieldRequired{ "Required", "A helper flag for the serialization system - will set the FieldFlags::Required flag", json::value_t::boolean, false,
-	[](json const& value, Declaration const& decl) { if (value) { return std::format("This field is required to be present when deserializing class {}.", static_cast<Field const&>(decl).ParentClass->Name); } return std::string{}; } 
+	static const StringAttributeProperties OnChange;
+
+	static const StringAttributeProperties FlagGetters;
+	static const StringAttributeProperties Flags;
+	static const BoolAttributeProperties FlagNots;
+
+	static const StringAttributeProperties UniqueName;
+
+	static const StringAttributeProperties GetterFor;
+	static const StringAttributeProperties SetterFor;
+
+	static const BoolAttributeProperties Abstract;
+	static const BoolAttributeProperties Singleton;
+
+	static const AttributeProperties DefaultFieldAttributes;
+	static const AttributeProperties DefaultMethodAttributes;
+	static const AttributeProperties DefaultEnumeratorAttributes;
+
+	static const BoolAttributeProperties CreateProxy;
+
+	static const BoolAttributeProperties List;
+	static const StringAttributeProperties Opposite;
 };
-
-inline const AttributeProperties atFieldOnChange{ "OnChange", "Calls the specified method when this field changes", json::value_t::string, {},
-	[](json const& value, Declaration const& decl) { return std::format("When this field is changed (via its setter and other such functions) it will call the `{}` method.", value.get<std::string>()); }
-};
-
-inline const AttributeProperties atFieldFlagGetters{ "FlagGetters", "If set to an (reflected) enum name, creates getter functions (IsFlag) for each Flag in this field; can't be set if 'Flags' is set", json::value_t::string };
-inline const AttributeProperties atFieldFlags{ "Flags", "If set to an (reflected) enum name, creates getter and setter functions (IsFlag, SetFlag, UnsetFlag, ToggleFlag) for each Flag in this field; can't be set if 'FlagGetters' is set", json::value_t::string };
-inline const AttributeProperties atFieldFlagNots{ "FlagNots", "Requires 'Flags' attribute. If set, creates IsNotFlag functions in addition to regular IsFlag (except for enumerators with Opposite attribute).", json::value_t::boolean, true };
-
-inline const AttributeProperties atMethodUniqueName{ "UniqueName", "A unique (for this type) name of this method; useful for overloaded functions", json::value_t::string, {},
-	[](json const& value, Declaration const& decl) { return std::format("This method's unique name will be `{}` in scripts.", value.get<std::string>()); }
-};
-inline const AttributeProperties atMethodGetterFor{ "GetterFor", "This function is a getter for the named field", json::value_t::string };
-inline const AttributeProperties atMethodSetterFor{ "SetterFor", "This function is a setter for the named field", json::value_t::string };
-
-inline const AttributeProperties atRecordAbstract{ "Abstract", "This record is abstract (don't create special constructors)", json::value_t::boolean, false };
-inline const AttributeProperties atRecordSingleton{ "Singleton", "This record is a singleton. Adds a static function (default name 'SingletonInstance') that returns the single instance of this record", json::value_t::boolean, false,
-	[](json const& value, Declaration const& decl) { if (!value) return ""s; return "This class is a singleton. Call @see SingletonInstance to get the instance."s; } /// TODO: Instead of hardcoding the SingletonInstance name, get it from options
-};
-
-inline const AttributeProperties atRecordDefaultFieldAttributes{ "DefaultFieldAttributes", "These attributes will be added as default to every reflected field of this class", json::value_t::discarded, json::object() };
-inline const AttributeProperties atRecordDefaultMethodAttributes{ "DefaultMethodAttributes", "These attributes will be added as default to every reflected method of this class", json::value_t::discarded, json::object() };
-inline const AttributeProperties atEnumDefaultEnumeratorAttributes{ "DefaultEnumeratorAttributes", "These attributes will be added as default to every enumerator of this enum", json::value_t::discarded, json::object() };
-
-inline const AttributeProperties atRecordCreateProxy{ "CreateProxy", "If set to false, proxy classes are not built for classes with virtual methods", json::value_t::boolean, true };
-
-inline const AttributeProperties atEnumList{ "List", "If set to true, generates GetNext() and GetPrev() functions that return the next/prev enumerator in sequence, wrapping around", json::value_t::boolean, false };
-inline const AttributeProperties atEnumeratorOpposite{ "Opposite", "Only valid on Flag enums, will create a virtual flag that is the complement of this one, for the purposes of creating getters and setters", json::value_t::string};

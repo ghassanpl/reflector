@@ -178,7 +178,7 @@ int main(int argc, const char* argv[])
 				}
 			}
 			else
-				final_files.push_back(std::move(path));
+				final_files.push_back(path);
 		}
 
 		PrintLine("{} reflectable files found", final_files.size());
@@ -194,6 +194,9 @@ int main(int argc, const char* argv[])
 		if (!success)
 			return -1;
 
+		RemoveEmptyMirrors();
+
+
 		/// Create artificial methods, knowing all the reflected classes
 		CreateArtificialMethods(options);
 
@@ -203,13 +206,13 @@ int main(int argc, const char* argv[])
 
 		for (auto& file : GetMirrors())
 		{
-			auto file_path = file.SourceFilePath;
+			auto file_path = file->SourceFilePath;
 			file_path.concat(options.MirrorExtension);
 
-			auto file_change_time = FileNeedsUpdating(file_path, file.SourceFilePath, options);
+			auto file_change_time = FileNeedsUpdating(file_path, file->SourceFilePath, options);
 			if (file_change_time == 0) continue;
 
-			factory.QueueArtifact(file_path, BuildMirrorFile, std::ref(file), file_change_time);
+			factory.QueueArtifact(file_path, BuildMirrorFile, std::ref(*file), file_change_time);
 		}
 		files_changed += factory.Run();
 

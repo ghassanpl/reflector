@@ -9,6 +9,15 @@
 #include <filesystem>
 #include <string_view>
 #include <vector>
+#if __has_include(<expected>)
+#include <expected>
+using std::expected;
+using std::unexpected;
+#else
+#include <tl/expected.hpp>
+using tl::expected;
+using tl::unexpected;
+#endif
 #include <nlohmann/json.hpp>
 #include <ghassanpl/enum_flags.h>
 #include <ghassanpl/string_ops.h>
@@ -84,9 +93,34 @@ struct Declaration
 	/// TODO: Fill this in for every declaration!
 	uint64_t UID = 0;
 
+	std::vector<Method const*> AssociatedArtificialMethods;
+
+	std::string GeneratedUniqueName() const { return std::format("{}_{:016x}", Name, UID); }
+
+	virtual std::string FullName(std::string_view sep = "_") const
+	{
+		return Name;
+	}
+
+	virtual ~Declaration() noexcept = default;
+
+	virtual std::string_view DeclarationType() const = 0;
+
+	virtual json ToJSON() const;
+};
+
+template <typename... ARGS>
+void ReportError(Declaration const& decl, std::string_view fmt, ARGS&& ... args)
+{
+	ReportError("TODO declaration file", decl.DeclarationLine, fmt, std::forward<ARGS>(args)...);
+}
+
+struct TypeDeclaration : public Declaration
+{
+	FileMirror* ParentMirror = nullptr;
 	std::string Namespace;
 
-	std::vector<Method const*> AssociatedArtificialMethods;
+	TypeDeclaration(FileMirror* parent) : ParentMirror(parent) {}
 
 	std::string FullType() const
 	{
@@ -95,28 +129,38 @@ struct Declaration
 		return std::format("{}::{}", Namespace, Name);
 	}
 
-	std::string GeneratedUniqueName() const { return std::format("{}_{:016x}", Name, UID); }
-
-	virtual std::string FullName(std::string_view sep = "_") const
+	virtual std::string FullName(std::string_view sep = "_") const override
 	{
 		if (Namespace.empty())
 			return Name;
 		return std::format("{}{}{}", ghassanpl::string_ops::replaced(Namespace, "::", sep), sep, Name);
 	}
 
-	virtual ~Declaration() noexcept = default;
-
-	virtual std::string_view DeclarationType() const = 0;
-
-	json ToJSON() const;
+	virtual json ToJSON() const override
+	{
+		auto result = Declaration::ToJSON();
+		if (!Namespace.empty())
+			result["Namespace"] = Namespace;
+		return result;
+	}
 };
 
-
-struct Field : public Declaration
+template <typename PARENT_TYPE>
+struct MemberDeclaration : public Declaration
 {
-	Class* ParentClass{};
+	PARENT_TYPE* ParentType{};
 
-	Field(Class* parent) : ParentClass(parent) {}
+	MemberDeclaration(PARENT_TYPE* parent) : ParentType(parent) {}
+
+	virtual std::string FullName(std::string_view sep = "_") const override
+	{
+		return std::format("{}{}{}", ParentType->FullName(sep), sep, Declaration::FullName(sep));
+	}
+};
+
+struct Field : public MemberDeclaration<Class>
+{
+	using MemberDeclaration<Class>::MemberDeclaration;
 
 	ghassanpl::enum_flags<Reflector::FieldFlags> Flags;
 	std::string Type;
@@ -131,9 +175,7 @@ struct Field : public Declaration
 	void AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
 	void CreateArtificialMethods(FileMirror& mirror, Class& klass, Options const& options);
 
-	virtual std::string FullName(std::string_view sep = "_") const override;
-
-	json ToJSON() const;
+	virtual json ToJSON() const override;
 
 	virtual std::string_view DeclarationType() const { return "Field"; }
 };
@@ -145,11 +187,9 @@ inline json ToJSON(MethodParameter const& param)
 	return { {"Name", param.Name}, {"Type", param.Type} };
 }
 
-struct Method : public Declaration
+struct Method : public MemberDeclaration<Class>
 {
-	Class* ParentClass{};
-
-	Method(Class* parent);
+	using MemberDeclaration<Class>::MemberDeclaration;
 
 	std::string ReturnType;
 	ghassanpl::enum_flags<Reflector::MethodFlags> Flags;
@@ -162,7 +202,7 @@ struct Method : public Declaration
 	std::string ParametersTypesOnly;
 	std::string ArtificialBody;
 	//size_t SourceFieldDeclarationLine = 0;
-	Declaration const* SourceDeclaration{}; /// TODO: This
+	Declaration const* SourceDeclaration{};
 	std::string UniqueName;
 
 	size_t ActualDeclarationLine() const
@@ -177,7 +217,7 @@ struct Method : public Declaration
 
 	virtual std::string FullName(std::string_view sep = "_") const override;
 
-	json ToJSON() const;
+	virtual json ToJSON() const override;
 
 	virtual std::string_view DeclarationType() const { return "Method"; }
 
@@ -198,8 +238,10 @@ struct Property
 	void CreateArtificialMethods(FileMirror& mirror, Class& klass, Options const& options);
 };
 
-struct Class : public Declaration
+struct Class : public TypeDeclaration
 {
+	using TypeDeclaration::TypeDeclaration;
+
 	std::string BaseClass;
 
 	std::vector<std::unique_ptr<Field>> Fields;
@@ -219,7 +261,7 @@ struct Class : public Declaration
 	Method* AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
 	void CreateArtificialMethods(FileMirror& mirror, Options const& options);
 
-	json ToJSON() const;
+	virtual json ToJSON() const override;
 
 	static Class const* FindClassByPossiblyQualifiedName(std::string_view class_name, Class const* search_context)
 	{
@@ -244,11 +286,9 @@ private:
 	std::vector<std::unique_ptr<Method>> mArtificialMethods;
 };
 
-struct Enumerator : Declaration
+struct Enumerator : public MemberDeclaration<Enum>
 {
-	Enum* ParentEnum{};
-
-	Enumerator(Enum* parent) : ParentEnum(parent) {}
+	using MemberDeclaration<Enum>::MemberDeclaration;
 
 	int64_t Value = 0;
 
@@ -259,8 +299,10 @@ struct Enumerator : Declaration
 	virtual std::string_view DeclarationType() const { return "Enumerator"; }
 };
 
-struct Enum : public Declaration
+struct Enum : public TypeDeclaration
 {
+	using TypeDeclaration::TypeDeclaration;
+
 	std::vector<std::unique_ptr<Enumerator>> Enumerators;
 
 	json DefaultEnumeratorAttributes = json::object();
@@ -285,6 +327,8 @@ struct FileMirror
 	path SourceFilePath;
 	std::vector<std::unique_ptr<Class>> Classes;
 	std::vector<std::unique_ptr<Enum>> Enums;
+
+	bool IsEmpty() const { return !(Classes.size() > 0 || Enums.size() > 0); }
 
 	json ToJSON() const;
 
@@ -322,8 +366,9 @@ inline auto FormatPostFlags(enum_flags<Reflector::MethodFlags> flags) {
 }
 
 extern uint64_t ChangeTime;
-std::vector<FileMirror> const& GetMirrors();
-void AddMirror(FileMirror mirror);
+std::vector<FileMirror const*> GetMirrors();
+FileMirror* AddMirror();
+void RemoveEmptyMirrors();
 void CreateArtificialMethods(Options const& options);
 
 inline std::string OnlyType(std::string str)

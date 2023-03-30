@@ -57,7 +57,7 @@ bool CreateJSONDBArtifact(path const& target_path, path const& final_path, Optio
 
 	for (auto& mirror : GetMirrors())
 	{
-		db[mirror.SourceFilePath.string()] = mirror.ToJSON();
+		db[mirror->SourceFilePath.string()] = mirror->ToJSON();
 	}
 
 	std::ofstream jsondb{ target_path, std::ios_base::openmode{ std::ios_base::trunc } };
@@ -78,13 +78,13 @@ bool CreateReflectorDatabaseArtifact(path const& target_path, path const& final_
 		database_file.WriteLine("#include \"Includes.reflect.h\"");
 	else
 	{
-		for (const auto& [SourceFilePath, Classes, Enums] : GetMirrors())
-			database_file.WriteLine("#include \"{}\"", RelativePath(final_path, SourceFilePath).string());
+		for (const auto& mirror : GetMirrors())
+			database_file.WriteLine("#include \"{}\"", RelativePath(final_path, mirror->SourceFilePath).string());
 	}
 	
 	for (auto& mirror : GetMirrors())
 	{
-		if (!BuildDatabaseEntriesForMirror(database_file, opts, mirror))
+		if (!BuildDatabaseEntriesForMirror(database_file, opts, *mirror))
 			return false;
 	}
 
@@ -92,7 +92,7 @@ bool CreateReflectorDatabaseArtifact(path const& target_path, path const& final_
 	database_file.StartBlock("::Reflector::ClassReflectionData const* Classes[] = {{");
 	for (auto& mirror : GetMirrors())
 	{
-		for (auto& klass : mirror.Classes)
+		for (auto& klass : mirror->Classes)
 		{
 			database_file.WriteLine("&StaticGetReflectionData_For_{}(),", klass->GeneratedUniqueName());
 		}
@@ -100,9 +100,9 @@ bool CreateReflectorDatabaseArtifact(path const& target_path, path const& final_
 	database_file.WriteLine("nullptr");
 	database_file.EndBlock("}};");
 	database_file.StartBlock("::Reflector::EnumReflectionData const* Enums[] = {{");
-	for (const auto& [SourceFilePath, Classes, Enums] : GetMirrors())
+	for (const auto& mirror : GetMirrors())
 	{
-		for (auto& henum : Enums)
+		for (auto& henum : mirror->Enums)
 		{
 			database_file.WriteLine("&StaticGetReflectionData_For_{}(),", henum->GeneratedUniqueName());
 		}
@@ -157,10 +157,10 @@ bool CreateReflectorHeaderArtifact(path const& target_path, path const& final_pa
 bool CreateIncludeListArtifact(path const& target_path, path const& final_path, Options const& options)
 {
 	std::ofstream includes_file(target_path, std::ios_base::openmode{ std::ios_base::trunc });
-	for (const auto& [SourceFilePath, Classes, Enums] : GetMirrors())
+	for (const auto& mirror : GetMirrors())
 	{
 		/// TODO: Make these relative
-		includes_file << "#include " << SourceFilePath << "" << std::endl;
+		includes_file << "#include " << mirror->SourceFilePath << "" << std::endl;
 	}
 	return true;
 }
@@ -169,14 +169,14 @@ bool CreateTypeListArtifact(path const& target_path, path const& final_path, Opt
 {
 	std::ofstream classes_file(target_path, std::ios_base::openmode{ std::ios_base::trunc });
 
-	for (const auto& [SourceFilePath, Classes, Enums] : GetMirrors())
+	for (const auto& mirror : GetMirrors())
 	{
-		for (auto& klass : Classes)
+		for (auto& klass : mirror->Classes)
 		{
 			//if (!klass.Flags.is_set(ClassFlags::Struct))
 			classes_file << "ReflectClass(" << klass->Name << ", " << klass->FullType() << ")" << std::endl;
 		}
-		for (auto& henum : Enums)
+		for (auto& henum : mirror->Enums)
 			classes_file << "ReflectEnum(" << henum->Name << ", " << henum->FullType() << ")" << std::endl;
 	}
 	return true;
@@ -675,7 +675,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	}
 	output.WriteLine("}}");
 
-	if (has_any_enumerators && atEnumList(henum.Attributes, false))
+	if (has_any_enumerators && Attribute::List(henum))
 	{
 		/// TODO: Make the name of these functions configurable
 		output.WriteLine("inline constexpr {0} GetNext({0} v) {{ return {0}ValuesByIndex[(int64_t(v) + 1) % {0}Count]; }}", henum.Name);

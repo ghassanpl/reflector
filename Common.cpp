@@ -14,7 +14,7 @@
 using namespace std::string_literals;
 
 uint64_t ChangeTime = 0;
-std::vector<FileMirror> Mirrors;
+std::vector<std::unique_ptr<FileMirror>> Mirrors;
 
 json Declaration::ToJSON() const
 {
@@ -22,8 +22,6 @@ json Declaration::ToJSON() const
 	if (!Attributes.empty())
 		result["Attributes"] = Attributes;
 	result["Name"] = Name;
-	if (!Namespace.empty())
-	result["Namespace"] = Namespace;
 	if (DeclarationLine != 0)
 		result["DeclarationLine"] = DeclarationLine;
 	if (Access != AccessMode::Unspecified)
@@ -36,7 +34,7 @@ json Declaration::ToJSON() const
 Enum const* FindEnum(string_view name)
 {
 	for (auto& mirror : Mirrors)
-		for (auto& henum : mirror.Enums)
+		for (auto& henum : mirror->Enums)
 			if (henum->Name == name || henum->FullType() == name)
 				return henum.get();
 	return nullptr;
@@ -44,7 +42,7 @@ Enum const* FindEnum(string_view name)
 
 void Field::AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags)
 {
-	auto method = ParentClass->AddArtificialMethod(move(results), move(name), move(parameters), move(body), move(comments), additional_flags);
+	auto method = ParentType->AddArtificialMethod(move(results), move(name), move(parameters), move(body), move(comments), additional_flags);
 	this->AssociatedArtificialMethods.push_back(method);
 	method->SourceDeclaration = this;
 }
@@ -64,46 +62,44 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass, Options co
 
 	if (!Flags.is_set(Reflector::FieldFlags::NoSetter))
 	{
-		auto on_change = atFieldOnChange(Attributes, ""s);
-		if (!on_change.empty())
-			on_change = on_change + "(); ";
-		AddArtificialMethod("void", options.SetterPrefix + CleanName, Type + " const & value", "this->" + Name + " = value; " + on_change, {"Sets " + field_comments}, {});
+		auto on_change = Attribute::OnChange(*this);
+		AddArtificialMethod("void", options.SetterPrefix + CleanName, Type + " const & value", "this->" + Name + " = value; " + on_change + ";", {"Sets " + field_comments}, {});
 	}
 
-	auto flag_getters = atFieldFlagGetters(Attributes, ""s);
-	auto flag_setters = atFieldFlags(Attributes, ""s);
-	if (!flag_getters.empty() && !flag_setters.empty())
+	auto flag_getters = Attribute::FlagGetters.SafeGet(*this);
+	auto flag_setters = Attribute::Flags.SafeGet(*this);
+	if (flag_getters && flag_setters)
 	{
 		ReportError(mirror.SourceFilePath, DeclarationLine, "Only one of `FlagGetters' and `Flags' can be declared");
 		return;
 	}
-	const bool do_flags = !flag_getters.empty() || !flag_setters.empty();
-	const bool do_setters = !flag_setters.empty();
+	const bool do_flags = flag_getters || flag_setters;
+	const bool do_setters = !!flag_setters;
 	auto& enum_name = do_setters ? flag_setters : flag_getters;
 
 	if (do_flags)
 	{
 		constexpr auto enum_getter_flags = enum_flags{ Reflector::MethodFlags::Const, Reflector::MethodFlags::Inline, Reflector::MethodFlags::Noexcept };
 		constexpr auto enum_setter_flags = enum_getter_flags - Reflector::MethodFlags::Const;
-		auto henum = FindEnum(string_view{ enum_name });
+		auto henum = FindEnum(*enum_name);
 		if (!henum)
 		{
-			ReportError(mirror.SourceFilePath, DeclarationLine, "Enum `{}' not reflected", enum_name);
+			ReportError(mirror.SourceFilePath, DeclarationLine, "Enum `{}' not reflected", *enum_name);
 			return;
 		}
 
 		klass.AdditionalBodyLines.push_back(std::format("static_assert(::std::is_integral_v<{}>, \"Type '{}' for field '{}' with Flags attribute must be integral\");", this->Type, henum->FullType(), this->Name));
 
-		const auto flag_nots = atFieldFlagNots(Attributes, true);
+		const auto flag_nots = Attribute::FlagNots(*this);
 
 		for (auto& enumerator : henum->Enumerators)
 		{
 			AddArtificialMethod("bool", options.IsPrefix + enumerator->Name, "", std::format("return (this->{} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator->Value),
 				{ "Checks whether the `" + enumerator->Name + "` flag is set in " + DisplayName }, enum_getter_flags);
 
-			if (auto opposite = atEnumeratorOpposite(enumerator->Attributes, ""s); !opposite.empty())
+			if (auto opposite = Attribute::Opposite.SafeGet(*enumerator))
 			{
-				AddArtificialMethod("bool", options.IsPrefix + opposite, "", std::format("return (this->{} & {}{{{}}}) == 0;", Name, Type, 1ULL << enumerator->Value),
+				AddArtificialMethod("bool", options.IsPrefix + *opposite, "", std::format("return (this->{} & {}{{{}}}) == 0;", Name, Type, 1ULL << enumerator->Value),
 					{ "Checks whether the `" + enumerator->Name + "` flag is NOT set in " + DisplayName }, enum_getter_flags);
 			}
 			else if (flag_nots)
@@ -120,9 +116,9 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass, Options co
 				AddArtificialMethod("void", options.SetterPrefix + enumerator->Name, "", std::format("this->{} |= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
 					{ "Sets the `" + enumerator->Name + "` flag in " + DisplayName }, enum_setter_flags);
 
-				if (auto opposite = atEnumeratorOpposite(enumerator->Attributes, ""s); !opposite.empty())
+				if (auto opposite = Attribute::Opposite.SafeGet(*enumerator))
 				{
-					AddArtificialMethod("void", options.SetterPrefix + opposite, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator->Value),
+					AddArtificialMethod("void", options.SetterPrefix + *opposite, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator->Value),
 						{ "Clears the `" + enumerator->Name + "` flag in " + DisplayName }, enum_setter_flags);
 
 				}
@@ -138,9 +134,9 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass, Options co
 					{ "Clears the `" + enumerator->Name + "` flag in " + DisplayName }, enum_setter_flags);
 
 
-				if (auto opposite = atEnumeratorOpposite(enumerator->Attributes, ""s); !opposite.empty())
+				if (auto opposite = Attribute::Opposite.SafeGet(*enumerator))
 				{
-					AddArtificialMethod("void", options.UnsetPrefix + opposite, "", std::format("this->{} |= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
+					AddArtificialMethod("void", options.UnsetPrefix + *opposite, "", std::format("this->{} |= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
 						{ "Sets the `" + enumerator->Name + "` flag in " + DisplayName }, enum_setter_flags);
 
 				}
@@ -150,19 +146,14 @@ void Field::CreateArtificialMethods(FileMirror& mirror, Class& klass, Options co
 				AddArtificialMethod("void", options.TogglePrefix + enumerator->Name, "", std::format("this->{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
 					{ "Toggles the `" + enumerator->Name + "` flag in " + DisplayName }, enum_setter_flags);
 
-				if (auto opposite = atEnumeratorOpposite(enumerator->Attributes, ""s); !opposite.empty())
+				if (auto opposite = Attribute::Opposite.SafeGet(*enumerator))
 				{
-					AddArtificialMethod("void", options.TogglePrefix + opposite, "", std::format("this->{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
+					AddArtificialMethod("void", options.TogglePrefix + *opposite, "", std::format("this->{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
 						{ "Toggles the `" + enumerator->Name + "` flag in " + DisplayName }, enum_setter_flags);
 				}
 			}
 		}
 	}
-}
-
-std::string Field::FullName(std::string_view sep) const
-{
-	return std::format("{}{}{}", ParentClass->FullName(sep), sep, Declaration::FullName(sep));
 }
 
 json Field::ToJSON() const
@@ -205,8 +196,6 @@ void Method::Split()
 	ParametersNamesOnly = join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Name; });
 }
 
-Method::Method(Class* parent) : ParentClass(parent) { SourceDeclaration = parent; }
-
 void Method::SetParameters(std::string params)
 {
 	mParameters = std::move(params);
@@ -232,7 +221,7 @@ std::string Method::GetSignature(Class const& parent_class) const
 
 void Method::AddArtificialMethod(std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags)
 {
-	auto method = ParentClass->AddArtificialMethod(move(results), move(name), move(parameters), move(body), move(comments), additional_flags);
+	auto method = ParentType->AddArtificialMethod(move(results), move(name), move(parameters), move(body), move(comments), additional_flags);
 	this->AssociatedArtificialMethods.push_back(method);
 	method->SourceDeclaration = this;
 }
@@ -251,7 +240,7 @@ void Method::CreateArtificialMethods(FileMirror& mirror, Class& klass, Options c
 
 std::string Method::FullName(std::string_view sep) const
 {
-	return std::format("{}{}{}", ParentClass->FullName(sep), sep, GeneratedUniqueName());
+	return std::format("{}{}{}", ParentType->FullName(sep), sep, GeneratedUniqueName());
 }
 
 json Method::ToJSON() const
@@ -262,7 +251,7 @@ json Method::ToJSON() const
 		std::transform(ParametersSplit.begin(), ParametersSplit.end(), std::back_inserter(result["Parameters"]), &::ToJSON);
 	if (!ArtificialBody.empty())
 		result["ArtificialBody"] = ArtificialBody;
-	if (SourceDeclaration->DeclarationLine != 0)
+	if (SourceDeclaration && SourceDeclaration->DeclarationLine != 0)
 		result["SourceFieldDeclarationLine"] = SourceDeclaration->DeclarationLine;
 #define ADDFLAG(n) if (Flags.is_set(Reflector::MethodFlags::n)) result[#n] = true
 	ADDFLAG(Inline);
@@ -313,12 +302,12 @@ void Class::CreateArtificialMethods(FileMirror& mirror, Options const& options)
 			should_build_proxy = true;
 	}
 
-	should_build_proxy = should_build_proxy && atRecordCreateProxy(Attributes, true);
+	should_build_proxy = should_build_proxy && Attribute::CreateProxy(*this);
 
 	Flags.set_to(should_build_proxy, ClassFlags::HasProxy);
 
 	/// Create singleton method if singleton
-	if (atRecordSingleton(Attributes, false))
+	if (Attribute::Singleton(*this))
 		AddArtificialMethod("self_type&", options.SingletonInstanceGetterName, "", "static self_type instance; return instance;", { "Returns the single instance of this class" }, Reflector::MethodFlags::Static);
 
 	/// Create methods for fields and methods
@@ -367,7 +356,7 @@ void Class::CreateArtificialMethods(FileMirror& mirror, Options const& options)
 
 json Class::ToJSON() const
 {
-	auto result = Declaration::ToJSON();
+	auto result = TypeDeclaration::ToJSON();
 	if (!BaseClass.empty())
 		result["BaseClass"] = BaseClass;
 
@@ -407,7 +396,7 @@ json Enumerator::ToJSON() const
 
 json Enum::ToJSON() const
 {
-	json result = Declaration::ToJSON();
+	json result = TypeDeclaration::ToJSON();
 	auto& enumerators = result["Enumerators"] = json::object();
 	for (auto& enumerator : Enumerators)
 		enumerators[enumerator->Name] = enumerator->ToJSON();
@@ -442,29 +431,47 @@ void PrintSafe(std::ostream& strm, std::string val)
 	strm << val;
 }
 
-std::vector<FileMirror> const& GetMirrors()
+bool ParsingMirrors = false;
+static std::mutex mirror_mutex;
+
+std::vector<FileMirror const*> GetMirrors()
 {
-	return Mirrors;
+	std::unique_lock lock{ mirror_mutex };
+	return Mirrors | std::views::transform([](auto& mir) { return (FileMirror const*)mir.get(); }) | std::ranges::to<std::vector>();
 }
 
-void AddMirror(FileMirror mirror)
+
+FileMirror* AddMirror()
 {
-	static std::mutex mirror_mutex;
 	std::unique_lock lock{ mirror_mutex };
-	Mirrors.push_back(std::move(mirror));
+	return Mirrors.emplace_back(std::make_unique<FileMirror>()).get();
+}
+
+void RemoveEmptyMirrors()
+{
+	std::unique_lock lock{ mirror_mutex };
+	std::erase_if(Mirrors, [](auto& mirror) { return mirror->IsEmpty(); });
 }
 
 void CreateArtificialMethods(Options const& options)
 {
+#if 0
 	/// TODO: Not sure if these are safe to be multithreaded, we ARE adding new methods to the mirrors after all...
+	/// This could be an issue if we're changing a different mirror...
 	std::vector<std::future<void>> futures;
 	for (auto& mirror : Mirrors)
-		futures.push_back(std::async([&]() { mirror.CreateArtificialMethods(options); }));
+		futures.push_back(std::async([&]() { mirror->CreateArtificialMethods(options); }));
 	
 	for (auto& future : futures)
 		future.get(); /// to propagate exceptions
-}
+#else
+	std::unique_lock lock{ mirror_mutex };
 
+	/// Creating artificial methods should be plenty fast, we don't need to do it multithreaded, and it's safer that way
+	for (auto& mirror : Mirrors)
+		mirror->CreateArtificialMethods(options);
+#endif
+}
 
 FileMirror::FileMirror()
 {

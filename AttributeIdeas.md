@@ -1,16 +1,16 @@
 # Ideas
 
 ```c++
-inline const AttributeProperties atEnumeratorSetter{ "Setter" /* "SetterName" ? */, "Only valid on Flag enums, will change the setter for this flag (if one is created) to this value", json::value_t::string};
+inline const AttributeProperties Attribute::eratorSetter{ "Setter" /* "SetterName" ? */, "Only valid on Flag enums, will change the setter for this flag (if one is created) to this value", json::value_t::string};
 ````
 ```c++
-inline const AttributeProperties atFieldTypeList{ "TypeList", "If set to an (reflected) enum name, creates IsX() { this->field == (decltype(this->field))N; } functions for each enumerator in the enum", json::value_t::string };
+inline const AttributeProperties Attribute::FieldTypeList{ "TypeList", "If set to an (reflected) enum name, creates IsX() { this->field == (decltype(this->field))N; } functions for each enumerator in the enum", json::value_t::string };
 ```
 ```c++
-inline const AttributeProperties atClassCreateIsChilds{ "CreateIsChilds", "Creates functions IsX (and AsX equivalents) for each subclass of this class in the given list, that checks if this object is of subclass X", json::value_t::array };
+inline const AttributeProperties Attribute::ClassCreateIsChilds{ "CreateIsChilds", "Creates functions IsX (and AsX equivalents) for each subclass of this class in the given list, that checks if this object is of subclass X", json::value_t::array };
 ```
 ```c++
-inline const AttributeProperties atFieldScriptAccess{ "ScriptAccess", "Whether or not to hook up the generated accessors (getter, setter) to the scripting system", json::value_t::boolean, true };
+inline const AttributeProperties Attribute::FieldScriptAccess{ "ScriptAccess", "Whether or not to hook up the generated accessors (getter, setter) to the scripting system", json::value_t::boolean, true };
 ```
 
 * [field] **Delegate** - creates Is*FieldName*Set() and Call*FieldName*() script-callable functions that check for std::function assignment and (optionally) call it

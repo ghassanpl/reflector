@@ -4,6 +4,7 @@
   "dependencies": [
     "nlohmann-json",
     "xxhash",
-    "magic-enum"
+    "magic-enum",
+    "tl-expected"
   ]
 }
