@@ -6,7 +6,7 @@
 #include <set>
 #include <magic_enum_format.hpp>
 
-/// TODO: Documentation options
+/// TODO: Documentation mOptions
 
 std::string MakeLink(Declaration const* decl)
 {
@@ -16,9 +16,7 @@ std::string MakeLink(Declaration const* decl)
 
 struct HTMLFileWriter : public FileWriter
 {
-	Options const& options;
-
-	HTMLFileWriter(Options const& _options) : options(_options) {}
+	using FileWriter::FileWriter;
 
 	void StartPage(std::string_view title)
 	{
@@ -26,7 +24,7 @@ struct HTMLFileWriter : public FileWriter
 		StartTag("html");
 
 		StartTag("head");
-		WriteLine("<title>{}{}</title>", title, options.Documentation.PageTitleSuffix);
+		WriteLine("<title>{}{}</title>", title, mOptions.Documentation.PageTitleSuffix);
 		WriteLine(R"(<link rel="stylesheet" href="style.css" />)");
 		WriteLine(R"(<script src="https://cdn.jsdelivr.net/gh/MarketingPipeline/Markdown-Tag/markdown-tag.js"></script>)");
 		WriteLine(R"(<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/vs2015.min.css"><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>)");
@@ -73,11 +71,38 @@ struct HTMLFileWriter : public FileWriter
 
 struct DocumentationGenerator
 {
-	Options const& options;
+	Options const& mOptions;
 	json styles;
 	//std::map<void const*, path> file_for_mirror;
 	std::vector<Class const*> classes;
 	std::vector<Enum const*> enums;
+
+	DocumentationGenerator(Options const& options)
+		: mOptions(options)
+	{
+		/// Load and create styles
+		const json default_styles = ghassanpl::formats::json::load_file(mOptions.GetExePath().parent_path() / "documentation_default_css.json");
+		styles = default_styles;
+		/// styles.update(mOptions.Documentation.CustomStyles);
+
+		/// Prepare the lists of types
+		for (auto& mirror : GetMirrors())
+		{
+			for (auto& klass : mirror->Classes)
+			{
+				if (klass->Document)
+					classes.push_back(klass.get());
+			}
+			for (auto& henum : mirror->Enums)
+			{
+				if (henum->Document)
+					enums.push_back(henum.get());
+			}
+		}
+
+		std::ranges::sort(classes, [](Class const* a, Class const* b) { return a->FullType() < b->FullType(); });
+		std::ranges::sort(enums, [](Enum const* a, Enum const* b) { return a->FullType() < b->FullType(); });
+	}
 
 	struct ParsedComments
 	{
@@ -99,7 +124,7 @@ struct DocumentationGenerator
 
 	/// TODO: Get comment lines starting with '@' (like `@param`) and turn them into nice properties
 
-	std::string GetPrettyComments(std::vector<std::string> const& comments, bool first_paragraph_only = false)
+	std::string GetPrettyComments(std::vector<std::string> const& comments, bool first_paragraph_only = false) const
 	{
 		if (comments.size() > 0)
 		{
@@ -114,19 +139,19 @@ struct DocumentationGenerator
 		return {};
 	}
 
-	std::string GetPrettyComments(Declaration const& decl, bool first_paragraph_only = false)
+	std::string GetPrettyComments(Declaration const& decl, bool first_paragraph_only = false) const
 	{
 		return GetPrettyComments(decl.Comments, first_paragraph_only);
 	}
 
-	std::string GetPrettyComments(std::string comment, bool first_paragraph_only = false)
+	std::string GetPrettyComments(std::string comment, bool first_paragraph_only = false) const
 	{
 		return GetPrettyComments(std::vector<std::string>{comment}, first_paragraph_only);
 	}
 
-	DocFile CreateCSSFile()
+	bool CreateCSSFile(ArtifactArgs args) const
 	{
-		FileWriter out{};
+		FileWriter out{ args };
 
 		for (auto& ruleset : styles.items())
 		{
@@ -138,12 +163,12 @@ struct DocumentationGenerator
 			out.EndBlock("}}");
 		}
 
-		return DocFile{ .TargetPath = options.ArtifactPath / "Documentation" / "style.css", .Contents = out.Finish() };
+		return true;
 	}
 
-	DocFile CreateIndexFile()
+	bool CreateIndexFile(ArtifactArgs args) const
 	{
-		HTMLFileWriter index{options};
+		HTMLFileWriter index{ args };
 		index.StartPage("Types");
 
 		index.WriteLine("<h1>Types</h1>");
@@ -173,11 +198,11 @@ struct DocumentationGenerator
 
 		index.EndPage();
 
-		return DocFile{ .TargetPath = options.ArtifactPath / "Documentation" / "Types.html", .Contents = index.Finish() };
+		return true;
 	}
 
 	template <typename T>
-	void OutDeclDesc(HTMLFileWriter& out, T const& decl, TypeDeclaration const& parent)
+	void OutDeclDesc(HTMLFileWriter& out, T const& decl, TypeDeclaration const& parent) const
 	{
 		out.WriteLine("<h2>Details</h2>");
 
@@ -222,7 +247,7 @@ struct DocumentationGenerator
 		out.EndBlock("</ul>");
 	}
 
-	void OutputAttributeDescriptors(HTMLFileWriter& out, Declaration const& decl)
+	void OutputAttributeDescriptors(HTMLFileWriter& out, Declaration const& decl) const
 	{
 		if (decl.DocNotes.empty())
 			return;
@@ -239,9 +264,9 @@ struct DocumentationGenerator
 		//out.EndTag();
 	}
 
-	DocFile CreateClassFile(Class const& klass)
+	bool CreateClassFile(ArtifactArgs args, Class const& klass) const
 	{
-		HTMLFileWriter out{options};
+		HTMLFileWriter out{ args };
 		out.StartPage(klass.Name + " Class");
 		out.WriteLine("<h1><pre class='entityname class'>{}</pre> Class</h1>", klass.Name);
 		out.WriteLine("<h2>Description</h2>");
@@ -289,12 +314,12 @@ struct DocumentationGenerator
 		OutDeclDesc(out, klass, klass);
 
 		out.EndPage();
-		return DocFile{ .TargetPath = options.ArtifactPath / "Documentation" / FilenameFor(klass), .Contents = out.Finish() };
+		return true;
 	}
 
-	DocFile CreateFieldFile(Field const& field)
+	bool CreateFieldFile(ArtifactArgs args, Field const& field) const
 	{
-		HTMLFileWriter out{options};
+		HTMLFileWriter out{ args };
 		out.StartPage(field.ParentType->Name + "::" + field.Name + " Field");
 		out.WriteLine("<h1><pre class='entityname field'>{}::{}</pre> Field</h1>", field.ParentType->Name, field.Name);
 
@@ -323,12 +348,12 @@ struct DocumentationGenerator
 		OutDeclDesc(out, field, *field.ParentType);
 
 		out.EndPage();
-		return DocFile{ .TargetPath = options.ArtifactPath / "Documentation" / FilenameFor(field), .Contents = out.Finish() };
+		return true;
 	}
 
-	DocFile CreateMethodFile(Method const& method)
+	bool CreateMethodFile(ArtifactArgs args, Method const& method) const
 	{
-		HTMLFileWriter out{options};
+		HTMLFileWriter out{ args };
 		out.StartPage(method.ParentType->Name + "::" + method.Name + " Method");
 		out.WriteLine("<h1><pre class='entityname field'>{}::{}</pre> Method</h1>", method.ParentType->Name, method.Name);
 
@@ -365,12 +390,12 @@ struct DocumentationGenerator
 		OutDeclDesc(out, method, *method.ParentType);
 
 		out.EndPage();
-		return DocFile{ .TargetPath = options.ArtifactPath / "Documentation" / FilenameFor(method), .Contents = out.Finish() };
+		return true;
 	}
 
-	DocFile CreateEnumFile(Enum const& henum)
+	bool CreateEnumFile(ArtifactArgs args, Enum const& henum) const
 	{
-		HTMLFileWriter out{options};
+		HTMLFileWriter out{ args };
 
 		out.StartPage(henum.Name + " Enum");
 		out.WriteLine("<h1><pre class='entityname enum'>{}</pre> Enum</h1>", henum.Name);
@@ -386,82 +411,58 @@ struct DocumentationGenerator
 		OutDeclDesc(out, henum, henum);
 
 		out.EndPage();
-		return DocFile{ .TargetPath = options.ArtifactPath / "Documentation" / FilenameFor(henum), .Contents = out.Finish()};
+		return true;
 	}
 
-	std::string FilenameFor(Declaration const& decl) { return decl.FullName(".") + ".html"; }
+	std::string FilenameFor(Declaration const& decl) const { return decl.FullName(".") + ".html"; }
 
-	std::vector<DocFile> Generate()
+	void QueueArtifacts(Artifactory& factory) const
 	{
-		std::vector<DocFile> result;
-
-		/// Load and create styles
-		const json default_styles = ghassanpl::formats::json::load_file(options.GetExePath().parent_path() / "documentation_default_css.json");
-		styles = default_styles;
-		/// styles.update(options.Documentation.CustomStyles);
-
-		/// Prepare the lists of types
-		for (auto& mirror : GetMirrors())
-		{
-			for (auto& klass : mirror->Classes)
-			{
-				if (klass->Document)
-					classes.push_back(klass.get());
-			}
-			for (auto& henum : mirror->Enums)
-			{
-				if (henum->Document)
-					enums.push_back(henum.get());
-			}
-		}
-
-		std::ranges::sort(classes, [](Class const* a, Class const* b) { return a->FullType() < b->FullType(); });
-		std::ranges::sort(enums, [](Enum const* a, Enum const* b) { return a->FullType() < b->FullType(); });
-
 		/// Create basic files
-		result.push_back(CreateIndexFile());
-		result.push_back(CreateCSSFile());
+		factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / "Types.html", std::bind_front(&DocumentationGenerator::CreateIndexFile, this));
+		factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / "style.css", std::bind_front(&DocumentationGenerator::CreateCSSFile, this));
 
 		for (auto& klass : classes)
 		{
-			result.push_back(CreateClassFile(*klass));
+			factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / FilenameFor(*klass), std::bind_front(&DocumentationGenerator::CreateClassFile, this), std::ref(*klass));
 
 			for (auto& field : klass->Fields)
 			{
-				if (field->Flags.contain(FieldFlags::DeclaredPrivate))
+				if (!field->Document)
 					continue;
 
-				result.push_back(CreateFieldFile(*field));
+				factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / FilenameFor(*field), std::bind_front(&DocumentationGenerator::CreateFieldFile, this), std::ref(*field)); /// 
 			}
 
 			for (auto& method : klass->Methods)
 			{
-				if (method->Flags.contain(MethodFlags::Proxy))
+				if (!method->Document)
 					continue;
 
-				result.push_back(CreateMethodFile(*method));
+				factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / FilenameFor(*method), std::bind_front(&DocumentationGenerator::CreateMethodFile, this), std::ref(*method)); /// 
 			}
 		}
-		
+
 		for (auto& henum : enums)
 		{
-			result.push_back(CreateEnumFile(*henum));
+			factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / FilenameFor(*henum), std::bind_front(&DocumentationGenerator::CreateEnumFile, this), std::ref(*henum)); /// 
 		}
-
-		return result;
 	}
 };
 
-std::vector<DocFile> GenerateDocumentation(Options const& options)
+size_t GenerateDocumentation(Artifactory& factory, Options const& options)
 {
-	DocumentationGenerator gen{ options };
-	return gen.Generate();
+	const DocumentationGenerator gen{options};
+	gen.QueueArtifacts(factory);
+	return factory.Wait();
 }
 
-bool CreateDocFileArtifact(path const& target_path, path const& final_path, Options const& options, DocFile const& doc_file)
+/*
+bool CreateDocFileArtifact(path const& final_path, Options const& mOptions, DocFile const& doc_file)
 {
-	FileWriter f(target_path);
+	FileWriter f;
 	f.mOutFile->write(doc_file.Contents.data(), doc_file.Contents.size());
 	f.Close();
 	return true;
 }
+*/

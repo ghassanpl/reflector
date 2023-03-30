@@ -7,13 +7,17 @@ StringAttribute CreateIsChilds{ "CreateIsChilds", "Creates functions IsX (and As
 StringAttribute ScriptAccess{ "ScriptAccess", "Whether or not to hook up the generated accessors (getter, setter) to the scripting system", Targets::Fields, true };
 ```
 
-* [field] **Delegate** - creates Is*FieldName*Set() and Call*FieldName*() script-callable functions that check for std::function assignment and (optionally) call it
+* [field] **PrimaryKey** - when generating database tables of the parent class, this will be the unique primary key for that table
+* [field] **Indexed** - when generating database tables of the parent class, an index on this field will be created for that table
+* [record] **Icon** - for the editors and such
 * [any] **Document** = true/false - whether or not to generate documentation for the entity
 * [any] **Internal** - do not document
 * [record] **GenerateResetFunctions** - will generate a Reset*FieldName* for each field in the class (see below), unless it has the Reset = false attribute
 * [field] **Reset/Resettable** - will generate a Reset[FieldName] function that sets the field value to its initial value); having any of these in a class will create a Reset() function that resets every field
-* [field] **Optional** - requires an optional type (like std::optional); will create Is#field_name and Reset#field_name in addition to regular accessors    
-*Not sure if this is necessary, optional already has a nice api of its own*
+* [field] **Delegate** - creates Is*FieldName*Set() and Call*FieldName*() script-callable functions that check for std::function assignment and (optionally) call it  
+	*Not sure if this is necessary, or it should be handled by the field type itself*
+* [field] **Optional** - requires an optional type (like std::optional); will create Is#field_name and Reset#field_name in addition to regular accessors  
+	*Not sure if this is necessary, optional already has a nice api of its own*
 * [field] **ExposeMethods**=[names,of,methods] - will create `template <typename... ARGS> auto method_name(ARGS&&... args) { return field_name.method_name(std::forward<ARGS>(args)...); }`
 		Or better yet, RField(ExposeMethods={GetSpeed=GetAnimationSpeed, ...}) Animation mAnimation;
 * [record/field] **OnAfterLoad**=funcname, OnBeforeSave=funcname

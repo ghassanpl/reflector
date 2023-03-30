@@ -9,114 +9,8 @@
 #include "Documentation.h"
 //#include <args.hxx>
 #include <vector>
-#include <thread>
 #include <future>
-#include <ghassanpl/mmap.h>
-#include <xxhash.h>
 
-struct Artifactory
-{
-	Options& options;
-
-	struct ArtifactToBuild
-	{
-		path TargetPath;
-		path TargetTempPath;
-		//std::function<void(ArtifactToBuild const&)> Builder;
-		std::move_only_function<void(ArtifactToBuild const&)> Builder;
-
-		ArtifactToBuild() noexcept = default;
-		ArtifactToBuild(ArtifactToBuild const&) noexcept = delete;
-		ArtifactToBuild(ArtifactToBuild&&) noexcept = default;
-		ArtifactToBuild& operator=(ArtifactToBuild const&) noexcept = delete;
-		ArtifactToBuild& operator=(ArtifactToBuild&&) noexcept = default;
-	};
-
-	bool FilesAreDifferent(path const& f1, path const& f2) const
-	{
-		namespace fs = std::filesystem;
-
-		if (fs::exists(f1) != fs::exists(f2)) return true;
-		auto f1filesize = fs::file_size(f1);
-		if (f1filesize != fs::file_size(f2)) return true;
-		if (f1filesize == 0) return false; /// This guard is here because we cannot map 0-sized files
-
-		const auto f1map = ghassanpl::make_mmap_source<char>(f1);
-		const auto f2map = ghassanpl::make_mmap_source<char>(f2);
-
-		const auto h1 = XXH64(f1map.data(), f1map.size(), 0);
-		const auto h2 = XXH64(f2map.data(), f2map.size(), 0);
-		return h1 != h2;
-	}
-
-	template <typename FUNCTOR, typename... ARGS>
-	void QueueArtifact(path target_path, FUNCTOR&& functor, ARGS&&... args)
-	{
-		ArtifactToBuild& artifact = mArtifactsToBuild.emplace_back();
-		artifact.TargetPath = std::move(target_path);
-		artifact.TargetTempPath = std::filesystem::temp_directory_path() / std::format("{}", std::hash<std::filesystem::path>{}(artifact.TargetPath));
-		auto functor_args = std::tuple_cat(
-			std::make_tuple(path{ artifact.TargetTempPath }),
-			std::make_tuple(path{ artifact.TargetPath }),
-			std::make_tuple(std::ref(options)),
-			std::make_tuple(std::forward<ARGS>(args)...)
-		);
-		artifact.Builder = [functor = std::forward<FUNCTOR>(functor), args = std::move(functor_args), this](ArtifactToBuild const& artifact) mutable {
-			if (options.Verbose)
-				PrintLine("Creating file {} to be moved to {}...", artifact.TargetTempPath.string(), artifact.TargetPath.string());
-			if (std::apply(functor, std::move(args)))
-			{
-				if (options.Verbose)
-					PrintLine("Created.");
-				if (this->options.Force || FilesAreDifferent(artifact.TargetTempPath, artifact.TargetPath))
-				{
-					if (options.Verbose)
-						PrintLine("Moved.");
-					std::filesystem::create_directories(artifact.TargetPath.parent_path());
-					std::filesystem::copy_file(artifact.TargetTempPath, artifact.TargetPath, std::filesystem::copy_options::overwrite_existing);
-					std::filesystem::remove(artifact.TargetTempPath);
-					++this->mModifiedFiles;
-
-					if (!options.Quiet)
-						PrintLine("Written file {}", artifact.TargetPath.string());
-				}
-				else if (options.Verbose)
-					PrintLine("Files same, not moved.");
-			}
-			else if (options.Verbose)
-				PrintLine("Not created.");
-		};
-	}
-
-	std::vector<ArtifactToBuild> mArtifactsToBuild;
-	std::vector<std::future<void>> mFutures;
-	std::atomic<size_t> mModifiedFiles = 0;
-
-	size_t Run()
-	{
-		mModifiedFiles = 0;
-
-		for (auto& artifact : mArtifactsToBuild)
-			mFutures.push_back(std::async(std::launch::async, std::move(artifact.Builder), std::ref(artifact)));
-		for (size_t i = 0; i < mFutures.size(); ++i)
-		{
-			try
-			{
-				mFutures[i].get(); /// to propagate exceptions
-			}
-			catch (std::exception const& e)
-			{
-				std::cerr << std::format("Exception when building artifact `{}`: {}\n", mArtifactsToBuild[i].TargetPath.string(), e.what());
-				throw;
-			}
-		}
-
-		mFutures.clear();
-		mArtifactsToBuild.clear();
-
-		return mModifiedFiles.load();
-	}
-};
 
 int main(int argc, const char* argv[])
 {
@@ -196,7 +90,6 @@ int main(int argc, const char* argv[])
 
 		RemoveEmptyMirrors();
 
-
 		/// Create artificial methods, knowing all the reflected classes
 		CreateArtificialMethodsAndDocument(options);
 
@@ -214,14 +107,7 @@ int main(int argc, const char* argv[])
 
 			factory.QueueArtifact(file_path, BuildMirrorFile, std::ref(*file), file_change_time);
 		}
-		files_changed += factory.Run();
-
-		static auto make_copy_file_artifact_func = [](path from) {
-			return [from = std::move(from)](path const& target_path, path const& final_path, const Options& options) {
-				std::filesystem::copy_file(from, target_path, std::filesystem::copy_options::overwrite_existing);
-				return true;
-			};
-		};
+		files_changed += factory.Wait();
 
 		std::filesystem::create_directories(options.ArtifactPath);
 		factory.QueueArtifact(options.ArtifactPath / "Reflector.h", CreateReflectorHeaderArtifact);
@@ -230,22 +116,16 @@ int main(int argc, const char* argv[])
 		{
 			factory.QueueArtifact(options.ArtifactPath / "Includes.reflect.h", CreateIncludeListArtifact);
 			factory.QueueArtifact(options.ArtifactPath / "Classes.reflect.h", CreateTypeListArtifact);
-			factory.QueueArtifact(options.ArtifactPath / "ReflectorClasses.h", make_copy_file_artifact_func(options.GetExePath().parent_path() / "Include" / "ReflectorClasses.h"));
-			factory.QueueArtifact(options.ArtifactPath / "ReflectorUtils.h", make_copy_file_artifact_func(options.GetExePath().parent_path() / "Include" / "ReflectorUtils.h"));
+			factory.QueueCopyArtifact(options.ArtifactPath / "ReflectorClasses.h", options.GetExePath().parent_path() / "Include" / "ReflectorClasses.h");
+			factory.QueueCopyArtifact(options.ArtifactPath / "ReflectorUtils.h", options.GetExePath().parent_path() / "Include" / "ReflectorUtils.h");
 		}
 		if (options.CreateDatabase)
 			factory.QueueArtifact(options.ArtifactPath / "ReflectDatabase.json", CreateJSONDBArtifact);
 
 		if (options.Documentation.Generate)
 		{
-			auto doc_files = GenerateDocumentation(options);
-			for (auto& doc_file : doc_files)
-			{
-				factory.QueueArtifact(doc_file.TargetPath, CreateDocFileArtifact, std::move(doc_file));
-			}
+			files_changed += GenerateDocumentation(factory, options);
 		}
-
-		files_changed += factory.Run();
 
 		if (!options.Quiet)
 		{

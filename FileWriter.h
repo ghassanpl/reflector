@@ -1,13 +1,24 @@
 #pragma once
 
 #include "Common.h"
+#include <future>
+
+struct Artifactory;
+
+struct ArtifactArgs
+{
+	std::stringstream* Output;
+	path TargetPath{};
+	::Options const& Options;
+	Artifactory& Factory;
+};
 
 struct FileWriter
 {
-	std::unique_ptr<std::ostream> mOutFile;
-	path mPath;
+	std::stringstream& mOutput;
 	size_t CurrentIndent = 0;
 	bool InDefine = false;
+	Options const& mOptions;
 
 	struct Indenter
 	{
@@ -17,19 +28,19 @@ struct FileWriter
 	};
 
 	Indenter Indent() { return Indenter{ *this }; }
-
-	FileWriter(path path);
-	FileWriter();
+	
+	//FileWriter(std::stringstream& output, Options const& options) : mOutput(output), mOptions(options) {}
+	FileWriter(ArtifactArgs const& args) : mOutput(*args.Output), mOptions(args.Options) {}
 
 	template <typename... ARGS>
 	void WriteLine(std::string_view str, ARGS&& ... args)
 	{
-		*mOutFile << std::string(CurrentIndent, '\t');
+		mOutput << std::string(CurrentIndent, '\t');
 		//((mOutFile << std::forward<ARGS>(args)), ...);
-		*mOutFile << std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...));
+		mOutput << std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...));
 		if (InDefine)
-			*mOutFile << " \\";
-		*mOutFile << '\n';
+			mOutput << " \\";
+		mOutput << '\n';
 	}
 
 	//void WriteJSON(json const& value);
@@ -64,11 +75,50 @@ struct FileWriter
 		WriteLine(std::forward<ARGS>(args)...);
 	}
 
-	void WriteLine() const;
+	void WriteLine();
 
-	void Close();
+	static bool FilesAreDifferent(path const& f1, path const& f2);
+};
 
-	std::string Finish();
+struct Artifactory
+{
+	Options& options;
 
-	~FileWriter();
+	std::atomic<size_t> mArtifactsToFinish = 0;
+	std::atomic<size_t> mModifiedFiles = 0;
+	std::vector<std::future<void>> mFutures;
+	std::mutex mListMutex;
+
+	template <typename FUNCTOR, typename... ARGS>
+	void QueueArtifact(path target_path, FUNCTOR&& functor, ARGS&&... args)
+	{
+		std::unique_lock lock{mListMutex};
+		mArtifactsToFinish++;
+
+		auto functor_args = std::make_tuple(ArtifactArgs{ .TargetPath = target_path, .Options = options, .Factory = *this }, std::forward<ARGS>(args)...);
+		mFutures.push_back(std::async(std::launch::async, [functor = std::forward<FUNCTOR>(functor), args = std::move(functor_args), target_path, this]() mutable {
+			try
+			{
+				std::stringstream out_data;
+				std::get<0>(args).Output = &out_data;
+				if (std::apply(functor, std::move(args)))
+				{
+					out_data.flush();
+					if (Write(target_path, std::move(out_data).str()))
+						++this->mModifiedFiles;
+				}
+			}
+			catch (std::exception const& e)
+			{
+				ReportError(target_path, 0, std::format("Exception when building artifact: {}\n", e.what()));
+			}
+			--this->mArtifactsToFinish;
+		}));
+	}
+
+	void QueueCopyArtifact(path target_path, path source_path);
+
+	bool Write(path const& target_path, std::string contents);
+
+	size_t Wait();
 };

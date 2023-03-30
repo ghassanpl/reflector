@@ -42,6 +42,7 @@ using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 struct Options;
+struct Artifactory;
 
 inline string_view TrimWhitespace(std::string_view str)
 {

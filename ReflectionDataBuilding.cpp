@@ -51,7 +51,7 @@ void WriteForwardDeclaration(FileWriter& output, const Enum& henum, const Option
 	output.WriteLine("enum class {};", henum.FullType());
 }
 
-bool CreateJSONDBArtifact(path const& target_path, path const& final_path, Options const& options)
+bool CreateJSONDBArtifact(ArtifactArgs args)
 {
 	json db;
 
@@ -60,16 +60,17 @@ bool CreateJSONDBArtifact(path const& target_path, path const& final_path, Optio
 		db[mirror->SourceFilePath.string()] = mirror->ToJSON();
 	}
 
-	std::ofstream jsondb{ target_path, std::ios_base::openmode{ std::ios_base::trunc } };
-	jsondb << db.dump(1, '\t');
-	jsondb.close();
+	//std::ofstream jsondb{ target_path, std::ios_base::openmode{ std::ios_base::trunc } };
+	//FileWriter out{ args };
+	*args.Output << db.dump(1, '\t');
 
 	return true;
 }
 
-bool CreateReflectorDatabaseArtifact(path const& target_path, path const& final_path, const Options& opts)
+bool CreateReflectorDatabaseArtifact(ArtifactArgs args)
 {
-	FileWriter database_file{ target_path };
+	auto& [_, final_path, opts, factory] = args;
+	FileWriter database_file{args};
 	
 	database_file.WriteLine("#include <iostream>");
 	database_file.WriteLine("#include \"Reflector.h\"");
@@ -111,17 +112,16 @@ bool CreateReflectorDatabaseArtifact(path const& target_path, path const& final_
 	database_file.EndBlock("}};");
 	database_file.EndBlock("}};");
 
-
-	database_file.Close();
-	
 	return true;
 }
 
-bool CreateReflectorHeaderArtifact(path const& target_path, path const& final_path, const Options& options)
+bool CreateReflectorHeaderArtifact(ArtifactArgs args)
 {
+	auto& [_, final_path, options, factory] = args;
+
 	const auto reflector_classes_relative_path = RelativePath(final_path, options.ArtifactPath / "ReflectorClasses.h");
 
-	FileWriter reflect_file{ target_path };
+	FileWriter reflect_file{args};
 	reflect_file.WriteLine("#pragma once");
 	if (options.JSON.Use)
 	{
@@ -149,35 +149,31 @@ bool CreateReflectorHeaderArtifact(path const& target_path, path const& final_pa
 	if (options.GenerateLuaFunctionBindings)
 		reflect_file.WriteLine("#define {}_CALLABLE(ret, name, args) static int ScriptFunction_ ## name(struct lua_State* thread) {{ return 0; }}", options.MacroPrefix);
 		*/
-	reflect_file.Close();
-	
 	return true;
 }
 
-bool CreateIncludeListArtifact(path const& target_path, path const& final_path, Options const& options)
+bool CreateIncludeListArtifact(ArtifactArgs args)
 {
-	std::ofstream includes_file(target_path, std::ios_base::openmode{ std::ios_base::trunc });
+	FileWriter out{ args };
 	for (const auto& mirror : GetMirrors())
 	{
 		/// TODO: Make these relative
-		includes_file << "#include " << mirror->SourceFilePath << "" << std::endl;
+		out.WriteLine("#include \"{}\"", mirror->SourceFilePath.string());
 	}
 	return true;
 }
 
-bool CreateTypeListArtifact(path const& target_path, path const& final_path, Options const& options)
+bool CreateTypeListArtifact(ArtifactArgs args)
 {
-	std::ofstream classes_file(target_path, std::ios_base::openmode{ std::ios_base::trunc });
+	FileWriter out{ args };
+	//std::ofstream classes_file(final_path, std::ios_base::openmode{ std::ios_base::trunc });
 
 	for (const auto& mirror : GetMirrors())
 	{
 		for (auto& klass : mirror->Classes)
-		{
-			//if (!klass.Flags.is_set(ClassFlags::Struct))
-			classes_file << "ReflectClass(" << klass->Name << ", " << klass->FullType() << ")" << std::endl;
-		}
+			out.WriteLine("ReflectClass({}, {})", klass->Name, klass->FullType());
 		for (auto& henum : mirror->Enums)
-			classes_file << "ReflectEnum(" << henum->Name << ", " << henum->FullType() << ")" << std::endl;
+			out.WriteLine("ReflectEnum({}, {})", henum->Name, henum->FullType());
 	}
 	return true;
 }
@@ -427,6 +423,8 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 			output.WriteLine("static self_type* Construct(){{ return new self_type{{StaticGetReflectionData()}}; }}");
 			//output.WriteLine("static self_type* Construct(const ::Reflector::ClassReflectionData& klass){ return new self_type{klass}; }");
 			output.WriteLine("{}(::Reflector::ClassReflectionData const& klass) : {}(klass) {{}}", klass.Name, klass.BaseClass);
+
+			/// TODO: Should we =delete copy and move constructors? What about operators?
 		}
 	}
 	else
@@ -745,9 +743,10 @@ bool BuildDatabaseEntriesForMirror(FileWriter& output, const Options& options, F
 	return true;
 }
 
-bool BuildMirrorFile(path const& file_path, path const& final_path, const Options& options, FileMirror const& file, uint64_t file_change_time)
+bool BuildMirrorFile(ArtifactArgs args, FileMirror const& file, uint64_t file_change_time)
 {
-	FileWriter f(file_path);
+	auto& [_, final_path, options, factory] = args;
+	FileWriter f{ args };
 	f.WriteLine("{}{}", TIMESTAMP_TEXT, file_change_time);
 	f.WriteLine("/// Source file: {}", file.SourceFilePath.string());
 	f.WriteLine("#pragma once");
@@ -769,8 +768,6 @@ bool BuildMirrorFile(path const& file_path, path const& final_path, const Option
 			continue;
 		f.WriteLine();
 	}
-
-	f.Close();
 
 	return true;
 }
