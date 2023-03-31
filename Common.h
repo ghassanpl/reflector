@@ -353,6 +353,11 @@ struct Enum : public TypeDeclaration
 		return true;
 	}
 
+	bool IsTrivial() const
+	{
+		return Enumerators.size() > 0 && Enumerators[0]->Value == 0 && IsConsecutive();
+	}
+
 	json ToJSON() const;
 
 	/// TODO: We should also use the artificial method subsystem to create functions like GetNext, etc.

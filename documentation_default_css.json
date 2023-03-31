@@ -39,11 +39,12 @@
     "width": "100%",
     "border-collapse": "collapse"
   },
-  "tr": {
-    "border": "1px solid gray"
-  },
+  "tr": { "border": "1px solid gray" },
   "td": {
     "padding": "5px"
+  },
+  "td.trivial": {
+    "color": "gray"
   },
   "td md p": {
     "margin": "0"
@@ -67,7 +68,19 @@
     "margin-left": "0"
   },
   ".declnamecol": {
-    "width": "33%"
+    "width": "0;",
+    "min-width": "max-content",
+    "padding-right": "1em"
+  },
+  ".enumnamecol": {
+    "width": "0;",
+    "min-width": "max-content",
+    "padding-right": "1em"
+  },
+  ".enumvalcol": {
+    "width": "0",
+    "min-width": "max-content",
+    "font-family": "Consolas, Courier, monospace"
   },
   ".entitylink": {
     "font-family": "Consolas, Courier, monospace"

@@ -317,6 +317,19 @@ struct DocumentationGenerator
 		return true;
 	}
 
+	void OutputArtificialMethods(HTMLFileWriter& out, Declaration const& decl) const
+	{
+		auto documented_artificial_methods = decl.AssociatedArtificialMethods | std::views::filter([](auto& method) { return method.second->Document; });
+		if (!documented_artificial_methods.empty())
+		{
+			out.WriteLine("<h2>See Also</h2>");
+			for (auto& [am_type, am] : documented_artificial_methods)
+			{
+				out.WriteLine("<li><a href='{}'><small>{}</small>::{}({})</a></li>", FilenameFor(*am), am->ParentType->FullType(), am->Name, Escaped(am->ParametersTypesOnly));
+			}
+		}
+	}
+
 	bool CreateFieldFile(ArtifactArgs args, Field const& field) const
 	{
 		HTMLFileWriter out{ args };
@@ -336,14 +349,7 @@ struct DocumentationGenerator
 
 		OutputAttributeDescriptors(out, field);
 
-		if (field.AssociatedArtificialMethods.size() > 0)
-		{
-			out.WriteLine("<h2>See Also</h2>");
-			for (auto& [am_type, am] : field.AssociatedArtificialMethods)
-			{
-				out.WriteLine("<li><a href='{}'><small>{}</small>::{}({})</a></li>", FilenameFor(*am), am->ParentType->FullType(), am->Name, Escaped(am->ParametersTypesOnly));
-			}
-		}
+		OutputArtificialMethods(out, field);
 
 		OutDeclDesc(out, field, *field.ParentType);
 
@@ -387,6 +393,8 @@ struct DocumentationGenerator
 
 		OutputAttributeDescriptors(out, method);
 
+		OutputArtificialMethods(out, method);
+
 		OutDeclDesc(out, method, *method.ParentType);
 
 		out.EndPage();
@@ -399,16 +407,54 @@ struct DocumentationGenerator
 
 		out.StartPage(henum.Name + " Enum");
 		out.WriteLine("<h1><pre class='entityname enum'>{}</pre> Enum</h1>", henum.Name);
-		out.WriteLine("<h2>Description</h2>");
-		out.StartBlock("<ul class='desclist'>");
-		OutDeclDesc(out, henum, henum);
-		out.EndBlock("</ul>");
 
+		out.WriteLine("<h2>Description</h2>");
 		out.WriteLine(GetPrettyComments(henum));
+
+		auto documented_enumerators = henum.Enumerators | std::views::filter([](auto& enumerator) { return enumerator->Document; });
+		if (!documented_enumerators.empty())
+		{
+			out.WriteLine("<h2>Enumerators</h2>");
+			out.StartBlock("<table class='decllist'>");
+			const bool enum_is_trivial = henum.IsTrivial();
+			for (auto& enumerator : documented_enumerators)
+			{
+				out.StartTag("tr");
+				out.WriteLine("<td class='enumnamecol'><a href='{}' class='entitylink'>{}</a></td>", FilenameFor(*enumerator), enumerator->Name);
+				out.WriteLine("<td class='enumvalcol{}'>= {}</td>", (enum_is_trivial?" trivial":""), enumerator->Value);
+				out.WriteLine("<td>{}</td>", GetPrettyComments(*enumerator, true));
+				out.EndTag();
+			}
+			out.EndBlock("</table>");
+		}
 
 		OutputAttributeDescriptors(out, henum);
 
+		OutputArtificialMethods(out, henum);
+
 		OutDeclDesc(out, henum, henum);
+
+		out.EndPage();
+		return true;
+	}
+
+	bool CreateEnumeratorFile(ArtifactArgs args, Enumerator const& enumerator) const
+	{
+		HTMLFileWriter out{ args };
+
+		auto name = format("{}::{}", enumerator.ParentType->Name, enumerator.Name);
+
+		out.StartPage(name + " Enumerator");
+		out.WriteLine("<h1><pre class='entityname enum'>{}</pre> Enumerator</h1>", name);
+
+		out.WriteLine("<h2>Description</h2>");
+		out.WriteLine(GetPrettyComments(enumerator));
+
+		OutputAttributeDescriptors(out, enumerator);
+
+		OutputArtificialMethods(out, enumerator);
+
+		OutDeclDesc(out, enumerator, *enumerator.ParentType);
 
 		out.EndPage();
 		return true;
@@ -445,7 +491,15 @@ struct DocumentationGenerator
 
 		for (auto& henum : enums)
 		{
-			factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / FilenameFor(*henum), std::bind_front(&DocumentationGenerator::CreateEnumFile, this), std::ref(*henum)); /// 
+			factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / FilenameFor(*henum), std::bind_front(&DocumentationGenerator::CreateEnumFile, this), std::ref(*henum)); ///
+			
+			for (auto& enumerator : henum->Enumerators)
+			{
+				if (!enumerator->Document)
+					continue;
+
+				factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / FilenameFor(*enumerator), std::bind_front(&DocumentationGenerator::CreateEnumeratorFile, this), std::ref(*enumerator)); /// 
+			}
 		}
 	}
 };
