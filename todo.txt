@@ -9,6 +9,8 @@ into
 
 - support C++ attributes (nodiscard, noreturn, deprecated)
 
+- add Resolvable?
+
 - ability to clone objects?
 
 - ability to have garbage-collection for classes deriving from Reflectable
@@ -16,6 +18,8 @@ into
 
 - RConstructor() ?
 - RUsing(); - for commenting `using X = ...;` declarations, so that generated documentation is better (probably other things too)
+- RConstant(); - for constexprs
+- ROperator();
 - RNamespace() ?
 - RTest() ? - for marking static methods as tests
 - RVersion() ? - or should we get that information from, in order: git tags, git commit, datetime

@@ -7,7 +7,6 @@
 
 #include <iostream>
 #include <filesystem>
-#include <string_view>
 #include <vector>
 #if __has_include(<expected>)
 #include <expected>
@@ -21,9 +20,7 @@ using tl::unexpected;
 #include <nlohmann/json.hpp>
 #include <ghassanpl/enum_flags.h>
 #include <ghassanpl/string_ops.h>
-//#define FMT_HEADER_ONLY 1
-//#include <fmt/format.h>
-//#include <fmt/ostream.h>
+#include <magic_enum_format.hpp>
 #include <format>
 using std::string_view;
 #include "Include/ReflectorClasses.h"
@@ -87,6 +84,7 @@ enum class DeclarationType
 {
 	Field,
 	Method,
+	Property,
 	Class,
 	Enum,
 	Enumerator,
@@ -199,7 +197,7 @@ struct Field : public MemberDeclaration<Class>
 
 	virtual json ToJSON() const override;
 
-	virtual ::DeclarationType DeclarationType() const { return DeclarationType::Field; }
+	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Field; }
 };
 
 using MethodParameter = Reflector::MethodReflectionData::Parameter;
@@ -223,7 +221,6 @@ struct Method : public MemberDeclaration<Class>
 	std::string ParametersNamesOnly;
 	std::string ParametersTypesOnly;
 	std::string ArtificialBody;
-	//size_t SourceFieldDeclarationLine = 0;
 	Declaration const* SourceDeclaration{};
 	std::string UniqueName;
 
@@ -241,23 +238,26 @@ struct Method : public MemberDeclaration<Class>
 
 	virtual json ToJSON() const override;
 
-	virtual ::DeclarationType DeclarationType() const { return DeclarationType::Method; }
+	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Method; }
 
 private:
 	std::string mParameters;
 	void Split();
 };
 
-struct Property
+struct Property : MemberDeclaration<Class>
 {
-	std::string Name;
-	std::string SetterName;
-	size_t SetterLine = 0;
-	std::string GetterName;
-	size_t GetterLine = 0;
+	using MemberDeclaration<Class>::MemberDeclaration;
+
+	Method const* Setter = nullptr;
+	Method const* Getter = nullptr;
 	std::string Type;
 
-	void CreateArtificialMethodsAndDocument(Class& klass, Options const& options);
+	void CreateArtificialMethodsAndDocument(Options const& options);
+
+	virtual json ToJSON() const override;
+
+	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Property; }
 };
 
 struct Class : public TypeDeclaration
@@ -292,6 +292,8 @@ struct Class : public TypeDeclaration
 	);
 	void CreateArtificialMethodsAndDocument(Options const& options);
 
+	Property& EnsureProperty(std::string name);
+
 	virtual json ToJSON() const override;
 
 	static Class const* FindClassByPossiblyQualifiedName(std::string_view class_name, Class const* search_context)
@@ -302,7 +304,7 @@ struct Class : public TypeDeclaration
 	std::vector<Class const*> GetInheritanceList() const
 	{
 		std::vector<Class const*> result;
-		auto current = this;
+		const auto current = this;
 		while (auto parent = FindClassByPossiblyQualifiedName(current->BaseClass, current))
 		{
 			result.push_back(parent);
@@ -310,7 +312,7 @@ struct Class : public TypeDeclaration
 		return result;
 	}
 
-	virtual ::DeclarationType DeclarationType() const { return DeclarationType::Class; }
+	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Class; }
 
 private:
 
@@ -327,12 +329,12 @@ struct Enumerator : public MemberDeclaration<Enum>
 
 	ghassanpl::enum_flags<EnumeratorFlags> Flags;
 
-	json ToJSON() const;
+	virtual json ToJSON() const override;
 
 	/// TODO: We should also use the artificial method subsystem for enumerators, as it means they will get docnotes
 	void CreateArtificialMethodsAndDocument(Options const& options);
 
-	virtual ::DeclarationType DeclarationType() const { return DeclarationType::Enumerator; }
+	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Enumerator; }
 };
 
 struct Enum : public TypeDeclaration
@@ -358,13 +360,13 @@ struct Enum : public TypeDeclaration
 		return Enumerators.size() > 0 && Enumerators[0]->Value == 0 && IsConsecutive();
 	}
 
-	json ToJSON() const;
+	virtual json ToJSON() const override;
 
 	/// TODO: We should also use the artificial method subsystem to create functions like GetNext, etc.
 	/// as they will be documented/referenced that way!
 	void CreateArtificialMethodsAndDocument(Options const& options);
 
-	virtual ::DeclarationType DeclarationType() const { return DeclarationType::Enum; }
+	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Enum; }
 };
 
 struct FileMirror
@@ -418,8 +420,7 @@ void CreateArtificialMethodsAndDocument(Options const& options);
 
 inline std::string OnlyType(std::string str)
 {
-	auto last = str.find_last_of(':');
-	if (last != std::string::npos)
+	if (const auto last = str.find_last_of(':'); last != std::string::npos)
 		str = str.substr(last + 1);
 	return str;
 }

@@ -1,10 +1,7 @@
 #include "Documentation.h"
 #include "FileWriter.h"
 #include "Options.h"
-#include "Attributes.h"
 #include <ghassanpl/json_helpers.h>
-#include <set>
-#include <magic_enum_format.hpp>
 
 /// TODO: Documentation mOptions
 
@@ -73,11 +70,10 @@ struct DocumentationGenerator
 {
 	Options const& mOptions;
 	json styles;
-	//std::map<void const*, path> file_for_mirror;
 	std::vector<Class const*> classes;
 	std::vector<Enum const*> enums;
 
-	DocumentationGenerator(Options const& options)
+	explicit DocumentationGenerator(Options const& options)
 		: mOptions(options)
 	{
 		/// Load and create styles
@@ -86,14 +82,14 @@ struct DocumentationGenerator
 		/// styles.update(mOptions.Documentation.CustomStyles);
 
 		/// Prepare the lists of types
-		for (auto& mirror : GetMirrors())
+		for (const auto& mirror : GetMirrors())
 		{
-			for (auto& klass : mirror->Classes)
+			for (const auto& klass : mirror->Classes)
 			{
 				if (klass->Document)
 					classes.push_back(klass.get());
 			}
-			for (auto& henum : mirror->Enums)
+			for (const auto& henum : mirror->Enums)
 			{
 				if (henum->Document)
 					enums.push_back(henum.get());
@@ -131,7 +127,7 @@ struct DocumentationGenerator
 			auto joined = join(comments, "\n");
 			if (first_paragraph_only)
 			{
-				if (auto end_of_par = joined.find("\n\n"); end_of_par != std::string::npos)
+				if (const auto end_of_par = joined.find("\n\n"); end_of_par != std::string::npos)
 					joined.erase(joined.begin() + end_of_par, joined.end());
 			}
 			return format("<md>{}</md>", joined);
@@ -221,7 +217,7 @@ struct DocumentationGenerator
 		{
 			if (!decl.BaseClass.empty())
 			{
-				auto inhlist = decl.GetInheritanceList();// | std::views::reverse | std::ranges::to<std::vector>();
+				const auto inhlist = decl.GetInheritanceList();
 				if (inhlist.empty())
 					out.WriteLine("<li><b>Inheritance</b>: <pre>{} : {}</pre></li>", decl.Name, Escaped(decl.BaseClass));
 				else
@@ -247,13 +243,11 @@ struct DocumentationGenerator
 		out.EndBlock("</ul>");
 	}
 
-	void OutputAttributeDescriptors(HTMLFileWriter& out, Declaration const& decl) const
+	static void OutputAttributeDescriptors(HTMLFileWriter& out, Declaration const& decl)
 	{
 		if (decl.DocNotes.empty())
 			return;
 
-		//out.StartTag("details", "open");
-		//out.WriteLine("<summary class='h2'>Notes</summary>");
 		/// TODO: Maybe make an option that determines whether we create a <details> or just a simple header
 		out.WriteLine("<h2>Notes</h2>");
 		for (auto& [name, desc] : decl.DocNotes)
@@ -261,7 +255,6 @@ struct DocumentationGenerator
 			out.WriteLine("<h3>{}</h3>", name);
 			out.WriteLine("<md>{}</md>", desc);
 		}
-		//out.EndTag();
 	}
 
 	bool CreateClassFile(ArtifactArgs args, Class const& klass) const
@@ -295,7 +288,7 @@ struct DocumentationGenerator
 		{
 			out.WriteLine("<h2>Methods</h2>");
 			out.StartBlock("<table class='decllist'>");
-			for (auto& method : documented_methods)
+			for (const auto& method : documented_methods)
 			{
 				out.StartTag("tr");
 				out.WriteLine("<td class='declnamecol'><small class='specifiers'>{}</small><a href='{}' class='entitylink'>{}({})<small class='specifiers'>{}</small></a> <small class='membertype'>-> {}</small></td>",
@@ -323,7 +316,7 @@ struct DocumentationGenerator
 		if (!documented_artificial_methods.empty())
 		{
 			out.WriteLine("<h2>See Also</h2>");
-			for (auto& [am_type, am] : documented_artificial_methods)
+			for (const auto& am : documented_artificial_methods | std::views::values)
 			{
 				out.WriteLine("<li><a href='{}'><small>{}</small>::{}({})</a></li>", FilenameFor(*am), am->ParentType->FullType(), am->Name, Escaped(am->ParametersTypesOnly));
 			}
@@ -460,7 +453,7 @@ struct DocumentationGenerator
 		return true;
 	}
 
-	std::string FilenameFor(Declaration const& decl) const { return decl.FullName(".") + ".html"; }
+	static std::string FilenameFor(Declaration const& decl) { return decl.FullName(".") + ".html"; }
 
 	void QueueArtifacts(Artifactory& factory) const
 	{

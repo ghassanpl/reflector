@@ -143,24 +143,6 @@ std::string ParseExpression(string_view& str)
 	return result;
 }
 
-/*
-std::tuple<std::string, std::string> ParseParameter(string_view& str)
-{
-	/// TODO: Function pointers, arrays, etc.
-	auto type = ParseType(str);
-	auto name = ParseIdentifier(str);
-	str = string_ops::trim_whitespaceLeft(str);
-	if (str[0] == '=')
-	{
-	}
-		auto initializer = ParseExpression(str);
-		return { std::move(type), std::move(name), std::move(initializer) };
-	}
-	else
-		return { std::move(type), std::move(name), {} };
-}
-*/
-
 json ParseAttributeList(string_view line)
 {
 	line = TrimWhitespace(line);
@@ -168,7 +150,6 @@ json ParseAttributeList(string_view line)
 	line = TrimWhitespace(line);
 	if (line.empty())
 		return json::object();
-	//return json::parse(line);
 	return ghassanpl::formats::wilson::parse_object(line, ')');
 }
 
@@ -190,8 +171,8 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 	auto header_line = TrimWhitespace(string_view{ lines[line_num] });
 
 	header_line = Expect(header_line, "enum class");
-	auto enum_name_start = header_line.begin();
-	auto enum_name_end = std::ranges::find_if_not(header_line, ascii::isident);
+	const auto enum_name_start = header_line.begin();
+	const auto enum_name_end = std::ranges::find_if_not(header_line, ascii::isident);
 
 	henum.Name = TrimWhitespace(string_ops::make_sv(enum_name_start, enum_name_end));
 	///TODO: parse base type
@@ -221,8 +202,8 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 			continue;
 		}
 
-		auto enumerator_name_start = enumerator_line.begin();
-		auto enumerator_name_end = std::ranges::find_if_not(enumerator_line, ascii::isident);
+		const auto enumerator_name_start = enumerator_line.begin();
+		const auto enumerator_name_end = std::ranges::find_if_not(enumerator_line, ascii::isident);
 
 		if (auto rest = TrimWhitespace(make_sv(enumerator_name_end, enumerator_line.end())); consume(rest, '='))
 		{
@@ -233,15 +214,15 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 
 		if (auto name = make_sv(enumerator_name_start, enumerator_name_end); !name.empty())
 		{
-			auto result = std::make_unique<Enumerator>(&henum);
-			Enumerator& enumerator = *result;
+			auto enumerator_result = std::make_unique<Enumerator>(&henum);
+			Enumerator& enumerator = *enumerator_result;
 			enumerator.Name = TrimWhitespace(name);
 			enumerator.Value = enumerator_value;
 			enumerator.DeclarationLine = line_num;
 			enumerator.Attributes = henum.DefaultEnumeratorAttributes;
 			enumerator.Attributes.update(std::exchange(attribute_list, json::object()), true);
 			/// TODO: enumerator.Comments = "";
-			henum.Enumerators.push_back(std::move(result));
+			henum.Enumerators.push_back(std::move(enumerator_result));
 			enumerator_value++;
 		}
 		line_num++;
@@ -430,8 +411,10 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
 
 	/// ParentPointer implies Editor = false, Setter = false
+	/*
 	if (Attribute::ParentPointer.GetOr(field, false))
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter);
+	*/
 
 	/// ChildVector implies Setter = false
 	/// TODO: This needs to go, move to hierarchies I guess
@@ -570,11 +553,10 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 	/// TODO: How to docnote this?
 	if (auto getter = Attribute::GetterFor.SafeGet(method))
 	{
-		auto& property = klass.Properties[*getter];
-		if (!property.GetterName.empty())
-			throw std::exception(std::format("Getter for this property already declared at line {}", property.GetterLine).c_str());
-		property.GetterName = method.Name;
-		property.GetterLine = line_num;
+		auto& property = klass.EnsureProperty(*getter);
+		if (property.Getter)
+			throw std::exception(std::format("Getter for this property already declared at line {}", property.Getter->DeclarationLine).c_str());
+		property.Getter = &method;
 		/// TODO: Match getter/setter types
 		property.Type = method.ReturnType;
 		if (property.Name.empty()) property.Name = *getter;
@@ -582,11 +564,10 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 
 	if (auto setter = Attribute::SetterFor.SafeGet(method))
 	{
-		auto& property = klass.Properties[*setter];
-		if (!property.SetterName.empty())
-			throw std::exception(std::format("Setter for this property already declared at line {}", property.SetterLine).c_str());
-		property.SetterName = method.Name;
-		property.SetterLine = line_num;
+		auto& property = klass.EnsureProperty(*setter);
+		if (property.Setter)
+			throw std::exception(std::format("Setter for this property already declared at line {}", property.Setter->DeclarationLine).c_str());
+		property.Setter = &method;
 		/// TODO: Match getter/setter types
 		if (property.Type.empty())
 		{
@@ -659,7 +640,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 	for (size_t line_num = 1; line_num < lines.size(); line_num++)
 	{
 		auto current_line = TrimWhitespace(string_view{ lines[line_num - 1] });
-		auto next_line = TrimWhitespace(string_view{ lines[line_num] });
+		const auto next_line = TrimWhitespace(string_view{ lines[line_num] });
 
 		try
 		{

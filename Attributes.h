@@ -4,7 +4,6 @@
 
 struct AttributeProperties;
 
-//using AttributeDocFunc = std::function<std::string(json const&, Declaration const&)>;
 using AttributeValidatorFunc = std::function<expected<void, std::string>(json const&, Declaration const&)>;
 extern AttributeValidatorFunc IsString;
 extern AttributeValidatorFunc NotEmptyString;
@@ -42,8 +41,7 @@ struct AttributeProperties
 
 	std::optional<std::string> ExistsIn(Declaration const& decl) const
 	{
-		auto it = std::ranges::find_if(ValidNames, [&](std::string const& name) { return decl.Attributes.contains(name); });
-		if (it != ValidNames.end())
+		if (const auto it = std::ranges::find_if(ValidNames, [&](std::string const& name) { return decl.Attributes.contains(name); }); it != ValidNames.end())
 			return *it;
 		return std::nullopt;
 	}
@@ -144,19 +142,19 @@ struct TypedAttributeProperties : public AttributeProperties
 
 	T operator()(Declaration const& decl) const
 	{
-		if (auto found = Find(decl))
+		if (const auto found = Find(decl))
 			return (T)*found;
 		return TypedDefaultValue;
 	}
 	std::optional<T> SafeGet(Declaration const& decl) const
 	{
-		if (auto found = Find(decl))
+		if (const auto found = Find(decl))
 			return (T)*found;
 		return std::nullopt;
 	}
 	T GetOr(Declaration const& decl, T default_value) const
 	{
-		if (auto found = Find(decl))
+		if (const auto found = Find(decl))
 			return (T)*found;
 		return default_value;
 	}
@@ -170,8 +168,6 @@ struct Attribute
 
 	static const StringAttributeProperties Namespace;
 
-	/// TODO: Maybe instead of Getter and Setter, just have one attribute - ReadOnly - which also influences whether or not other setters are created (like flag, vector, optional setters)
-
 	static const BoolAttributeProperties Getter;
 	static const BoolAttributeProperties Setter;
 	static const BoolAttributeProperties Editor;
@@ -182,7 +178,7 @@ struct Attribute
 
 	static const BoolAttributeProperties Serialize;
 	static const BoolAttributeProperties Private;
-	static const BoolAttributeProperties ParentPointer;
+	//static const BoolAttributeProperties ParentPointer;
 	static const BoolAttributeProperties Required;
 
 	static const StringAttributeProperties OnChange;

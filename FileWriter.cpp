@@ -6,8 +6,6 @@
 #include <xxhash.h>
 #include <ghassanpl/mmap.h>
 
-//FileWriter::FileWriter() : mOutFile{ new std::stringstream{} }, mPath() {}
-
 void FileWriter::WriteLine()
 {
 	mOutput << "\n";
@@ -18,7 +16,7 @@ bool FileWriter::FilesAreDifferent(path const& f1, path const& f2)
 	namespace fs = std::filesystem;
 
 	if (fs::exists(f1) != fs::exists(f2)) return true;
-	auto f1filesize = fs::file_size(f1);
+	const auto f1filesize = fs::file_size(f1);
 	if (f1filesize != fs::file_size(f2)) return true;
 	if (f1filesize == 0) return false; /// This guard is here because we cannot map 0-sized files
 
@@ -33,7 +31,7 @@ bool FileWriter::FilesAreDifferent(path const& f1, path const& f2)
 void Artifactory::QueueCopyArtifact(path target_path, path source_path)
 {
 	std::unique_lock lock{mListMutex};
-	mArtifactsToFinish++;
+	++mArtifactsToFinish;
 
 	mFutures.push_back(std::async(std::launch::async, [source_path, target_path, this]() mutable {
 		try

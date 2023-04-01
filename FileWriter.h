@@ -28,22 +28,18 @@ struct FileWriter
 	};
 
 	Indenter Indent() { return Indenter{ *this }; }
-	
-	//FileWriter(std::stringstream& output, Options const& options) : mOutput(output), mOptions(options) {}
-	FileWriter(ArtifactArgs const& args) : mOutput(*args.Output), mOptions(args.Options) {}
+
+	explicit FileWriter(ArtifactArgs const& args) : mOutput(*args.Output), mOptions(args.Options) {}
 
 	template <typename... ARGS>
 	void WriteLine(std::string_view str, ARGS&& ... args)
 	{
 		mOutput << std::string(CurrentIndent, '\t');
-		//((mOutFile << std::forward<ARGS>(args)), ...);
 		mOutput << std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...));
 		if (InDefine)
 			mOutput << " \\";
 		mOutput << '\n';
 	}
-
-	//void WriteJSON(json const& value);
 
 	template <typename... ARGS>
 	void StartDefine(ARGS&& ... args)
@@ -93,7 +89,7 @@ struct Artifactory
 	void QueueArtifact(path target_path, FUNCTOR&& functor, ARGS&&... args)
 	{
 		std::unique_lock lock{mListMutex};
-		mArtifactsToFinish++;
+		++mArtifactsToFinish;
 
 		auto functor_args = std::make_tuple(ArtifactArgs{ .TargetPath = target_path, .Options = options, .Factory = *this }, std::forward<ARGS>(args)...);
 		mFutures.push_back(std::async(std::launch::async, [functor = std::forward<FUNCTOR>(functor), args = std::move(functor_args), target_path, this]() mutable {

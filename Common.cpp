@@ -27,18 +27,24 @@ Method const* Declaration::GetAssociatedMethod(std::string_view function_type) c
 
 json Declaration::ToJSON() const
 {
-	/// TODO: Update these functions, they don't reflect the latest fields in the declaration classes
-
 	json result = json::object();
 	if (!Attributes.empty())
 		result["Attributes"] = Attributes;
 	result["Name"] = Name;
-	if (DeclarationLine != 0)
-		result["DeclarationLine"] = DeclarationLine;
-	if (Access != AccessMode::Unspecified)
-		result["Access"] = AMStrings[(int)Access];
-	if (!Comments.empty())
-		result["Comments"] = Comments;
+	result["FullName"] = FullName(".");
+	if (DeclarationLine != 0) result["DeclarationLine"] = DeclarationLine;
+	if (Access != AccessMode::Unspecified) result["Access"] = AMStrings[(int)Access];
+	if (!Comments.empty()) result["Comments"] = Comments;
+	if (Document != true) result["Document"] = Document;
+	if (!AssociatedArtificialMethods.empty())
+	{
+		auto& target_ams = result["AssociatedArtificialMethods"] = json::object(); 
+		for (auto& [name, am] : AssociatedArtificialMethods)
+		{
+			target_ams = am->FullName(".");
+		}
+	}
+	if (!DocNotes.empty()) result["DocNotes"] = DocNotes;
 	return result;
 }
 
@@ -183,21 +189,26 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 	}
 }
 
+template <typename T>
+void SetFlags(enum_flags<T> Flags, json& result)
+{
+	if (!Flags.empty())
+	{
+		auto& flag_array = result["Flags"] = json::array();
+		Flags.for_each([&](auto v) {
+			flag_array.push_back(std::format("{}", v));
+		});
+	}
+}
+
 json Field::ToJSON() const
 {
-	json result = Declaration::ToJSON();
+	json result = MemberDeclaration<Class>::ToJSON();
 	result["Type"] = Type;
-	if (!InitializingExpression.empty())
-		result["InitializingExpression"] = InitializingExpression;
-	if (DisplayName != Name)
-		result["DisplayName"] = DisplayName;
-	if (CleanName != Name)
-		result["CleanName"] = CleanName;
-#define ADDFLAG(n) if (Flags.is_set(Reflector::FieldFlags::n)) result[#n] = true
-	ADDFLAG(NoGetter);
-	ADDFLAG(NoSetter);
-	ADDFLAG(NoEdit);
-#undef ADDFLAG
+	if (!InitializingExpression.empty()) result["InitializingExpression"] = InitializingExpression;
+	if (DisplayName != Name) result["DisplayName"] = DisplayName;
+	if (CleanName != Name) result["CleanName"] = CleanName;
+	SetFlags(Flags, result);
 	return result;
 }
 
@@ -272,31 +283,29 @@ std::string Method::FullName(std::string_view sep) const
 
 json Method::ToJSON() const
 {
-	json result = Declaration::ToJSON();
+	json result = MemberDeclaration<Class>::ToJSON();
 	result["ReturnType"] = ReturnType;
-	if (ParametersSplit.size() > 0)
-		std::transform(ParametersSplit.begin(), ParametersSplit.end(), std::back_inserter(result["Parameters"]), &::ToJSON);
-	if (!ArtificialBody.empty())
-		result["ArtificialBody"] = ArtificialBody;
-	if (SourceDeclaration && SourceDeclaration->DeclarationLine != 0)
-		result["SourceFieldDeclarationLine"] = SourceDeclaration->DeclarationLine;
-#define ADDFLAG(n) if (Flags.is_set(Reflector::MethodFlags::n)) result[#n] = true
-	ADDFLAG(Inline);
-	ADDFLAG(Virtual);
-	ADDFLAG(Static);
-	ADDFLAG(Const);
-	ADDFLAG(Noexcept);
-	ADDFLAG(Final);
-	ADDFLAG(Explicit);
-	ADDFLAG(Artificial);
-	ADDFLAG(HasBody);
-	ADDFLAG(NoCallable);
-#undef ADDFLAG
+	if (ParametersSplit.size() > 0) std::transform(ParametersSplit.begin(), ParametersSplit.end(), std::back_inserter(result["Parameters"]), &::ToJSON);
+	if (!ArtificialBody.empty()) result["ArtificialBody"] = ArtificialBody;
+	if (SourceDeclaration) result["SourceDeclaration"] = SourceDeclaration->FullName(".");
+	if (!UniqueName.empty()) result["UniqueName"] = UniqueName;
+	SetFlags(Flags, result);
 	return result;
 }
 
-void Property::CreateArtificialMethodsAndDocument(Class& klass, Options const& options)
+void Property::CreateArtificialMethodsAndDocument(Options const& options)
 {
+}
+
+json Property::ToJSON() const
+{
+	auto result = Declaration::ToJSON();
+	result.update(json::object({
+		{ "Type", Type },
+		{ "Getter", Getter ? json{Getter->FullName(".")} : json{} },
+		{ "Setter", Setter ? json{Setter->FullName(".")} : json{} },
+	}));
+	return result;
 }
 
 Method* Class::AddArtificialMethod(Declaration& for_decl, std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags)
@@ -314,7 +323,6 @@ Method* Class::AddArtificialMethod(Declaration& for_decl, std::string function_t
 	method.DeclarationLine = 0;
 	method.Access = AccessMode::Public;
 	method.Comments = std::move(comments);
-	//method.SourceFieldDeclarationLine = source_field_declaration_line;
 	method.SourceDeclaration = &for_decl;
 	for_decl.AssociatedArtificialMethods[move(function_type)] = &method; /// TODO: insert() and check for existing
 	return &method;
@@ -359,7 +367,7 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 	for (auto& method : Methods)
 		method->CreateArtificialMethodsAndDocument(options);
 	for (auto& property : Properties)
-		property.second.CreateArtificialMethodsAndDocument(*this, options);
+		property.second.CreateArtificialMethodsAndDocument(options);
 
 	for (auto& am : mArtificialMethods)
 	{
@@ -399,17 +407,23 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 	}
 }
 
+Property& Class::EnsureProperty(std::string name)
+{
+	auto [it, added] = Properties.try_emplace(name, Property{ this });
+	if (added)
+		it->second.Name = name;
+	else
+		assert(it->second.Name == name);
+	return it->second;
+}
+
 json Class::ToJSON() const
 {
 	auto result = TypeDeclaration::ToJSON();
-	if (!BaseClass.empty())
-		result["BaseClass"] = BaseClass;
-
-	if (Flags.is_set(ClassFlags::Struct))
-		result["Struct"] = true;
-	if (Flags.is_set(ClassFlags::NoConstructors))
-		result["NoConstructors"] = true;
-
+	if (!BaseClass.empty()) result["BaseClass"] = BaseClass;
+	
+	SetFlags(Flags, result);
+	
 	if (!Fields.empty())
 	{
 		auto& fields = result["Fields"] = json::object();
@@ -426,16 +440,31 @@ json Class::ToJSON() const
 			methods.push_back(method->ToJSON());
 		}
 	}
+	if (!Properties.empty())
+	{
+		auto& properties = result["Properties"] = json::array();
+		for (auto& [name, property] : Properties)
+		{
+			properties.push_back(property.ToJSON());
+		}
+	}
 
 	result["BodyLine"] = BodyLine;
+	if (!AdditionalBodyLines.empty()) result["AdditionalBodyLines"] = AdditionalBodyLines;
+	if (!DefaultFieldAttributes.empty()) result["DefaultFieldAttributes"] = DefaultFieldAttributes;
+	if (!DefaultMethodAttributes.empty()) result["DefaultMethodAttributes"] = DefaultMethodAttributes;
+
+	SetFlags(Flags, result);
 
 	return result;
 }
 
 json Enumerator::ToJSON() const
 {
-	json result = Declaration::ToJSON();
+	json result = MemberDeclaration<Enum>::ToJSON();
 	result["Value"] = Value;
+	if (!Opposite.empty()) result["Opposite"] = Opposite;
+	SetFlags(Flags, result);
 	return result;
 }
 
@@ -453,6 +482,8 @@ json Enum::ToJSON() const
 	auto& enumerators = result["Enumerators"] = json::object();
 	for (auto& enumerator : Enumerators)
 		enumerators[enumerator->Name] = enumerator->ToJSON();
+	if (!DefaultEnumeratorAttributes.empty()) result["DefaultEnumeratorAttributes"] = DefaultEnumeratorAttributes;
+	SetFlags(Flags, result);
 	return result;
 }
 

@@ -1,6 +1,5 @@
 #include "Attributes.h"
 #include "Documentation.h"
-#include <magic_enum_format.hpp>
 
 Enum const* FindEnum(string_view name);
 
@@ -31,7 +30,7 @@ AttributeValidatorFunc NotEmptyString = [](json const& attr_value, Declaration c
 
 AttributeValidatorFunc IsReflectedEnum = [](json const& attr_value, Declaration const& on_decl) -> expected<void, std::string> {
 	if (auto err = NotEmptyString(attr_value, on_decl); !err) return err;
-	if (auto henum = FindEnum(attr_value))
+	if (FindEnum(attr_value) != nullptr)
 		return {};
 	return unexpected(format("must name a reflected enum; '{}' is not a reflected enum.", attr_value.get_ref<std::string const&>()));
 };
@@ -111,7 +110,7 @@ const BoolAttributeProperties Attribute::Serialize{ "Serialize", "False means bo
 const BoolAttributeProperties Attribute::Private{ "Private", "True sets 'Edit', 'Setter', 'Getter' to false", Targets::Fields, false };
 
 /// TODO: Add AMs and docnotes for this
-const BoolAttributeProperties Attribute::ParentPointer{ "ParentPointer", "Whether or not this field is a pointer to parent object, in a tree hierarchy; implies Edit = false, Setter = false", Targets::Fields, false };
+//const BoolAttributeProperties Attribute::ParentPointer{ "ParentPointer", "Whether or not this field is a pointer to parent object, in a tree hierarchy; implies Edit = false, Setter = false", Targets::Fields, false };
 
 const BoolAttributeProperties Attribute::Required {
 	"Required",

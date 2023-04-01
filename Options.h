@@ -294,7 +294,7 @@ struct adl_serializer<SERIALIZABLE>
 				}
 				else
 				{
-					FIELD::CopySetter(&p, it->get<typename FIELD::Type>());
+					FIELD::CopySetter(&p, it->template get<typename FIELD::Type>());
 				}
 			}
 		});

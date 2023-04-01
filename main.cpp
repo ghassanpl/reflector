@@ -7,10 +7,8 @@
 #include "Parse.h"
 #include "ReflectionDataBuilding.h"
 #include "Documentation.h"
-//#include <args.hxx>
 #include <vector>
 #include <future>
-
 
 int main(int argc, const char* argv[])
 {
@@ -19,7 +17,7 @@ int main(int argc, const char* argv[])
 
 	try
 	{
-		if (BootstrapBuild)
+		if constexpr (BootstrapBuild)
 		{
 			auto exe = std::filesystem::absolute(path{ argv[0] });
 			
@@ -97,7 +95,7 @@ int main(int argc, const char* argv[])
 
 		size_t files_changed = 0;
 
-		for (auto& file : GetMirrors())
+		for (const auto& file : GetMirrors())
 		{
 			auto file_path = file->SourceFilePath;
 			file_path.concat(options.MirrorExtension);
