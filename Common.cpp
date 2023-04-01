@@ -22,14 +22,6 @@ std::string Declaration::MakeLink() const
 	return std::format("<see link='{}'>{}</see>", FullName("."), Name);
 }
 
-Method const* Declaration::GetAssociatedMethod(std::string_view function_type) const
-{
-	auto it = AssociatedArtificialMethods.find(function_type);
-	if (it == AssociatedArtificialMethods.end())
-		return {};
-	return it->second;
-}
-
 json Declaration::ToJSON() const
 {
 	json result = json::object();
@@ -125,7 +117,6 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 
 		const auto flag_nots = Attribute::FlagNots(*this);
 
-		/// TODO: use MakeLink instead of naked DisplayName and/or enumerator->Name in the comments
 		for (auto& enumerator : henum->Enumerators)
 		{
 			AddArtificialMethod(format("FlagGetter.{}.{}", henum->FullName(), enumerator->Name), "bool", options.IsPrefix + enumerator->Name, "", std::format("return (this->{} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator->Value),
@@ -152,13 +143,13 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 
 				if (auto opposite = Attribute::Opposite.SafeGet(*enumerator))
 				{
-					AddArtificialMethod(format("FlagOppositeGetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.SetterPrefix + *opposite, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator->Value),
+					AddArtificialMethod(format("FlagOppositeSetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.SetterPrefix + *opposite, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator->Value),
 						{ "Clears the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags);
 
 				}
 				else if (flag_nots)
 				{
-					AddArtificialMethod(format("FlagOppositeGetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.SetNotPrefix + enumerator->Name, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator->Value),
+					AddArtificialMethod(format("FlagOppositeSetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.SetNotPrefix + enumerator->Name, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator->Value),
 						{ "Clears the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags);
 				}
 			}
@@ -220,22 +211,70 @@ json Field::ToJSON() const
 
 void Method::Split()
 {
-	auto args = SplitArgs(string_view{ mParameters });
-	std::vector<std::string> parameters_split;
-	std::transform(args.begin(), args.end(), std::back_inserter(parameters_split), [](string_view param) { return std::string{ param }; });
-
-	ParametersSplit.clear();
-	for (auto& full_param : parameters_split)
+	std::vector<MethodParameter> args;
+	int brackets = 0, tris = 0, parens = 0;
+	auto argstring = std::string_view{ mParameters };
+	auto begin = argstring.begin();
+	MethodParameter current;
+	const char* eq_ptr = nullptr;
+	auto add = [&] {
+		if (eq_ptr)
+		{
+			const auto pre_eq = trimmed_whitespace(make_sv(begin, eq_ptr));
+			const auto start_of_id = std::find_if(pre_eq.rbegin(), pre_eq.rend(), std::not_fn(ascii::isident)).base();
+			current.Type = trimmed_whitespace(make_string(begin, start_of_id));
+			current.Name = trimmed_whitespace(make_string(start_of_id, eq_ptr));
+			if (current.Type.empty())
+				current.Type = std::exchange(current.Name, {});
+			current.Initializer = trimmed_whitespace(make_string(eq_ptr, argstring.begin()));
+			eq_ptr = nullptr;
+		}
+		else
+		{
+			const auto full = trimmed_whitespace(make_sv(begin, argstring.begin()));
+			const auto start_of_id = std::find_if(full.rbegin(), full.rend(), std::not_fn(ascii::isident)).base();
+			current.Type = trimmed_whitespace(make_string(begin, start_of_id));
+			current.Name = trimmed_whitespace(make_string(start_of_id, argstring.begin()));
+			if (current.Type.empty())
+				current.Type = std::exchange(current.Name, {});
+		}
+		args.push_back(std::exchange(current, {}));
+	};
+	while (!argstring.empty())
 	{
-		auto& param = ParametersSplit.emplace_back();
-		auto start_of_id = std::find_if(full_param.rbegin(), full_param.rend(), std::not_fn(ascii::isident)).base();
-		param.Type = TrimWhitespace({std::to_address(full_param.begin()), std::to_address(start_of_id) });
-		param.Name = TrimWhitespace({ std::to_address(start_of_id), std::to_address(full_param.end()) });
+		switch (argstring[0])
+		{
+		case '(': parens++; break;
+		case ')': parens--; break;
+		case '<': tris++; break;
+		case '>': tris--; break;
+		case '[': brackets++; break;
+		case ']': brackets--; break;
+		case ',':
+			if (parens == 0 && tris == 0 && brackets == 0)
+			{
+				add();
+				begin = argstring.begin() + 1;
+			}
+			break;
+		case '=':
+			if (parens == 0 && tris == 0 && brackets == 0)
+			{
+				eq_ptr = &argstring[0];
+			}
+			break;
+		}
 
-		if (param.Type.empty()) /// If we didn't specify a name, type was at the end, not name, so fix that
-			param.Type = param.Type + ' ' + param.Name;
+		argstring.remove_prefix(1);
+
+		if (argstring.empty())
+		{
+			add();
+			break;
+		}
 	}
 
+	ParametersSplit = std::move(args);
 	ParametersTypesOnly = join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Type; });
 	ParametersNamesOnly = join(ParametersSplit, ",", [](MethodParameter const& param) { return param.Name; });
 }
@@ -243,10 +282,6 @@ void Method::Split()
 void Method::SetParameters(std::string params)
 {
 	mParameters = std::move(params);
-	if (mParameters.find('=') != std::string::npos)
-	{
-		throw std::exception{ "Default parameters not supported" };
-	}
 	Split();
 }
 
@@ -330,7 +365,12 @@ Method* Class::AddArtificialMethod(Declaration& for_decl, std::string function_t
 	method.Access = AccessMode::Public;
 	method.Comments = std::move(comments);
 	method.SourceDeclaration = &for_decl;
-	for_decl.AssociatedArtificialMethods[std::move(function_type)] = &method; /// TODO: insert() and check for existing
+	auto [it, inserted] = for_decl.AssociatedArtificialMethods.try_emplace(function_type, &method);
+	if (!inserted)
+	{
+		ReportError(for_decl, "Artificial method '{}' already exists in class {}: {}", function_type, MakeLink(), it->second->MakeLink());
+		throw std::runtime_error("Internal error");
+	}
 	return &method;
 }
 
@@ -556,22 +596,11 @@ void RemoveEmptyMirrors()
 
 void CreateArtificialMethodsAndDocument(Options const& options)
 {
-#if 0
-	/// TODO: Not sure if these are safe to be multithreaded, we ARE adding new methods to the mirrors after all...
-	/// This could be an issue if we're changing a different mirror...
-	std::vector<std::future<void>> futures;
-	for (auto& mirror : Mirrors)
-		futures.push_back(std::async([&]() { mirror->CreateArtificialMethodsAndDocument(options); }));
-	
-	for (auto& future : futures)
-		future.get(); /// to propagate exceptions
-#else
 	std::unique_lock lock{ mirror_mutex };
 
 	/// Creating artificial methods should be plenty fast, we don't need to do it multithreaded, and it's safer that way
 	for (auto& mirror : Mirrors)
 		mirror->CreateArtificialMethodsAndDocument(options);
-#endif
 }
 
 FileMirror::FileMirror()

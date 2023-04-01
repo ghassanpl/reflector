@@ -103,11 +103,9 @@ struct Declaration
 
 	bool Document = true;
 
-	/// TODO: Should we turn this back into a vector since the docs are no longer looking for them?
+	/// These are in a map for historical reasons mostly, but it's easier to find bugs this way
 	std::map<std::string, Method const*, std::less<>> AssociatedArtificialMethods;
-	Method const* GetAssociatedMethod(std::string_view function_type) const;
 	
-	/// TODO: We should probably list the possible doc notes somewhere so the IgnoreDocNotes option is easier to set
 	std::vector<std::pair<std::string, std::string>> DocNotes;
 	template <typename... ARGS>
 	void AddDocNote(std::string header, std::string_view str, ARGS&& ... args)
@@ -206,7 +204,7 @@ using MethodParameter = Reflector::MethodReflectionData::Parameter;
 
 inline json ToJSON(MethodParameter const& param)
 {
-	return { {"Name", param.Name}, {"Type", param.Type} };
+	return { {"Name", param.Name}, {"Type", param.Type}, {"Initializer", param.Initializer} };
 }
 
 struct Method : public MemberDeclaration<Class>

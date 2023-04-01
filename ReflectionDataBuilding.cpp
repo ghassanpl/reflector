@@ -265,7 +265,9 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 		if (!method->GetParameters().empty())
 		{
 			output.WriteLine(".Parameters = {},", EscapeString(method->GetParameters()));
-			output.WriteLine(".ParametersSplit = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { return format("{{ {}, {} }}", EscapeString(param.Name), EscapeString(param.Type)); }));
+			output.WriteLine(".ParametersSplit = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { 
+				return format("{{ {}, {}, {} }}", EscapeString(param.Name), EscapeString(param.Type), EscapeString(param.Initializer));
+			}));
 		}
 		if (!method->Attributes.empty())
 		{

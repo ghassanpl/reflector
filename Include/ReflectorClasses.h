@@ -239,6 +239,7 @@ namespace Reflector
 		{
 			std::string Name;
 			std::string Type;
+			std::string Initializer;
 		};
 
 		std::string_view Name = "";

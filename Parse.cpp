@@ -442,36 +442,6 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 	return result;
 }
 
-std::vector<string_view> SplitArgs(string_view argstring)
-{
-	std::vector<string_view> args;
-	int brackets = 0, tris = 0, parens = 0;
-	auto begin = argstring.begin();
-	while (!argstring.empty())
-	{
-		switch (argstring[0])
-		{
-		case '(': parens++; break;
-		case ')': parens--; break;
-		case '<': tris++; break;
-		case '>': tris--; break;
-		case '[': brackets++; break;
-		case ']': brackets--; break;
-		case ',': if (parens == 0 && tris == 0 && brackets == 0) { args.push_back(make_sv(begin, argstring.begin())); argstring.remove_prefix(1); begin = argstring.begin(); } break;
-		}
-
-		argstring.remove_prefix(1);
-
-		if (argstring.empty())
-		{
-			args.push_back({ to_address(begin), to_address(argstring.begin()) });
-			break;
-		}
-	}
-
-	return args;
-}
-
 std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_view next_line, size_t line_num, AccessMode mode, std::vector<std::string> comments, Options const& options)
 {
 	auto result = std::make_unique<Method>(&klass);

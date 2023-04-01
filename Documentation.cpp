@@ -365,7 +365,7 @@ struct DocumentationGenerator
 			out.StartTag("dl");
 			for (auto& param : method.ParametersSplit)
 			{
-				out.WriteLine("<dt><pre class='paramname'>{}</pre> : <code class='language-cpp'>{}</code></dt><dd>{}</dd>", param.Name, param.Type, GetPrettyComments("*Undocumented*"));
+				out.WriteLine("<dt><pre class='paramname'>{}</pre> : <code class='language-cpp'>{} {}</code></dt><dd>{}</dd>", param.Name, param.Type, param.Initializer , GetPrettyComments("*Undocumented*"));
 			}
 			out.EndTag();
 		}
