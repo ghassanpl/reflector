@@ -212,7 +212,7 @@ namespace Reflector
 		FieldVisitorData(FieldReflectionData const* data) : Data(data) {}
 
 		FieldReflectionData const* Data{};
-		CTRD::PointerType Pointer = CTRD::Pointer;
+		typename CTRD::PointerType Pointer = CTRD::Pointer;
 	};
 
 	enum class MethodFlags
@@ -265,7 +265,7 @@ namespace Reflector
 		MethodVisitorData(MethodReflectionData const* data) : Data(data) {}
 
 		MethodReflectionData const* Data{};
-		CTRD::PointerType Pointer = CTRD::Pointer;
+		typename CTRD::PointerType Pointer = CTRD::Pointer;
 	};
 
 	struct EnumeratorReflectionData

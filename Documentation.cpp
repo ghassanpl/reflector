@@ -3,14 +3,6 @@
 #include "Options.h"
 #include <ghassanpl/json_helpers.h>
 
-/// TODO: Documentation mOptions
-
-std::string MakeLink(Declaration const* decl)
-{
-	assert(decl);
-	return std::format("<see link='{}'>{}</see>", decl->FullName("."), decl->Name);
-}
-
 struct HTMLFileWriter : public FileWriter
 {
 	using FileWriter::FileWriter;
@@ -292,7 +284,8 @@ struct DocumentationGenerator
 			{
 				out.StartTag("tr");
 				out.WriteLine("<td class='declnamecol'><small class='specifiers'>{}</small><a href='{}' class='entitylink'>{}({})<small class='specifiers'>{}</small></a> <small class='membertype'>-> {}</small></td>",
-					FormatPreFlags(method->Flags),
+					/// NOTE: The fact that a method inline is not really relevant to any system or anything, really
+					FormatPreFlags(method->Flags, MethodFlags::Inline),
 					FilenameFor(*method),
 					method->Name,
 					Escaped(method->ParametersTypesOnly),

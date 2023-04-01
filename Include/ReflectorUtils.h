@@ -18,10 +18,7 @@ namespace Reflector
 		{
 			return GetEnumReflectionData<REFLECTABLE_TYPE>();
 		}
-		else
-		{
-			static_assert(!std::is_same_v<std::void_t<REFLECTABLE_TYPE>, void>, "Type must be marked as reflectable");
-		}
+		static_assert(reflected_class<REFLECTABLE_TYPE> || reflected_enum<REFLECTABLE_TYPE>, "Type must be marked as reflectable");
 	}
 
 	template <typename T, typename VISITOR>

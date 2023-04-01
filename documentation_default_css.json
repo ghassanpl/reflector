@@ -105,6 +105,10 @@
     "padding": "0.5em !important",
     "display": "block !important"
   },
+  "see": {
+    "font-family": "Consolas, Courier, monospace",
+    "background-color": "rgb(40,40,40)"
+  },
   ".paramname": {
     "font-weight": "bold"
   }

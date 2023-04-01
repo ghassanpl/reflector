@@ -112,7 +112,7 @@ struct Declaration
 	template <typename... ARGS>
 	void AddDocNote(std::string header, std::string_view str, ARGS&& ... args)
 	{
-		DocNotes.emplace_back(move(header), std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...)));
+		DocNotes.emplace_back(std::move(header), std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...)));
 	}
 
 	std::string GeneratedUniqueName() const { return std::format("{}_{:016x}", Name, UID); }
@@ -121,6 +121,8 @@ struct Declaration
 	{
 		return Name;
 	}
+
+	virtual std::string MakeLink() const;
 
 	virtual ~Declaration() noexcept = default;
 
@@ -388,15 +390,17 @@ struct FileMirror
 	FileMirror& operator=(FileMirror&&) noexcept = default;
 };
 
-inline auto FormatPreFlags(enum_flags<Reflector::FieldFlags> flags) {
+inline auto FormatPreFlags(enum_flags<Reflector::FieldFlags> flags, enum_flags<Reflector::FieldFlags> except = {}) {
 	std::vector<std::string_view> prefixes;
+	flags = flags - except;
 	if (flags.is_set(FieldFlags::Mutable)) prefixes.push_back("mutable ");
 	if (flags.is_set(FieldFlags::Static)) prefixes.push_back("static ");
 	return join(prefixes, "");
 }
 
-inline auto FormatPreFlags(enum_flags<Reflector::MethodFlags> flags) {
+inline auto FormatPreFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except = {}) {
 	std::vector<std::string_view> prefixes;
+	flags = flags - except;
 	if (flags.is_set(MethodFlags::Inline)) prefixes.push_back("inline ");
 	if (flags.is_set(MethodFlags::Static)) prefixes.push_back("static ");
 	if (flags.is_set(MethodFlags::Virtual)) prefixes.push_back("virtual ");
@@ -404,8 +408,9 @@ inline auto FormatPreFlags(enum_flags<Reflector::MethodFlags> flags) {
 	return join(prefixes, "");
 }
 
-inline auto FormatPostFlags(enum_flags<Reflector::MethodFlags> flags) {
+inline auto FormatPostFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except = {}) {
 	std::vector<std::string_view> suffixes;
+	flags = flags - except;
 	if (flags.is_set(MethodFlags::Const)) suffixes.push_back(" const");
 	if (flags.is_set(MethodFlags::Final)) suffixes.push_back(" final");
 	if (flags.is_set(MethodFlags::Noexcept)) suffixes.push_back(" noexcept");

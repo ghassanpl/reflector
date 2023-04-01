@@ -26,7 +26,7 @@ struct AttributeProperties
 	template <typename... ARGS>
 	AttributeProperties(std::string name, std::string desc, enum_flags<DeclarationType> targets, json default_value = nullptr, ARGS&&... args) noexcept
 		: ValidNames(string_ops::split<std::string>(name, ";"))
-		, Description(move(desc))
+		, Description(std::move(desc))
 		, ValidTargets(targets)
 		, DefaultValueIfAny(std::move(default_value))
 	{
@@ -37,7 +37,7 @@ struct AttributeProperties
 
 	expected<void, std::string> Validate(json const& attr_value, Declaration const& decl) const;
 
-	void Set(AttributeValidatorFunc validator) { this->Validator = move(validator); }
+	void Set(AttributeValidatorFunc validator) { this->Validator = std::move(validator); }
 
 	std::optional<std::string> ExistsIn(Declaration const& decl) const
 	{
@@ -116,7 +116,7 @@ struct TypedAttributeProperties : public AttributeProperties
 
 	template <typename... ARGS>
 	TypedAttributeProperties(std::string name, std::string desc, enum_flags<DeclarationType> targets, ARGS&&... args) noexcept
-		: AttributeProperties(move(name), move(desc), targets, {})
+		: AttributeProperties(std::move(name), std::move(desc), targets, {})
 	{
 		if constexpr (std::is_same_v<std::string, T>) this->Set(NotEmptyString); /// NOTE: String attributes cannot be empty by default!
 
