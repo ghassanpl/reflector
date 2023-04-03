@@ -112,29 +112,33 @@ struct DocumentationGenerator
 
 	/// TODO: Get comment lines starting with '@' (like `@param`) and turn them into nice properties
 
-	std::string GetPrettyComments(std::vector<std::string> const& comments, bool first_paragraph_only = false) const
+	std::string GetPrettyComments(SimpleDeclaration const& decl, bool first_paragraph_only = false) const
 	{
-		if (comments.size() > 0)
+		std::string result;
+		/// Add deprecation warning if applicable
+		if (decl.Deprecation)
 		{
-			auto joined = join(comments, "\n");
+			result += "<div class='deprecated'>";
+			result += format("<md>**Deprecated**{}{}</md>", decl.Deprecation?": ":"", Escaped(decl.Deprecation.value()));
+			result += "</div>";
+		}
+
+		std::vector<std::string> comment_lines;
+		/// Add comments from entity comments (first paragraph only, if requested)
+		if (decl.Comments.size() > 0)
+		{
 			if (first_paragraph_only)
 			{
-				if (const auto end_of_par = joined.find("\n\n"); end_of_par != std::string::npos)
-					joined.erase(joined.begin() + end_of_par, joined.end());
+				auto empty_comment_line = std::ranges::find_if(decl.Comments, [](auto& cmntline) { return trimmed_whitespace(cmntline).empty(); });
+				comment_lines.insert(comment_lines.end(), decl.Comments.begin(), empty_comment_line);
 			}
-			return format("<md>{}</md>", joined);
+			else
+				comment_lines.append_range(decl.Comments);
 		}
-		return {};
-	}
 
-	std::string GetPrettyComments(Declaration const& decl, bool first_paragraph_only = false) const
-	{
-		return GetPrettyComments(decl.Comments, first_paragraph_only);
-	}
-
-	std::string GetPrettyComments(std::string comment, bool first_paragraph_only = false) const
-	{
-		return GetPrettyComments(std::vector<std::string>{comment}, first_paragraph_only);
+		if (!comment_lines.empty())
+			result += format("<md>{}</md>", join(comment_lines, "\n"));
+		return result;
 	}
 
 	bool CreateCSSFile(ArtifactArgs args) const
@@ -166,7 +170,7 @@ struct DocumentationGenerator
 		for (auto& klass : classes)
 		{
 			index.StartTag("tr");
-			index.WriteLine("<td class='declnamecol'><a href='{0}.html' class='entitylink'><small class='namespace'>{1}</small>{2}</a></td>", klass->FullName("."), (klass->Namespace.empty() ? "" : (klass->Namespace + "::")), klass->Name);
+			index.WriteLine("<td class='declnamecol'>{}</td>", klass->MakeLink(LinkFlags::all()));
 			index.WriteLine("<td>{}</td>", GetPrettyComments(*klass, true));
 			index.EndTag();
 		}
@@ -178,7 +182,7 @@ struct DocumentationGenerator
 		for (auto& henum : enums)
 		{
 			index.StartTag("tr");
-			index.WriteLine("<td class='declnamecol'><a href='{0}.html' class='entitylink'><small class='namespace'>{1}</small>{2}</a></td>", henum->FullName("."), (henum->Namespace.empty() ? "" : (henum->Namespace + "::")), henum->Name);
+			index.WriteLine("<td class='declnamecol'>{}</td>", henum->MakeLink(LinkFlags::all()));
 			index.WriteLine("<td>{}</td>", GetPrettyComments(*henum, true));
 			index.EndTag();
 		}
@@ -220,7 +224,7 @@ struct DocumentationGenerator
 		{
 			if (decl.SourceDeclaration && decl.SourceDeclaration != decl.ParentType)
 			{
-				out.WriteLine("<li><b>Source Declaration</b>: {} <a href='{}'>{}</a></li>", decl.SourceDeclaration->DeclarationType(), FilenameFor(*decl.SourceDeclaration), decl.SourceDeclaration->Name);
+				out.WriteLine("<li><b>Source Declaration</b>: {} {}</li>", decl.SourceDeclaration->DeclarationType(), decl.SourceDeclaration->MakeLink());
 			}
 
 			if (!decl.UniqueName.empty())
@@ -268,7 +272,7 @@ struct DocumentationGenerator
 			for (auto& field : documented_fields)
 			{
 				out.StartTag("tr");
-				out.WriteLine("<td class='declnamecol'><a href='{}' class='entitylink'>{}</a> <small class='membertype'>{}</small></td>", FilenameFor(*field), field->CleanName, Escaped(field->Type));
+				out.WriteLine("<td class='declnamecol'>{}</td>", field->MakeLink(LinkFlags::all() - LinkFlag::Parent));
 				out.WriteLine("<td>{}</td>", GetPrettyComments(*field, true));
 				out.EndTag();
 			}
@@ -283,14 +287,7 @@ struct DocumentationGenerator
 			for (const auto& method : documented_methods)
 			{
 				out.StartTag("tr");
-				out.WriteLine("<td class='declnamecol'><small class='specifiers'>{}</small><a href='{}' class='entitylink'>{}({})<small class='specifiers'>{}</small></a> <small class='membertype'>-> {}</small></td>",
-					/// NOTE: The fact that a method inline is not really relevant to any system or anything, really
-					FormatPreFlags(method->Flags, MethodFlags::Inline),
-					FilenameFor(*method),
-					method->Name,
-					Escaped(method->ParametersTypesOnly),
-					FormatPostFlags(method->Flags),
-					Escaped(method->ReturnType));
+				out.WriteLine("<td class='declnamecol'>{}</td>", method->MakeLink(LinkFlags::all() - LinkFlag::Parent));
 				out.WriteLine("<td>{}</td>", GetPrettyComments(*method, true));
 				out.EndTag();
 			}
@@ -311,7 +308,7 @@ struct DocumentationGenerator
 			out.WriteLine("<h2>See Also</h2>");
 			for (const auto& am : documented_artificial_methods | std::views::values)
 			{
-				out.WriteLine("<li><a href='{}'><small>{}</small>::{}({})</a></li>", FilenameFor(*am), am->ParentType->FullType(), am->Name, Escaped(am->ParametersTypesOnly));
+				out.WriteLine("<li>{}</li>", am->MakeLink(LinkFlags::all()));
 			}
 		}
 	}
@@ -330,6 +327,7 @@ struct DocumentationGenerator
 		);
 
 		/// TODO: Special treatment for Flags fields
+		/// ? Like what?
 
 		out.WriteLine(GetPrettyComments(field));
 
@@ -351,7 +349,7 @@ struct DocumentationGenerator
 
 		out.WriteLine("<code class='example language-cpp'>{}{} {}({}){};</code>",
 			FormatPreFlags(method.Flags),
-			Escaped(method.ReturnType),
+			Escaped(method.Return.Name),
 			method.Name,
 			Escaped(method.GetParameters()),
 			FormatPostFlags(method.Flags)
@@ -365,16 +363,16 @@ struct DocumentationGenerator
 			out.StartTag("dl");
 			for (auto& param : method.ParametersSplit)
 			{
-				out.WriteLine("<dt><pre class='paramname'>{}</pre> : <code class='language-cpp'>{} {}</code></dt><dd>{}</dd>", param.Name, param.Type, param.Initializer , GetPrettyComments("*Undocumented*"));
+				out.WriteLine("<dt><pre class='paramname'>{}</pre> : <code class='language-cpp'>{} {}</code></dt><dd>{}</dd>", param.Name, Escaped(param.Type), Escaped(param.Initializer), GetPrettyComments(param));
 			}
 			out.EndTag();
 		}
 
-		if (method.ReturnType != "void")
+		if (method.Return.Name != "void")
 		{
 			out.WriteLine("<h2>Return Value</h2>");
-			out.WriteLine("<code class='language-cpp'>{}</code>", method.ReturnType);
-			out.WriteLine(GetPrettyComments("*Undocumented*"));
+			out.WriteLine("<code class='language-cpp'>{}</code>", Escaped(method.Return.Name));
+			out.WriteLine(GetPrettyComments(method.Return));
 		}
 
 		OutputAttributeDescriptors(out, method);
@@ -406,7 +404,7 @@ struct DocumentationGenerator
 			for (auto& enumerator : documented_enumerators)
 			{
 				out.StartTag("tr");
-				out.WriteLine("<td class='enumnamecol'><a href='{}' class='entitylink'>{}</a></td>", FilenameFor(*enumerator), enumerator->Name);
+				out.WriteLine("<td class='enumnamecol'>{}</td>", enumerator->MakeLink());
 				out.WriteLine("<td class='enumvalcol{}'>= {}</td>", (enum_is_trivial?" trivial":""), enumerator->Value);
 				out.WriteLine("<td>{}</td>", GetPrettyComments(*enumerator, true));
 				out.EndTag();

@@ -9,6 +9,7 @@
 #include <ghassanpl/string_ops.h>
 #include <ghassanpl/wilson.h>
 #include <ghassanpl/hashes.h>
+#include <ghassanpl/containers.h>
 #include <charconv>
 #include <fstream>
 using namespace std::string_literals;
@@ -63,6 +64,42 @@ std::string ParseIdentifier(string_view& str)
 	return result;
 }
 
+void ParseCppAttributes(std::string_view& line, json& target_attrs)
+{
+	static const std::map<std::string, std::string> cpp_attributes_to_reflector_attributes = {
+		{"noreturn", "NoReturn"},
+		{"deprecated", "Deprecated"},
+		{"nodiscard", "NoDiscard"},
+		{"no_unique_address", "NoUniqueAddress"},
+		/// maybe_unused is not really relevant to anything
+	};
+
+	if (!consume(line, "[["))
+		return;
+
+	while (!consume(line, "]]") && !line.empty())
+	{
+		trim_whitespace_left(line);
+
+		auto id = ParseIdentifier(line);
+		id = ghassanpl::map_at_or_default(cpp_attributes_to_reflector_attributes, id, id);
+		auto& entry = target_attrs[id] = true;
+
+		trim_whitespace_left(line);
+		if (consume(line, "("))
+		{
+			trim_whitespace_left(line);
+			entry = ghassanpl::formats::wilson::consume_word_or_string(line);
+			trim_whitespace_left(line);
+			std::ignore = consume(line, ")");
+			trim_whitespace_left(line);
+		}
+		std::ignore = consume(line, ',');
+	}
+
+	trim_whitespace_left(line);
+}
+
 std::string ParseType(string_view& str)
 {
 	/// TODO: Unify all type parsing from entire codebase
@@ -79,7 +116,7 @@ std::string ParseType(string_view& str)
 		break;
 	}
 
-	str = string_ops::trimmed_whitespace(str);
+	trim_whitespace_left(str);
 
 	int brackets = 0, tris = 0, parens = 0;
 	for (; !str.empty(); str.remove_prefix(1))
@@ -101,7 +138,7 @@ std::string ParseType(string_view& str)
 		}
 	}
 		
-	str = string_ops::trimmed_whitespace(str);
+	trim_whitespace_left(str);
 	
 	while (true)
 	{
@@ -110,7 +147,7 @@ std::string ParseType(string_view& str)
 		break;
 	}
 	
-	str = string_ops::trimmed_whitespace(str);
+	trim_whitespace_left(str);
 
 	return ghassanpl::string_ops::make_string(start, str.begin());
 }
@@ -150,7 +187,11 @@ json ParseAttributeList(string_view line)
 	line = TrimWhitespace(line);
 	if (line.empty())
 		return json::object();
-	return ghassanpl::formats::wilson::parse_object(line, ')');
+	auto result = ghassanpl::formats::wilson::consume_object(line, ')');
+	auto unsettable = AttributeProperties::FindUnsettable(result);
+	if (unsettable.size() > 0)
+		throw std::runtime_error(format("The following attributes: '{}' cannot be set by the user, try using the C++ equivalents if applicable.", join(unsettable, ", ")));
+	return result;
 }
 
 std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::string>& lines, size_t& line_num, Options const& options)
@@ -161,16 +202,19 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 	line_num--;
 	henum.DeclarationLine = line_num + 1;
 
-	auto line = TrimWhitespace(string_view{ lines[line_num] });
+	auto line = TrimWhitespace(lines[line_num]);
 	line.remove_prefix(options.EnumAnnotationName.size());
 	henum.Attributes = ParseAttributeList(line);
 
 	henum.DefaultEnumeratorAttributes = Attribute::DefaultEnumeratorAttributes(henum, json::object());
 
 	line_num++;
-	auto header_line = TrimWhitespace(string_view{ lines[line_num] });
+	auto header_line = TrimWhitespace(lines[line_num]);
 
 	header_line = Expect(header_line, "enum class");
+	
+	ParseCppAttributes(header_line, henum.Attributes);
+
 	const auto enum_name_start = header_line.begin();
 	const auto enum_name_end = std::ranges::find_if_not(header_line, ascii::isident);
 
@@ -178,13 +222,13 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 	///TODO: parse base type
 
 	line_num++;
-	Expect(TrimWhitespace(string_view{ lines[line_num] }), "{");
+	Expect(TrimWhitespace(lines[line_num]), "{");
 
 	json attribute_list = json::object();
 
 	line_num++;
 	int64_t enumerator_value = 0;
-	while (TrimWhitespace(string_view{ lines[line_num] }) != "};")
+	while (TrimWhitespace(lines[line_num]) != "};")
 	{
 		auto enumerator_line = TrimWhitespace(string_view{ lines[line_num] });
 		if (enumerator_line.empty() || enumerator_line.starts_with("//") || enumerator_line.starts_with("/*"))
@@ -205,11 +249,15 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 		const auto enumerator_name_start = enumerator_line.begin();
 		const auto enumerator_name_end = std::ranges::find_if_not(enumerator_line, ascii::isident);
 
+		json cpp_attributes = json::object();
+		ParseCppAttributes(header_line, cpp_attributes);
+
 		if (auto rest = TrimWhitespace(make_sv(enumerator_name_end, enumerator_line.end())); consume(rest, '='))
 		{
 			rest = TrimWhitespace(rest);
-			std::from_chars(std::to_address(rest.begin()), std::to_address(rest.end()), enumerator_value);
-			/// TODO: Non-integer enumerator values (like 1<<5 and constexpr function calls/expression)
+			auto result = std::from_chars(std::to_address(rest.begin()), std::to_address(rest.end()), enumerator_value);
+			if (result.ec != std::errc{})
+				throw std::runtime_error("Non-integer enumerator values are not supported");
 		}
 
 		if (auto name = make_sv(enumerator_name_start, enumerator_name_end); !name.empty())
@@ -221,6 +269,7 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 			enumerator.DeclarationLine = line_num;
 			enumerator.Attributes = henum.DefaultEnumeratorAttributes;
 			enumerator.Attributes.update(std::exchange(attribute_list, json::object()), true);
+			enumerator.Attributes.update(cpp_attributes);
 			/// TODO: enumerator.Comments = "";
 			henum.Enumerators.push_back(std::move(enumerator_result));
 			enumerator_value++;
@@ -233,21 +282,33 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 	return result;
 }
 
-auto ParseClassLine(string_view line)
+struct ParsedClassLine
 {
-	std::tuple<std::string, std::string, bool> result;
+	std::string Name;
+	std::string BaseClass;
+	bool IsStruct = false;
+	json Attributes = json::object();
+};
+
+ParsedClassLine ParseClassLine(string_view line)
+{
+	ParsedClassLine result;
 
 	if (line.starts_with("struct"))
 	{
-		std::get<2>(result) = true;
+		result.IsStruct = true;
 		line = Expect(line, "struct");
 	}
 	else
 	{
-		std::get<2>(result) = false;
 		line = Expect(line, "class");
 	}
-	std::get<0>(result) = ParseIdentifier(line);
+
+	ParseCppAttributes(line, result.Attributes);
+	
+	/// TODO: Parse C++ [[attributes]], specifically [[deprecated]]
+
+	result.Name = ParseIdentifier(line);
 	line = TrimWhitespace(line);
 
 	if (line.starts_with(":"))
@@ -280,7 +341,7 @@ auto ParseClassLine(string_view line)
 			(void)consume(line);
 		}
 
-		std::get<1>(result) = { std::to_address(start.begin()), std::to_address(line.begin()) };
+		result.BaseClass = make_string(start.begin(), line.begin());
 	}
 
 	return result;
@@ -292,6 +353,7 @@ struct ParsedFieldDecl
 	std::string Name;
 	std::string Initializer;
 	enum_flags<FieldFlags> Flags{};
+	json Attributes = json::object();
 };
 
 ParsedFieldDecl ParseFieldDecl(string_view line)
@@ -300,7 +362,9 @@ ParsedFieldDecl ParseFieldDecl(string_view line)
 
 	line = TrimWhitespace(line);
 
-	/// TODO: Parse attributes
+	ParseCppAttributes(line, result.Attributes);
+
+	/// TODO: Parse C++ [[attributes]]
 
 	/// thread_local? extern? inline?
 
@@ -376,7 +440,8 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 	field.Attributes.update(ParseAttributeList(line), true);
 	field.DeclarationLine = line_num;
 	field.Comments = std::move(comments);
-	const auto&& [type, name, initializer, flags] = ParseFieldDecl(next_line);
+	const auto&& [type, name, initializer, flags, cpp_attributes] = ParseFieldDecl(next_line);
+	field.Attributes.update(cpp_attributes);
 	field.Type = type;
 	field.Name = name;
 	field.InitializingExpression = initializer;
@@ -439,11 +504,16 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 	if (Attribute::Required(field))
 		field.Flags.set(Reflector::FieldFlags::Required);
 
+	if (Attribute::NoUniqueAddress(field))
+		field.Flags += FieldFlags::NoUniqueAddress;
+
 	return result;
 }
 
 std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_view next_line, size_t line_num, AccessMode mode, std::vector<std::string> comments, Options const& options)
 {
+	auto line_copy = line;
+	auto next_line_copy = next_line;
 	auto result = std::make_unique<Method>(&klass);
 	Method& method = *result;
 	line.remove_prefix(options.MethodAnnotationName.size());
@@ -451,7 +521,9 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 	method.Attributes = klass.DefaultMethodAttributes;
 	method.Attributes.update(ParseAttributeList(line), true);
 	method.DeclarationLine = line_num;
-	
+
+	ParseCppAttributes(next_line, result->Attributes);
+
 	while (true)
 	{
 		if (SwallowOptional(next_line, "virtual")) method.Flags += Reflector::MethodFlags::Virtual;
@@ -468,6 +540,9 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 	auto name_start = next_line.begin();
 	auto name_end = std::ranges::find_if_not(next_line, ascii::isident);
 	method.Name = TrimWhitespace(make_sv(name_start, name_end));
+
+	ParseCppAttributes(next_line, result->Attributes); /// Unfortunately, C++ attributes on functions can also be after the name: `void q [[ noreturn ]] (int i);`
+
 	int num_pars = 0;
 	auto start_args = name_end;
 	next_line = make_sv(name_end, next_line.end());
@@ -506,11 +581,11 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 		}
 		if (next_line.ends_with("override"))
 			next_line.remove_suffix(sizeof("override") - 1);
-		method.ReturnType = (std::string)TrimWhitespace(next_line);
+		method.Return.Name = (std::string)TrimWhitespace(next_line);
 	}
 	else
 	{
-		method.ReturnType = pre_type;
+		method.Return.Name = pre_type;
 
 		auto end_line = next_line.find_first_of("{;=");
 		if (end_line != std::string::npos && next_line[end_line] == '=')
@@ -528,7 +603,7 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 			throw std::exception(std::format("Getter for this property already declared at line {}", property.Getter->DeclarationLine).c_str());
 		property.Getter = &method;
 		/// TODO: Match getter/setter types
-		property.Type = method.ReturnType;
+		property.Type = method.Return.Name;
 		if (property.Name.empty()) property.Name = *getter;
 	}
 
@@ -548,6 +623,9 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 		if (property.Name.empty()) property.Name = *setter;
 	}
 
+	if (Attribute::NoReturn(method))
+		method.Flags += MethodFlags::NoReturn;
+
 	method.Comments = std::move(comments);
 
 	return result;
@@ -560,7 +638,8 @@ std::unique_ptr<Class> ParseClassDecl(FileMirror* mirror, string_view line, stri
 	line.remove_prefix(options.ClassAnnotationName.size());
 	klass.Attributes = ParseAttributeList(line);
 	klass.DeclarationLine = line_num;
-	auto [name, parent, is_struct] = ParseClassLine(next_line);
+	auto [name, parent, is_struct, cpp_attributes] = ParseClassLine(next_line);
+	klass.Attributes.update(cpp_attributes);
 	klass.Name = name;
 	klass.BaseClass = parent;
 	klass.Comments = std::move(comments);

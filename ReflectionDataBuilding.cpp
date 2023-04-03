@@ -261,7 +261,7 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 	{
 		output.StartBlock("::Reflector::MethodReflectionData {{");
 		output.WriteLine(".Name = \"{}\",", method->Name);
-		output.WriteLine(".ReturnType = \"{}\",", method->ReturnType);
+		output.WriteLine(".ReturnType= \"{}\",", method->Return.Name);
 		if (!method->GetParameters().empty())
 		{
 			output.WriteLine(".Parameters = {},", EscapeString(method->GetParameters()));
@@ -281,7 +281,7 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 			output.WriteLine(".ArtificialBody = {},", EscapeString(method->ArtificialBody));
 		if (options.GenerateTypeIndices)
 		{
-			output.WriteLine(".ReturnTypeIndex = typeid({}),", method->ReturnType);
+			output.WriteLine(".ReturnTypeIndex = typeid({}),", method->Return.Name);
 			output.WriteLine(".ParameterTypeIndices = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { return format("typeid({})", param.Type); }));
 		}
 		output.WriteLine(".Flags = {},", method->Flags.bits);
@@ -346,7 +346,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		const auto method_pointer = std::format("({})&{}::{}", method->GetSignature(klass), klass_full_type, method->Name);
 		const auto parameter_tuple = std::format("::std::tuple<{}>", method->ParametersTypesOnly);
 		const auto compile_time_method_data = std::format("::Reflector::CompileTimeMethodData<{0}, {1}, {2}, {3}, {4}, decltype({5}), {5}>", 
-			method->ReturnType, parameter_tuple, klass_full_type, method->Flags.bits, BuildCompileTimeLiteral(method->Name), method_pointer
+			method->Return.Name, parameter_tuple, klass_full_type, method->Flags.bits, BuildCompileTimeLiteral(method->Name), method_pointer
 		);
 
 		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", method->Name) : std::string{};
@@ -476,7 +476,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (auto& func : klass.Methods)
 	{
 		if (func->Flags.is_set(Reflector::MethodFlags::Artificial))
-			output.WriteLine("{}auto {}({}){} -> {} {{ {} }}", FormatPreFlags(func->Flags), func->Name, func->GetParameters(), FormatPostFlags(func->Flags), func->ReturnType, func->ArtificialBody);
+			output.WriteLine("{}auto {}({}){} -> {} {{ {} }}", FormatPreFlags(func->Flags), func->Name, func->GetParameters(), FormatPostFlags(func->Flags), func->Return.Name, func->ArtificialBody);
 	}
 
 	/// Back to public

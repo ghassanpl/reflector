@@ -3,6 +3,38 @@
 
 Enum const* FindEnum(string_view name);
 
+std::vector<std::string_view> AttributeProperties::FindUnsettable(json const& attrs)
+{
+	std::vector<std::string_view> result;
+	for (auto& attr : AllAttributes)
+	{
+		if (attr->ExistsIn(attrs) && attr->Flags.contain(AttributePropertyFlags::NotUserSettable))
+			result.push_back(attr->Name());
+	}
+	return result;
+}
+
+expected<void, std::string> AttributeProperties::Validate(json const& attr_value, Declaration const& decl) const
+{
+	if (!AppliesTo(decl))
+		return unexpected(std::format("`{}` attribute only applies on the following entities: {}", Name(), join(ValidTargets, ", ", [](auto e) { return magic_enum::enum_name(e); })));
+	if (Validator)
+		return Validator(attr_value, decl);
+	return {};
+}
+
+std::optional<std::string> AttributeProperties::ExistsIn(Declaration const& decl) const
+{
+	return ExistsIn(decl.Attributes);
+}
+
+std::optional<std::string> AttributeProperties::ExistsIn(json const& attrs) const
+{
+	if (const auto it = std::ranges::find_if(ValidNames, [&](std::string const& name) { return attrs.contains(name); }); it != ValidNames.end())
+		return *it;
+	return std::nullopt;
+}
+
 namespace Targets
 {
 	enum_flags<DeclarationType> Enums = DeclarationType::Enum;
@@ -18,6 +50,12 @@ namespace Targets
 AttributeValidatorFunc IsString = [](json const& attr_value, Declaration const& on_decl) -> expected<void, std::string> {
 	if (!attr_value.is_string())
 		return unexpected("must be a string"s);
+	return {};
+};
+
+AttributeValidatorFunc IsBoolOrString = [](json const& attr_value, Declaration const& on_decl) -> expected<void, std::string> {
+	if (!attr_value.is_string() && !attr_value.is_boolean())
+		return unexpected("must be a string or boolean"s);
 	return {};
 };
 
@@ -76,34 +114,34 @@ const BoolAttributeProperties Attribute::Getter {
 	true
 };
 const BoolAttributeProperties Attribute::Setter {
-	"Setter", 
-	"Whether or not to create a setter for this field", 
-	Targets::Fields, 
+	"Setter",
+	"Whether or not to create a setter for this field",
+	Targets::Fields,
 	true
 };
 const BoolAttributeProperties Attribute::Editor {
-	"Editor;Edit", 
-	"Whether or not this field should be editable", 
-	Targets::Fields, 
-	true 
+	"Editor;Edit",
+	"Whether or not this field should be editable",
+	Targets::Fields,
+	true
 };
 const BoolAttributeProperties Attribute::Save {
-	"Save", 
-	"Whether or not this field should be saveable", 
-	Targets::Fields, 
-	true 
+	"Save",
+	"Whether or not this field should be saveable",
+	Targets::Fields,
+	true
 };
 const BoolAttributeProperties Attribute::Load {
-	"Load", 
-	"Whether or not this field should be loadable", 
-	Targets::Fields, 
-	true 
+	"Load",
+	"Whether or not this field should be loadable",
+	Targets::Fields,
+	true
 };
 const BoolAttributeProperties Attribute::Document {
-	"Document", 
-	"Whether or not to create a documentation entry for this entity", 
-	Targets::Any, 
-	true 
+	"Document",
+	"Whether or not to create a documentation entry for this entity",
+	Targets::Any,
+	true
 };
 
 const BoolAttributeProperties Attribute::Serialize{ "Serialize", "False means both 'Save' and 'Load' are false", Targets::Fields, true };
@@ -119,9 +157,9 @@ const BoolAttributeProperties Attribute::Required {
 	false
 };
 
-const StringAttributeProperties Attribute::OnChange { 
+const StringAttributeProperties Attribute::OnChange {
 	"OnChange",
-	"Executes the given code when this field changes", 
+	"Executes the given code when this field changes",
 	Targets::Fields,
 	NoValidator /// It can be empty, because it is code
 };
@@ -138,22 +176,22 @@ const StringAttributeProperties Attribute::Flags {
 	Targets::Fields,
 	IsReflectedEnum
 };
-const BoolAttributeProperties Attribute::FlagNots { 
+const BoolAttributeProperties Attribute::FlagNots {
 	"FlagNots",
 	"Requires 'Flags' attribute. If set, creates IsNotFlag functions in addition to regular IsFlag (except for enumerators with Opposite attribute).",
 	Targets::Fields,
 	true
 };
 
-const StringAttributeProperties Attribute::UniqueName { 
-	"UniqueName", 
-	"A unique (for this type) name of this method; useful for overloaded functions", 
+const StringAttributeProperties Attribute::UniqueName {
+	"UniqueName",
+	"A unique (for this type) name of this method; useful for overloaded functions",
 	Targets::Methods,
 	IsIdentifier
 };
 
 const StringAttributeProperties Attribute::GetterFor {
-	"GetterFor", 
+	"GetterFor",
 	"This function is a getter for the named field",
 	Targets::Methods,
 };
@@ -165,7 +203,7 @@ const StringAttributeProperties Attribute::SetterFor {
 
 /// TODO: Should this also be a flag?
 const BoolAttributeProperties Attribute::Abstract {
-	"Abstract", 
+	"Abstract",
 	"This record is abstract (don't create special constructors)",
 	Targets::Classes,
 	false
@@ -179,8 +217,8 @@ const BoolAttributeProperties Attribute::Singleton {
 };
 
 const AttributeProperties Attribute::DefaultFieldAttributes {
-	"DefaultFieldAttributes", 
-	"These attributes will be added as default to every reflected field of this class", 
+	"DefaultFieldAttributes",
+	"These attributes will be added as default to every reflected field of this class",
 	Targets::Classes,
 	json::object(),
 };
@@ -206,24 +244,56 @@ const BoolAttributeProperties Attribute::CreateProxy {
 	true
 };
 
+constexpr auto EnumerationsCat = "Enumerations"_ac;
+
 const BoolAttributeProperties Attribute::List {
 	"List",
 	"Whether or not to generate GetNext() and GetPrev() functions that return the next/prev enumerator in sequence, wrapping around",
 	Targets::Enums,
-	false
+	false,
+	EnumerationsCat
 };
 const StringAttributeProperties Attribute::Opposite {
 	"Opposite",
 	"When used in a Flag enum, will create a virtual flag with the given name that is the complement of this one, for the purposes of creating getters and setters",
 	Targets::Enumerators,
-	IsIdentifier
+	IsIdentifier,
+	EnumerationsCat
 };
 
-expected<void, std::string> AttributeProperties::Validate(json const& attr_value, Declaration const& decl) const
-{
-	if (!AppliesTo(decl))
-		return unexpected(std::format("`{}` attribute only applies on the following entities: {}", Name(), join(ValidTargets, ", ", [](auto e) { return magic_enum::enum_name(e); })));
-	if (Validator)
-		return Validator(attr_value, decl);
-	return {};
-}
+constexpr auto CppAttributesCat = "C++ Attributes"_ac;
+
+/// TODO: Check for these and output flags/docnotes
+const BoolAttributeProperties Attribute::NoReturn {
+	"NoReturn",
+	"Do not set this directly. Use [[noreturn]] instead.",
+	Targets::Methods,
+	false,
+	AttributePropertyFlags::NotUserSettable,
+	CppAttributesCat,
+};
+const BoolAttributeProperties Attribute::Deprecated {
+	"Deprecated",
+	"Do not set this directly. Use [[deprecated]] instead.",
+	Targets::Any,
+	false,
+	AttributePropertyFlags::NotUserSettable,
+	IsBoolOrString,
+	CppAttributesCat
+};
+const BoolAttributeProperties Attribute::NoDiscard {
+	"NoDiscard",
+	"Do not set this directly. Use [[nodiscard]] instead.",
+	{ DeclarationType::Class, DeclarationType::Enum, DeclarationType::Method },
+	false,
+	AttributePropertyFlags::NotUserSettable,
+	IsBoolOrString,
+	CppAttributesCat
+};
+const BoolAttributeProperties Attribute::NoUniqueAddress { "NoUniqueAddress", 
+	"Do not set this directly. Use [[no_unique_address]] instead.", 
+	Targets::Fields, 
+	false, 
+	AttributePropertyFlags::NotUserSettable,
+	CppAttributesCat
+};

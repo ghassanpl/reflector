@@ -7,6 +7,12 @@ into
 
 - we should unify and simplify error reporting
 
+- we COULD, if we're still using RMethod macros, add [[nodiscard]] by default to all methods
+
+- since we're using `header_utils` anyway, might as well use Assuming
+
+- support '{' on enum primary declaration line (`enum blah {`)
+
 - check if we can use __COUNTER__ instead of __LINE__ in RBody() macros (will make it so that intellisense only fails when order of classes is changed, not the line their body is at)
 
 - support C++ attributes (nodiscard, noreturn, deprecated)

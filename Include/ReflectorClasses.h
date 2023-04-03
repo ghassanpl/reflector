@@ -76,6 +76,7 @@ namespace Reflector
 		using ParentType = PARENT_TYPE;
 		using ParameterTupleType = PARAMETER_TUPLE_TYPE;
 		static inline constexpr auto ParameterCount = std::tuple_size_v<PARAMETER_TUPLE_TYPE>;
+		/// TODO: static inline constexpr auto OptionalParameterCount = OPTIONAL_PARAM_COUNT;
 		using ParameterIndexSequence = std::make_index_sequence<ParameterCount>;
 		template <size_t INDEX>
 		using ParameterType = std::tuple_element_t<INDEX, PARAMETER_TUPLE_TYPE>;
@@ -184,6 +185,8 @@ namespace Reflector
 		NoLoad,
 		NoDebug,
 
+		NoUniqueAddress,
+
 		Required,
 		Artificial,
 		Static,
@@ -230,7 +233,9 @@ namespace Reflector
 		Artificial,
 		HasBody,
 		NoCallable,
-		Proxy
+		Proxy,
+		NoReturn,
+		NoDiscard,
 	};
 
 	struct MethodReflectionData
@@ -250,6 +255,7 @@ namespace Reflector
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
+
 		std::string_view UniqueName = ""; /// TODO: Could be given at compile-time as well
 		std::string_view ArtificialBody = "";
 		std::type_index ReturnTypeIndex = typeid(void);

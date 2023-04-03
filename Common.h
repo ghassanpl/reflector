@@ -90,29 +90,51 @@ enum class DeclarationType
 	Enumerator,
 };
 
-struct Declaration
+/// TODO: How much of the data in these classes should we output into the reflection system (*ReflectionData classes, etc)?
+/// In particular: Should we output doc note and comments?
+
+struct SimpleDeclaration
 {
-	json Attributes = json::object();
 	std::string Name;
-	size_t DeclarationLine = 0;
-	AccessMode Access = AccessMode::Unspecified;
 	std::vector<std::string> Comments;
 
-	/// TODO: Fill this in for every declaration!
-	uint64_t UID = 0;
-
 	bool Document = true;
+	std::optional<std::string> Deprecation;
 
-	/// These are in a map for historical reasons mostly, but it's easier to find bugs this way
-	std::map<std::string, Method const*, std::less<>> AssociatedArtificialMethods;
-	
 	std::vector<std::pair<std::string, std::string>> DocNotes;
+
 	template <typename... ARGS>
 	void AddDocNote(std::string header, std::string_view str, ARGS&& ... args)
 	{
 		DocNotes.emplace_back(std::move(header), std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...)));
 	}
 
+	json ToJSON() const;
+};
+
+enum class LinkFlag
+{
+	Parent,
+	SignatureSpecifiers, /// const, noexcept
+	Specifiers, /// rest
+	ReturnType,
+	Parameters,
+	Namespace,
+};
+using LinkFlags = enum_flags<LinkFlag>;
+
+struct Declaration : public SimpleDeclaration
+{
+	size_t DeclarationLine = 0;
+	json Attributes = json::object();
+	AccessMode Access = AccessMode::Unspecified;
+
+	/// TODO: Fill this in for every declaration!
+	uint64_t UID = 0;
+
+	/// These are in a map for historical reasons mostly, but it's easier to find bugs this way
+	std::map<std::string, Method const*, std::less<>> AssociatedArtificialMethods;
+	
 	std::string GeneratedUniqueName() const { return std::format("{}_{:016x}", Name, UID); }
 
 	virtual std::string FullName(std::string_view sep = "_") const
@@ -120,11 +142,15 @@ struct Declaration
 		return Name;
 	}
 
-	virtual std::string MakeLink() const;
+	virtual std::string MakeLink(LinkFlags flags = {}) const = 0;
 
 	virtual ~Declaration() noexcept = default;
 
 	virtual DeclarationType DeclarationType() const = 0;
+
+	void CreateArtificialMethodsAndDocument(Options const& options);
+
+	virtual void AddNoDiscard(std::optional<std::string> reason) {}
 
 	virtual json ToJSON() const;
 };
@@ -163,6 +189,13 @@ struct TypeDeclaration : public Declaration
 			result["Namespace"] = Namespace;
 		return result;
 	}
+	
+	virtual void AddNoDiscard(std::optional<std::string> reason) override
+	{
+		AddDocNote("No Discard", "The compiler will warn you if you discard a function return value of this type.");
+	}
+
+	virtual std::string MakeLink(LinkFlags flags = {}) const override;
 };
 
 template <typename PARENT_TYPE>
@@ -197,21 +230,26 @@ struct Field : public MemberDeclaration<Class>
 
 	virtual json ToJSON() const override;
 
+	virtual std::string MakeLink(LinkFlags flags = {}) const override;
+
 	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Field; }
 };
 
-using MethodParameter = Reflector::MethodReflectionData::Parameter;
+//using MethodParameter = Reflector::MethodReflectionData::Parameter;
 
-inline json ToJSON(MethodParameter const& param)
+struct MethodParameter : SimpleDeclaration
 {
-	return { {"Name", param.Name}, {"Type", param.Type}, {"Initializer", param.Initializer} };
-}
+	std::string Type;
+	std::string Initializer;
+
+	json ToJSON() const;
+};
 
 struct Method : public MemberDeclaration<Class>
 {
 	using MemberDeclaration<Class>::MemberDeclaration;
 
-	std::string ReturnType;
+	//std::string ReturnType;
 	ghassanpl::enum_flags<Reflector::MethodFlags> Flags;
 
 	void SetParameters(std::string params);
@@ -223,6 +261,9 @@ struct Method : public MemberDeclaration<Class>
 	std::string ArtificialBody;
 	Declaration const* SourceDeclaration{};
 	std::string UniqueName;
+	SimpleDeclaration Return;
+
+	virtual std::string MakeLink(LinkFlags flags = {}) const override;
 
 	size_t ActualDeclarationLine() const
 	{
@@ -239,6 +280,12 @@ struct Method : public MemberDeclaration<Class>
 	virtual json ToJSON() const override;
 
 	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Method; }
+
+	virtual void AddNoDiscard(std::optional<std::string> reason) override
+	{
+		Flags += MethodFlags::NoDiscard;
+		AddDocNote("No Discard", "The compiler will warn you if you discard this function's return value.");
+	}
 
 private:
 	std::string mParameters;
@@ -258,6 +305,8 @@ struct Property : MemberDeclaration<Class>
 	virtual json ToJSON() const override;
 
 	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Property; }
+
+	virtual std::string MakeLink(LinkFlags flags = {}) const;
 };
 
 struct Class : public TypeDeclaration
@@ -335,6 +384,8 @@ struct Enumerator : public MemberDeclaration<Enum>
 	void CreateArtificialMethodsAndDocument(Options const& options);
 
 	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Enumerator; }
+
+	virtual std::string MakeLink(LinkFlags flags = {}) const override;
 };
 
 struct Enum : public TypeDeclaration
@@ -388,32 +439,9 @@ struct FileMirror
 	FileMirror& operator=(FileMirror&&) noexcept = default;
 };
 
-inline auto FormatPreFlags(enum_flags<Reflector::FieldFlags> flags, enum_flags<Reflector::FieldFlags> except = {}) {
-	std::vector<std::string_view> prefixes;
-	flags = flags - except;
-	if (flags.is_set(FieldFlags::Mutable)) prefixes.push_back("mutable ");
-	if (flags.is_set(FieldFlags::Static)) prefixes.push_back("static ");
-	return join(prefixes, "");
-}
-
-inline auto FormatPreFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except = {}) {
-	std::vector<std::string_view> prefixes;
-	flags = flags - except;
-	if (flags.is_set(MethodFlags::Inline)) prefixes.push_back("inline ");
-	if (flags.is_set(MethodFlags::Static)) prefixes.push_back("static ");
-	if (flags.is_set(MethodFlags::Virtual)) prefixes.push_back("virtual ");
-	if (flags.is_set(MethodFlags::Explicit)) prefixes.push_back("explicit ");
-	return join(prefixes, "");
-}
-
-inline auto FormatPostFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except = {}) {
-	std::vector<std::string_view> suffixes;
-	flags = flags - except;
-	if (flags.is_set(MethodFlags::Const)) suffixes.push_back(" const");
-	if (flags.is_set(MethodFlags::Final)) suffixes.push_back(" final");
-	if (flags.is_set(MethodFlags::Noexcept)) suffixes.push_back(" noexcept");
-	return join(suffixes, "");
-}
+std::string FormatPreFlags(enum_flags<Reflector::FieldFlags> flags, enum_flags<Reflector::FieldFlags> except = {});
+std::string FormatPreFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except = {});
+std::string FormatPostFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except = {});
 
 extern uint64_t ChangeTime;
 std::vector<FileMirror const*> GetMirrors();

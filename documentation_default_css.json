@@ -16,6 +16,18 @@
     "margin-left": "0",
     "margin": "0.5em"
   },
+  ".deprecated h4": {
+    "margin": "0",
+    "margin-bottom": "0.5em"
+  },
+  "div.deprecated": {
+    "background-color": "rgb(99, 0, 1)",
+    "padding": "0 0.5em",
+    "width": "fit-content"
+  },
+  "a.deprecated": {
+    "text-decoration": "line-through"
+  },
   "h1": {
     "font-size": "200%"
   },

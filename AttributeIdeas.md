@@ -1,4 +1,6 @@
-# Ideas
+# Ideas for Attributes
+
+### Misc
 
 ```c++
 StringAttribute Setter{ "Setter" /* "SetterName" ? */, "Only valid on Flag enums, will change the setter for this flag (if one is created) to this value", Targets::Enumerators};
@@ -7,11 +9,8 @@ StringAttribute CreateIsChilds{ "CreateIsChilds", "Creates functions IsX (and As
 StringAttribute ScriptAccess{ "ScriptAccess", "Whether or not to hook up the generated accessors (getter, setter) to the scripting system", Targets::Fields, true };
 ```
 
-* [field] **PrimaryKey** - when generating database tables of the parent class, this will be the unique primary key for that table
-* [field] **Indexed** - when generating database tables of the parent class, an index on this field will be created for that table
 * [record] **Icon** - for the editors and such
-* [any] **Document** = true/false - whether or not to generate documentation for the entity
-* [any] **Internal** - do not document
+* [any] **Internal** - do not document, what else? if nothing else, it's handled by `Document`
 * [record] **GenerateResetFunctions** - will generate a Reset*FieldName* for each field in the class (see below), unless it has the Reset = false attribute
 * [field] **Reset/Resettable** - will generate a Reset[FieldName] function that sets the field value to its initial value); having any of these in a class will create a Reset() function that resets every field
 * [field] **Delegate** - creates Is*FieldName*Set() and Call*FieldName*() script-callable functions that check for std::function assignment and (optionally) call it  
@@ -20,23 +19,35 @@ StringAttribute ScriptAccess{ "ScriptAccess", "Whether or not to hook up the gen
 	*Not sure if this is necessary, optional already has a nice api of its own*
 * [field] **ExposeMethods**=[names,of,methods] - will create `template <typename... ARGS> auto method_name(ARGS&&... args) { return field_name.method_name(std::forward<ARGS>(args)...); }`
 		Or better yet, RField(ExposeMethods={GetSpeed=GetAnimationSpeed, ...}) Animation mAnimation;
-* [record/field] **OnAfterLoad**=funcname, OnBeforeSave=funcname
 * [record/field] **CustomEditor**=funcname
 * [field] **Min/Max/Step** - how to handle?
 		ForceLimits - will clamp the input value in the setter
-* [field] **VectorGetters**=true/element_name - creates Get#At(), Get#Count()
-* [field] **VectorSetters**=true/element_name - creates Set#At(), Push#(), Erase#(), Insert#(), Clear#s(), Resize#(), Pop#()
-* [field] **MapGetters **- Find#()
-* [field] **MapSetters**
-* [field] **Validator**=methodname - will generate a ValidateFields(callback) function for the class (customizable)
-	`methodname` must be a valid method in the class?
-	how to handle this? Should we also generate a Validate[FieldName] function? What's the callback for?
-* [any] **Plural/Singular** - whether to create Is or Are prefixes and such
+* [any] **Plural/Singular** - whether to create Is or Are prefixes and such;   
+	*NOTE: Give example or where this could be useful*
 * [record] **PublicFieldAccessors** = false - will disable creation of Get/Set functions for public fields (also should be a global option)
 * [record] **DefaultMethodAttributes** = {}
 * [record] **DefaultFieldAttributes** = {}
 * [enum] **DefaultEnumeratorAttributes** = {}
 
+### Pre/Post/Validation
+* [record/field] **OnAfterLoad**=funcname, **OnBeforeSave**=funcname
+* [field] **Validator**=methodname - will generate a ValidateFields(callback) function for the class (customizable)
+	`methodname` must be a valid method in the class?
+	how to handle this? Should we also generate a Validate[FieldName] function? What's the callback for?
+
+### Container Accessors
+
+* [field] **VectorGetters**=true/element_name - creates Get#At(), Get#Count()
+* [field] **VectorSetters**=true/element_name - creates Set#At(), Push#(), Erase#(), Insert#(), Clear#s(), Resize#(), Pop#()
+* [field] **MapGetters**- Find#()
+* [field] **MapSetters**
+
+### Database Functionality
+* [field] **PrimaryKey** - when generating database tables of the parent class, this will be the unique primary key for that table
+* [field] **Indexed** - when generating database tables of the parent class, an index on this field will be created for that table
+* [record] **CreateTable** - will create a class that acts as an ORM-binding table for this record
+
+### Hierarchy Functionality
 * **Children/ParentPointer/NameInHierarchy** - combine these with a `generic_path` type to create a general hierarchy system (maybe with named hierarchies?)
 	Maybe something like a class attribute RClass(Hierarchies=[list, of, hierarchies, ...]) that creates accessors like Get#Parent, Get#Root for each hierarchy
 		and if there is only one hierarchy (or Hierarchy=true), the names are simpler

@@ -4,35 +4,48 @@
 /// DISCLAIMER: THE WORKS ARE WITHOUT WARRANTY.
 
 #include "Common.h"
-#include "Parse.h"
 #include "Attributes.h"
 #include "Options.h"
 #include "Documentation.h"
 #include <ghassanpl/string_ops.h>
 #include <mutex>
 #include <future>
-#include <fstream>
 using namespace std::string_literals;
 
 uint64_t ChangeTime = 0;
 std::vector<std::unique_ptr<FileMirror>> Mirrors;
 
-std::string Declaration::MakeLink() const
+void Declaration::CreateArtificialMethodsAndDocument(Options const& options)
 {
-	return std::format("<see link='{}'>{}</see>", FullName("."), Name);
+	if (auto& attr = Attribute::Deprecated.TryGet(*this); !attr.is_null())
+	{
+		if (attr.is_boolean() && attr == false)
+			return;
+		this->Deprecation = attr.is_string() ? std::string{attr} : std::string{};
+	}
+
+	Attribute::Document.TryGet(*this, Document);
+
+	if (auto& attr = Attribute::NoDiscard.TryGet(*this); !attr.is_null())
+	{
+		if (attr.is_boolean() && attr == false)
+			return;
+
+		AddNoDiscard(attr.is_string() ? std::string{attr} : std::string{});
+	}
+
+	/// TODO: We could do a preliminary pass on Comments here and create a vector<string, vector<string>> that holds lines for each section.
+	/// Then the class-specific implementations of this function will move them to their appropriate sub-declarations (like params or returns or w/e)
 }
 
 json Declaration::ToJSON() const
 {
-	json result = json::object();
+	json result = SimpleDeclaration::ToJSON();
 	if (!Attributes.empty())
 		result["Attributes"] = Attributes;
-	result["Name"] = Name;
 	result["FullName"] = FullName(".");
 	if (DeclarationLine != 0) result["DeclarationLine"] = DeclarationLine;
 	if (Access != AccessMode::Unspecified) result["Access"] = AMStrings[(int)Access];
-	if (!Comments.empty()) result["Comments"] = Comments;
-	if (Document != true) result["Document"] = Document;
 	if (!AssociatedArtificialMethods.empty())
 	{
 		auto& target_ams = result["AssociatedArtificialMethods"] = json::object(); 
@@ -41,14 +54,13 @@ json Declaration::ToJSON() const
 			target_ams = am->FullName(".");
 		}
 	}
-	if (!DocNotes.empty()) result["DocNotes"] = DocNotes;
 	return result;
 }
 
 Enum const* FindEnum(string_view name)
 {
-	for (auto& mirror : Mirrors)
-		for (auto& henum : mirror->Enums)
+	for (auto const& mirror : Mirrors)
+		for (auto const& henum : mirror->Enums)
 			if (henum->Name == name || henum->FullType() == name)
 				return henum.get();
 	return nullptr;
@@ -61,6 +73,8 @@ Method* Field::AddArtificialMethod(std::string function_type, std::string result
 
 void Field::CreateArtificialMethodsAndDocument(Options const& options)
 {
+	Declaration::CreateArtificialMethodsAndDocument(options);
+
 	/// Create comments string
 	/// TODO: Improve this
 	auto field_comments = Access != AccessMode::Public ?
@@ -70,7 +84,8 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 	/// Getters and Setters
 	if (!Flags.is_set(Reflector::FieldFlags::NoGetter))
 	{
-		auto getter = AddArtificialMethod("Getter", Type + " const &", options.GetterPrefix + CleanName, "", "return this->" + Name + ";", {"Gets " + field_comments}, {Reflector::MethodFlags::Const});
+		auto getter = AddArtificialMethod("Getter", Type + " const &", options.GetterPrefix + CleanName, "", "return this->" + Name + ";", {"Gets " + field_comments},
+			{MethodFlags::Const, MethodFlags::Noexcept, MethodFlags::NoDiscard});
 		AddDocNote("Getter", "The value of this field is retrieved by the {} method.", getter->MakeLink());
 	}
 
@@ -89,6 +104,8 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 	if (Flags.is_set(Reflector::FieldFlags::NoLoad)) AddDocNote("Not Editable", "This field will not be deserialized when loading {}.", ParentType->MakeLink());
 	if (Flags.is_set(Reflector::FieldFlags::NoDebug)) AddDocNote("Not Editable", "This field will not be debuggable when debugging {}.", ParentType->MakeLink());
 
+	if (Flags.is_set(Reflector::FieldFlags::NoUniqueAddress)) AddDocNote("No Unique Address", "This field has the [\\[\\[no_unique_address\\]\\]](https://en.cppreference.com/w/cpp/language/attributes/no_unique_address) attribute applied to it..", ParentType->MakeLink());
+
 	auto flag_getters = Attribute::FlagGetters.SafeGet(*this);
 	auto flag_setters = Attribute::Flags.SafeGet(*this);
 	if (flag_getters && flag_setters)
@@ -102,8 +119,8 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 
 	if (do_flags)
 	{
-		constexpr auto enum_getter_flags = enum_flags{ Reflector::MethodFlags::Const, Reflector::MethodFlags::Inline, Reflector::MethodFlags::Noexcept };
-		constexpr auto enum_setter_flags = enum_getter_flags - Reflector::MethodFlags::Const;
+		constexpr auto enum_getter_flags = enum_flags{ MethodFlags::Const, MethodFlags::Inline, MethodFlags::Noexcept, MethodFlags::NoDiscard };
+		constexpr auto enum_setter_flags = enum_flags{ MethodFlags::Inline };
 		auto henum = FindEnum(*enum_name);
 		if (!henum)
 		{
@@ -215,7 +232,7 @@ void Method::Split()
 	int brackets = 0, tris = 0, parens = 0;
 	auto argstring = std::string_view{ mParameters };
 	auto begin = argstring.begin();
-	MethodParameter current;
+	MethodParameter current{};
 	const char* eq_ptr = nullptr;
 	auto add = [&] {
 		if (eq_ptr)
@@ -288,9 +305,9 @@ void Method::SetParameters(std::string params)
 std::string Method::GetSignature(Class const& parent_class) const
 {
 	auto base = Flags.is_set(MethodFlags::Static) ? 
-		std::format("{} (*)({})", ReturnType, ParametersTypesOnly)
+		std::format("{} (*)({})", Return.Name, ParametersTypesOnly)
 	:
-		std::format("{} ({}::*)({})", ReturnType, parent_class.FullType(), ParametersTypesOnly);
+		std::format("{} ({}::*)({})", Return.Name, parent_class.FullType(), ParametersTypesOnly);
 	if (Flags.is_set(Reflector::MethodFlags::Const))
 		base += " const";
 	if (Flags.is_set(Reflector::MethodFlags::Noexcept))
@@ -305,16 +322,20 @@ Method* Method::AddArtificialMethod(std::string function_type, std::string resul
 
 void Method::CreateArtificialMethodsAndDocument(Options const& options)
 {
+	Declaration::CreateArtificialMethodsAndDocument(options);
+
 	if (ParentType->Flags.is_set(ClassFlags::HasProxy) && Flags.is_set(MethodFlags::Virtual))
 	{
 		Method* proxy_method = nullptr;
-		auto flags = (Flags - MethodFlags::Virtual) + MethodFlags::Proxy;
+		const auto flags = (Flags - MethodFlags::Virtual) + MethodFlags::Proxy;
 		if (Flags.is_set(MethodFlags::Abstract))
-			proxy_method = AddArtificialMethod("Proxy", ReturnType, options.ProxyMethodPrefix + Name, GetParameters(), std::format("throw std::runtime_error{{\"invalid abstract call to function {}::{}\"}};", ParentType->FullType(), Name), {"Proxy function for " + MakeLink() }, flags);
+			proxy_method = AddArtificialMethod("Proxy", Return.Name, options.ProxyMethodPrefix + Name, GetParameters(), std::format("throw std::runtime_error{{\"invalid abstract call to function {}::{}\"}};", ParentType->FullType(), Name), {"Proxy function for " + MakeLink() }, flags);
 		else
-			proxy_method = AddArtificialMethod("Proxy", ReturnType, options.ProxyMethodPrefix + Name, GetParameters(), "return self_type::" + Name + "(" + ParametersNamesOnly + ");", { "Proxy function for " + MakeLink() }, flags);
+			proxy_method = AddArtificialMethod("Proxy", Return.Name, options.ProxyMethodPrefix + Name, GetParameters(), "return self_type::" + Name + "(" + ParametersNamesOnly + ");", { "Proxy function for " + MakeLink() }, flags);
 		proxy_method->Document = false;
 	}
+
+	if (Flags.is_set(MethodFlags::NoReturn)) AddDocNote("Does Not Return", "This function does not return.");
 }
 
 std::string Method::FullName(std::string_view sep) const
@@ -325,8 +346,8 @@ std::string Method::FullName(std::string_view sep) const
 json Method::ToJSON() const
 {
 	json result = MemberDeclaration<Class>::ToJSON();
-	result["ReturnType"] = ReturnType;
-	if (ParametersSplit.size() > 0) std::transform(ParametersSplit.begin(), ParametersSplit.end(), std::back_inserter(result["Parameters"]), &::ToJSON);
+	result["Return.Name"] = Return.Name;
+	if (ParametersSplit.size() > 0) std::ranges::transform(ParametersSplit, std::back_inserter(result["Parameters"]), [](auto& param) { return param.ToJSON(); });
 	if (!ArtificialBody.empty()) result["ArtificialBody"] = ArtificialBody;
 	if (SourceDeclaration) result["SourceDeclaration"] = SourceDeclaration->FullName(".");
 	if (!UniqueName.empty()) result["UniqueName"] = UniqueName;
@@ -336,6 +357,7 @@ json Method::ToJSON() const
 
 void Property::CreateArtificialMethodsAndDocument(Options const& options)
 {
+	Declaration::CreateArtificialMethodsAndDocument(options);
 }
 
 json Property::ToJSON() const
@@ -355,7 +377,7 @@ Method* Class::AddArtificialMethod(Declaration& for_decl, std::string function_t
 	method.SourceDeclaration = this; /// The class is the default source of the artificial method
 	method.Flags += Reflector::MethodFlags::Artificial;
 	method.Flags += additional_flags;
-	method.ReturnType = std::move(results);
+	method.Return.Name = std::move(results);
 	method.Name = std::move(name);
 	method.SetParameters(std::move(parameters));
 	method.ArtificialBody = std::move(body);
@@ -371,15 +393,18 @@ Method* Class::AddArtificialMethod(Declaration& for_decl, std::string function_t
 		ReportError(for_decl, "Artificial method '{}' already exists in class {}: {}", function_type, MakeLink(), it->second->MakeLink());
 		throw std::runtime_error("Internal error");
 	}
+	method.UID = GenerateUID(ParentMirror->SourceFilePath, method.ActualDeclarationLine());
 	return &method;
 }
 
 void Class::CreateArtificialMethodsAndDocument(Options const& options)
 {
+	Declaration::CreateArtificialMethodsAndDocument(options);
+
 	/// Check if we should build proxy
 	bool should_build_proxy = false;
 
-	for (auto& method : Methods)
+	for (const auto& method : Methods)
 	{
 		if (method->Flags.is_set(Reflector::MethodFlags::Virtual) && !method->Flags.is_set(Reflector::MethodFlags::Final))
 			should_build_proxy = true;
@@ -397,7 +422,8 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 	/// Create singleton method if singleton
 	if (Attribute::Singleton(*this))
 	{
-		auto getter = AddArtificialMethod(*this, "SingletonGetter", format("{}&", this->FullType()), options.SingletonInstanceGetterName, "", "static self_type instance; return instance;", { "Returns the single instance of this class" }, Reflector::MethodFlags::Static);
+		const auto getter = AddArtificialMethod(*this, "SingletonGetter", format("{}&", this->FullType()), options.SingletonInstanceGetterName, "", "static self_type instance; return instance;",
+			{ "Returns the single instance of this class" }, { MethodFlags::Noexcept, MethodFlags::Static, MethodFlags::NoDiscard });
 		AddDocNote("Singleton", "This class is a singleton. Call {} to get the instance.", getter->MakeLink());
 	}
 
@@ -408,19 +434,19 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 
 	/// Create methods for fields and methods
 
-	for (auto& field : Fields)
-		field->CreateArtificialMethodsAndDocument(options);
-	for (auto& method : Methods)
+	for (const auto& method : Methods)
 		method->CreateArtificialMethodsAndDocument(options);
+	for (const auto& field : Fields)
+		field->CreateArtificialMethodsAndDocument(options);
 	for (auto& property : Properties)
 		property.second.CreateArtificialMethodsAndDocument(options);
 
 	for (auto& am : mArtificialMethods)
 	{
-		am->UID = GenerateUID(ParentMirror->SourceFilePath, am->ActualDeclarationLine());
 		Methods.push_back(std::exchange(am, {}));
 	}
 	mArtificialMethods.clear();
+
 
 	/// First check unique method names
 	MethodsByName.clear();
@@ -435,7 +461,7 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 		}
 	}
 	
-	for (auto& method : Methods)
+	for (auto const& method : Methods)
 	{
 		if (method->UniqueName.empty())
 			continue;
@@ -443,7 +469,7 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 		{
 			std::string message;
 			message += std::format("{}({},0): method with unique name not unique", ParentMirror->SourceFilePath.string(), method->DeclarationLine + 1);
-			for (auto& conflicting_method : MethodsByName[method->UniqueName])
+			for (auto const& conflicting_method : MethodsByName[method->UniqueName])
 			{
 				if (conflicting_method != method.get())
 					message += std::format("\n{}({},0):   conflicts with this declaration", ParentMirror->SourceFilePath.string(), conflicting_method->DeclarationLine + 1);
@@ -516,6 +542,8 @@ json Enumerator::ToJSON() const
 
 void Enumerator::CreateArtificialMethodsAndDocument(Options const& options)
 {
+	Declaration::CreateArtificialMethodsAndDocument(options);
+
 	if (auto opposite = Attribute::Opposite(*this); !opposite.empty())
 	{
 		AddDocNote("Opposite", "The complement of this flag value is named `{}`.", opposite);
@@ -535,12 +563,14 @@ json Enum::ToJSON() const
 
 void Enum::CreateArtificialMethodsAndDocument(Options const& options)
 {
+	Declaration::CreateArtificialMethodsAndDocument(options);
+
 	if (Attribute::List(*this))
 	{
 		AddDocNote("List Enum", "This enum represents a list of some sort, and its values will therefore be incrementable/decrementable (with wraparound behavior).");
 	}
 
-	for (auto& enumerator : Enumerators)
+	for (auto const& enumerator : Enumerators)
 		enumerator->CreateArtificialMethodsAndDocument(options);
 }
 
@@ -559,9 +589,9 @@ json FileMirror::ToJSON() const
 
 void FileMirror::CreateArtificialMethodsAndDocument(Options const& options)
 {
-	for (auto& klass : Classes)
+	for (auto const& klass : Classes)
 		klass->CreateArtificialMethodsAndDocument(options);
-	for (auto& henum : Enums)
+	for (auto const& henum : Enums)
 		henum->CreateArtificialMethodsAndDocument(options);
 }
 
@@ -574,6 +604,37 @@ void PrintSafe(std::ostream& strm, std::string val)
 
 bool ParsingMirrors = false;
 static std::mutex mirror_mutex;
+
+std::string FormatPreFlags(enum_flags<Reflector::FieldFlags> flags, enum_flags<Reflector::FieldFlags> except)
+{
+	std::vector<std::string_view> prefixes;
+	flags = flags - except;
+	if (flags.is_set(FieldFlags::Mutable)) prefixes.push_back("mutable ");
+	if (flags.is_set(FieldFlags::Static)) prefixes.push_back("static ");
+	return join(prefixes, "");
+}
+
+std::string FormatPreFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except)
+{
+	std::vector<std::string_view> prefixes;
+	flags = flags - except;
+	if (flags.is_set(MethodFlags::NoDiscard)) prefixes.push_back("[[nodiscard]] ");
+	if (flags.is_set(MethodFlags::Inline)) prefixes.push_back("inline ");
+	if (flags.is_set(MethodFlags::Static)) prefixes.push_back("static ");
+	if (flags.is_set(MethodFlags::Virtual)) prefixes.push_back("virtual ");
+	if (flags.is_set(MethodFlags::Explicit)) prefixes.push_back("explicit ");
+	return join(prefixes, "");
+}
+
+std::string FormatPostFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except)
+{
+	std::vector<std::string_view> suffixes;
+	flags = flags - except;
+	if (flags.is_set(MethodFlags::Const)) suffixes.push_back(" const");
+	if (flags.is_set(MethodFlags::Final)) suffixes.push_back(" final");
+	if (flags.is_set(MethodFlags::Noexcept)) suffixes.push_back(" noexcept");
+	return join(suffixes, "");
+}
 
 std::vector<FileMirror const*> GetMirrors()
 {
@@ -599,10 +660,106 @@ void CreateArtificialMethodsAndDocument(Options const& options)
 	std::unique_lock lock{ mirror_mutex };
 
 	/// Creating artificial methods should be plenty fast, we don't need to do it multithreaded, and it's safer that way
-	for (auto& mirror : Mirrors)
+	for (auto const& mirror : Mirrors)
 		mirror->CreateArtificialMethodsAndDocument(options);
 }
 
 FileMirror::FileMirror()
 {
+}
+
+json SimpleDeclaration::ToJSON() const
+{
+	json result = json::object();
+	result["Name"] = Name;
+	if (!Comments.empty()) result["Comments"] = Comments;
+	if (Document != true) result["Document"] = Document;
+	if (Deprecation) result["Deprecation"] = Deprecation->empty() ? json{true} : json{ *Deprecation };
+	if (!DocNotes.empty()) result["DocNotes"] = DocNotes;
+	return result;
+}
+
+json MethodParameter::ToJSON() const
+{
+	auto result = SimpleDeclaration::ToJSON();
+	result["Type"] = Type;
+	if (!Initializer.empty()) result["Initializer"] = Initializer;
+	return result;
+}
+
+struct LinkParts
+{
+	LinkParts(Declaration const& decl)
+		: Name(decl.Name)
+		, Href(decl.FullName("."))
+	{
+		if (decl.Deprecation) LinkClasses.push_back("deprecated");
+	}
+
+	std::string Name;
+	std::string Href;
+	std::string PreSpecifiers;
+	std::string Parent;
+	std::string PostSpecifiers;
+	std::string ReturnType;
+	std::string Parameters;
+	std::string Namespace;
+	std::vector<std::string> LinkClasses;
+};
+
+std::string ConstructLink(LinkParts const& parts)
+{
+	return std::format("<small class='specifiers'>{0}</small><a href='{1}.html' class='entitylink {2}'><small class='namespace'>{8}</small><small class='parent'>{3}</small>{4}{5}<small class='specifiers'>{6}</small></a> <small class='membertype'>{7}</small>",
+		parts.PreSpecifiers, /// 0
+		parts.Href, /// 1
+		join(parts.LinkClasses, " "), /// 2
+		Escaped(parts.Parent), /// 3
+		parts.Name, /// 4
+		Escaped(parts.Parameters), /// 5
+		parts.PostSpecifiers, /// 6
+		Escaped(parts.ReturnType), /// 7
+		parts.Namespace
+	);
+}
+
+std::string Enumerator::MakeLink(LinkFlags flags) const
+{
+	LinkParts parts{ *this };
+	return ConstructLink(std::move(parts));
+}
+
+std::string TypeDeclaration::MakeLink(LinkFlags flags) const
+{
+	LinkParts parts{ *this };
+	if (flags.contain(LinkFlag::SignatureSpecifiers)) {}
+	if (flags.contain(LinkFlag::Specifiers)) {}
+	if (flags.contain(LinkFlag::Namespace) && !parts.Namespace.empty()) parts.Namespace = Namespace + "::";
+	return ConstructLink(std::move(parts));
+}
+
+std::string Field::MakeLink(LinkFlags flags) const
+{
+	LinkParts parts{ *this };
+	if (flags.contain(LinkFlag::Parent)) parts.Parent = ParentType->Name + ".";
+	if (flags.contain(LinkFlag::ReturnType)) parts.ReturnType = Type;
+	return ConstructLink(std::move(parts));
+}
+
+std::string Method::MakeLink(LinkFlags flags) const
+{
+	LinkParts parts{ *this };
+	if (flags.contain(LinkFlag::Parent)) parts.Parent = ParentType->Name + "::";
+	if (flags.contain(LinkFlag::SignatureSpecifiers)) parts.PostSpecifiers = FormatPostFlags(Flags, { MethodFlags::Final, MethodFlags::Noexcept });
+	if (flags.contain(LinkFlag::Specifiers)) parts.PreSpecifiers = FormatPreFlags(Flags, { MethodFlags::Inline, MethodFlags::NoDiscard });
+	if (flags.contain(LinkFlag::ReturnType) && Return.Name != "void") parts.ReturnType = "-> " + Return.Name;
+	if (flags.contain(LinkFlag::Parameters)) parts.Parameters = std::format("({})", join(ParametersTypesOnly));
+	return ConstructLink(std::move(parts));
+}
+
+std::string Property::MakeLink(LinkFlags flags) const
+{
+	LinkParts parts{ *this };
+	if (flags.contain(LinkFlag::Parent)) parts.Parent = ParentType->Name + ".";
+	if (flags.contain(LinkFlag::ReturnType)) parts.ReturnType = Type;
+	return ConstructLink(std::move(parts));
 }

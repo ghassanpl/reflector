@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Common.h"
+#include <ghassanpl/named.h>
 
 struct AttributeProperties;
 
@@ -8,19 +9,33 @@ using AttributeValidatorFunc = std::function<expected<void, std::string>(json co
 extern AttributeValidatorFunc IsString;
 extern AttributeValidatorFunc NotEmptyString;
 
+enum class AttributePropertyFlags
+{
+	/// If this is set, this attribute cannot be directly set by the user
+	NotUserSettable,
+};
+
+using AttributeCategory = ghassanpl::named<std::string_view, "AttributeCategory">;
+ghassanpl_named_string_literal_ce(AttributeCategory, _ac);
+
 struct AttributeProperties
 {
 	std::vector<std::string> ValidNames;
 	std::string_view Name() const { return ValidNames[0]; }
 	std::string Description;
+	std::string Category = "Miscellaneous";
 	enum_flags<DeclarationType> ValidTargets{};
 
 	bool AppliesTo(Declaration const& decl) const { return ValidTargets.contain(decl.DeclarationType()); }
+
 
 	json DefaultValueIfAny = nullptr;
 
 	AttributeValidatorFunc Validator;
 
+	enum_flags<AttributePropertyFlags> Flags{};
+
+	static std::vector<std::string_view> FindUnsettable(json const& attrs);
 	static inline std::vector<AttributeProperties const*> AllAttributes;
 
 	template <typename... ARGS>
@@ -38,13 +53,12 @@ struct AttributeProperties
 	expected<void, std::string> Validate(json const& attr_value, Declaration const& decl) const;
 
 	void Set(AttributeValidatorFunc validator) { this->Validator = std::move(validator); }
+	void Set(enum_flags<AttributePropertyFlags> flags) { this->Flags += flags; }
+	void Set(AttributePropertyFlags flag) { this->Flags += flag; }
+	void Set(AttributeCategory ac) { this->Category = move(ac.value); }
 
-	std::optional<std::string> ExistsIn(Declaration const& decl) const
-	{
-		if (const auto it = std::ranges::find_if(ValidNames, [&](std::string const& name) { return decl.Attributes.contains(name); }); it != ValidNames.end())
-			return *it;
-		return std::nullopt;
-	}
+	std::optional<std::string> ExistsIn(Declaration const& decl) const;
+	std::optional<std::string> ExistsIn(json const& attrs) const;
 
 	template <typename T>
 	auto operator()(Declaration const& decl, T&& default_value) const
@@ -146,17 +160,21 @@ struct TypedAttributeProperties : public AttributeProperties
 			return (T)*found;
 		return TypedDefaultValue;
 	}
-	std::optional<T> SafeGet(Declaration const& decl) const
+	
+	template <typename U = T>
+	std::optional<U> SafeGet(Declaration const& decl) const
 	{
 		if (const auto found = Find(decl))
-			return (T)*found;
+			return (U)*found;
 		return std::nullopt;
 	}
-	T GetOr(Declaration const& decl, T default_value) const
+
+	template <typename U = T, typename D>
+	U GetOr(Declaration const& decl, D&& default_value) const
 	{
 		if (const auto found = Find(decl))
-			return (T)*found;
-		return default_value;
+			return (U)*found;
+		return std::forward<D>(default_value);
 	}
 };
 
@@ -174,7 +192,7 @@ struct Attribute
 	static const BoolAttributeProperties Save;
 	static const BoolAttributeProperties Load;
 
-	static const BoolAttributeProperties Document; /// TODO: This
+	static const BoolAttributeProperties Document;
 
 	static const BoolAttributeProperties Serialize;
 	static const BoolAttributeProperties Private;
@@ -203,4 +221,10 @@ struct Attribute
 
 	static const BoolAttributeProperties List;
 	static const StringAttributeProperties Opposite;
+
+	/// These mirror C++ attributes but should not be set by the user directly, most of the time
+	static const BoolAttributeProperties NoReturn;
+	static const BoolAttributeProperties Deprecated;
+	static const BoolAttributeProperties NoDiscard; /// TODO: We should have two versions of this: "NoDiscardUser" and "NoDiscardFromCppAttr" with different targets
+	static const BoolAttributeProperties NoUniqueAddress;
 };
