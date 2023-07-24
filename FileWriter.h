@@ -115,6 +115,7 @@ struct Artifactory
 	}
 
 	void QueueCopyArtifact(path target_path, path source_path);
+	void QueueLinkOrCopyArtifact(path target_path, path source_path);
 
 	bool Write(path const& target_path, std::string contents) const;
 

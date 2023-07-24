@@ -215,14 +215,14 @@ void BuildStaticReflectionData(FileWriter& output, const Enum& henum, const Opti
 
 void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Options& options)
 {
-	if (options.JSON.Use)
+	if (options.AddGCFunctionality)
 	{
-		if (options.AddGCFunctionality)
-		{
-			output.WriteLine("template <>");
-			output.WriteLine("void ::Reflector::GCMark<{0}>(::Reflector::GCHeap* heap, {0} const* r) {{ ::Reflector::GCMark(heap, (::Reflector::Reflectable const*)r); }}", klass.FullType());
-		}
+		output.WriteLine("template <>");
+		output.WriteLine("void ::Reflector::GCMark<{0}>(::Reflector::GCHeap* heap, {0} const* r) {{ ::Reflector::GCMark(heap, (::Reflector::Reflectable const*)r); }}", klass.FullType());
+	}
 
+	if (options.JSON.Use && options.JSON.GenerateSerializationMethods)
+	{
 		output.StartBlock("void {}::JSONLoadFields({} const& src_object) {{", klass.FullType(), options.JSON.Type);
 		if (!klass.BaseClass.empty())
 			output.WriteLine("{}::parent_type::JSONLoadFields(src_object);", klass.FullType());
@@ -378,7 +378,7 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 		output.WriteLine("(({0}*)dest_object)->JSONLoadFields(src_object);", klass.FullType());
 		output.EndBlock("}},");
 		output.StartBlock(".JSONSaveFieldsFunc = [](void const* src_object, {}& dest_object){{", options.JSON.Type);
-		output.WriteLine("(({0} const*)dest_object)->JSONSaveFields(src_object);", klass.FullType());
+		output.WriteLine("(({0} const*)src_object)->JSONSaveFields(dest_object);", klass.FullType());
 		output.EndBlock("}},");
 	}
 
@@ -551,18 +551,9 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	/// Visitor methods
 	/// ///////////////////////////////////// ///
 
-	/// - StaticVisitMethods
-	output.WriteLine("template <typename VISITOR> static void ForEachMethod(VISITOR&& visitor) {{");
-	output.WriteLine("\t{}_VISIT_{}_METHODS(visitor);", options.MacroPrefix, klass.FullName());
-	output.WriteLine("}}");
-	/// - StaticVisitFields
-	output.WriteLine("template <typename VISITOR> static void ForEachField(VISITOR&& visitor) {{");
-	output.WriteLine("\t{}_VISIT_{}_FIELDS(visitor);", options.MacroPrefix, klass.FullName());
-	output.WriteLine("}}");
-	/// - StaticVisitProperties
-	output.WriteLine("template <typename VISITOR> static void ForEachProperty(VISITOR&& visitor) {{");
-	output.WriteLine("\t{}_VISIT_{}_PROPERTIES(visitor);", options.MacroPrefix, klass.FullName());
-	output.WriteLine("}}");
+	output.WriteLine("template <typename VISITOR> static void ForEachMethod(VISITOR&& visitor) {{ {}_VISIT_{}_METHODS(visitor); }}", options.MacroPrefix, klass.FullName());
+	output.WriteLine("template <typename VISITOR> static void ForEachField(VISITOR&& visitor) {{ {}_VISIT_{}_FIELDS(visitor); }}", options.MacroPrefix, klass.FullName());
+	output.WriteLine("template <typename VISITOR> static void ForEachProperty(VISITOR&& visitor) {{ {}_VISIT_{}_PROPERTIES(visitor); }}", options.MacroPrefix, klass.FullName());
 
 	if (options.AddGCFunctionality)
 	{
@@ -669,11 +660,11 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	/// TODO: Make the name of ALL these functions and values in the global namespace configurable
 	/// TODO: Instead, we could do something like:
 	/// 
-	/// static constexpr inline ::Reflector::EnumProperties EnumDataFor_ENUM_FULL_NAME = {
+	/// constexpr inline ::Reflector::EnumProperties EnumDataFor_ENUM_FULL_NAME = {
 	///		.Count = ...,
 	///		.Names = ...,
 	/// };
-	/// inline constexpr ::Reflector::EnumProperties const& EnumDataFor(ENUM_TYPE) { return EnumDataFor_ENUM_FULL_NAME; }
+	/// constexpr ::Reflector::EnumProperties const& EnumDataFor(ENUM_TYPE) { return EnumDataFor_ENUM_FULL_NAME; }
 	/// 
 	/// Basically do something to avoid declaring any functions/variables in the enum's namespace
 	{

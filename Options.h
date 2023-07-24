@@ -106,11 +106,13 @@ struct DocumentationOptions
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
 struct ArtifactOptions
 {
+	RBody();
 };
 
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
 struct NameOptions
 {
+	RBody();
 };
 
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });

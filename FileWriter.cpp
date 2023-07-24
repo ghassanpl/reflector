@@ -41,6 +41,45 @@ void Artifactory::QueueCopyArtifact(path target_path, path source_path)
 			{
 				std::filesystem::copy_file(source_path, target_path, std::filesystem::copy_options::overwrite_existing);
 				++this->mModifiedFiles;
+
+				if (!options.Quiet)
+					PrintLine("Copied file '{}' to '{}'", source_path.string(), target_path.string());
+			}
+		}
+		catch (std::exception const& e)
+		{
+			ReportError(target_path, 0, std::format("Exception when building artifact: {}\n", e.what()));
+		}
+		--this->mArtifactsToFinish;
+	}));
+}
+
+void Artifactory::QueueLinkOrCopyArtifact(path target_path, path source_path)
+{
+	std::unique_lock lock{ mListMutex };
+	++mArtifactsToFinish;
+
+	mFutures.push_back(std::async(std::launch::async, [source_path = std::move(source_path), target_path = std::move(target_path), this]() {
+		try
+		{
+			const bool target_exists = std::filesystem::exists(target_path);
+			if (!target_exists || (!std::filesystem::equivalent(source_path, target_path) && FileWriter::FilesAreDifferent(source_path, target_path)))
+			{
+				std::error_code ec;
+				if (!target_exists || (std::filesystem::remove(target_path, ec) && ec != std::errc{}))
+					std::filesystem::create_hard_link(source_path, target_path, ec);
+				if (ec != std::errc{})
+				{
+					std::filesystem::copy_file(source_path, target_path, std::filesystem::copy_options::overwrite_existing);
+					if (!options.Quiet)
+						PrintLine("Copied file '{}' as '{}'", source_path.string(), target_path.string());
+				}
+				else
+				{
+					if (!options.Quiet)
+						PrintLine("Linked file '{}' as '{}'", source_path.string(), target_path.string());
+				}
+				++this->mModifiedFiles;
 			}
 		}
 		catch (std::exception const& e)
@@ -107,7 +146,7 @@ bool Artifactory::Write(path const& target_path, std::string contents) const
 	}
 
 	if (options.Verbose)
-		PrintLine("Files same, not moved.");
+		PrintLine("Target file '{}' same as source, not moved.", target_path.string());
 	return false;
 }
 

@@ -502,9 +502,15 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 	const bool is_public = field.Access == AccessMode::Public;
 
 	/// Disable if explictly stated
-	if (Attribute::Getter.GetOr(field, true) == false || (!is_public && Attribute::PrivateGetters(klass) == false))
+	if (Attribute::Getter.GetOr(field, true) == false 
+		|| (!is_public && Attribute::PrivateGetters(klass) == false)
+		|| (is_public && !options.GenerateAccessorsForPublicFields)
+		)
 		field.Flags.set(Reflector::FieldFlags::NoGetter);
-	if (Attribute::Setter.GetOr(field, true) == false || (!is_public && Attribute::PrivateSetters(klass) == false))
+	if (Attribute::Setter.GetOr(field, true) == false 
+		|| (!is_public && Attribute::PrivateSetters(klass) == false)
+		|| (is_public && !options.GenerateAccessorsForPublicFields)
+		)
 		field.Flags.set(Reflector::FieldFlags::NoSetter);
 	if (Attribute::Editor.GetOr(field, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoEdit);
