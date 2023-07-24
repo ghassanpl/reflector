@@ -150,6 +150,7 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalIncludeDirectories>..\..\header_utils\include\;Q:\Code\Native\Reflector\Reflector\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DisableLanguageExtensions>true</DisableLanguageExtensions>
+      <BuildStlModules>false</BuildStlModules>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -173,13 +174,13 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalIncludeDirectories>..\..\header_utils\include\;Q:\Code\Native\Reflector\Reflector\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DisableLanguageExtensions>true</DisableLanguageExtensions>
+      <BuildStlModules>false</BuildStlModules>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
     </Link>
     <PreBuildEvent>
-      <Command>
-      </Command>
+      <Command>del $(ProjectDir)\Options.h.mirror</Command>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>
@@ -214,6 +215,7 @@
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalIncludeDirectories>..\..\header_utils\include\;Q:\Code\Native\Reflector\Reflector\Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DisableLanguageExtensions>true</DisableLanguageExtensions>
+      <BuildStlModules>false</BuildStlModules>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -246,6 +248,7 @@
   <ItemGroup>
     <None Include="AttributeIdeas.md" />
     <None Include="CODE_OF_CONDUCT.md" />
+    <None Include="cpp.hint" />
     <None Include="documentation_default_css.json" />
     <None Include="LICENSE" />
     <None Include="options_reflection.json" />

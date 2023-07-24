@@ -1,0 +1,5 @@
+#define RBody(...)
+#define RClass(...)
+#define RField(...)
+#define RMethod(...)
+#define REnum(...)

@@ -60,7 +60,8 @@ struct FileWriter
 	template <typename... ARGS>
 	void StartBlock(ARGS&& ... args)
 	{
-		WriteLine(std::forward<ARGS>(args)...);
+		if (sizeof...(ARGS))
+			WriteLine(std::forward<ARGS>(args)...);
 		CurrentIndent++;
 	}
 
@@ -68,7 +69,8 @@ struct FileWriter
 	void EndBlock(ARGS&& ... args)
 	{
 		CurrentIndent--;
-		WriteLine(std::forward<ARGS>(args)...);
+		if (sizeof...(ARGS))
+			WriteLine(std::forward<ARGS>(args)...);
 	}
 
 	void WriteLine();
@@ -86,7 +88,7 @@ struct Artifactory
 	std::mutex mListMutex;
 
 	template <typename FUNCTOR, typename... ARGS>
-	void QueueArtifact(path target_path, FUNCTOR&& functor, ARGS&&... args)
+	void QueueArtifact(path const& target_path, FUNCTOR&& functor, ARGS&&... args)
 	{
 		std::unique_lock lock{mListMutex};
 		++mArtifactsToFinish;
@@ -114,7 +116,7 @@ struct Artifactory
 
 	void QueueCopyArtifact(path target_path, path source_path);
 
-	bool Write(path const& target_path, std::string contents);
+	bool Write(path const& target_path, std::string contents) const;
 
 	size_t Wait();
 };

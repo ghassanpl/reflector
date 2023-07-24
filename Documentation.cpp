@@ -2,12 +2,16 @@
 #include "FileWriter.h"
 #include "Options.h"
 #include <ghassanpl/json_helpers.h>
+#include <ghassanpl/parsing.h>
+#include <ghassanpl/containers.h>
+
+using namespace ghassanpl::parsing;
 
 struct HTMLFileWriter : public FileWriter
 {
 	using FileWriter::FileWriter;
 
-	void StartPage(std::string_view title)
+	void StartPage(std::string_view title, Declaration const* decl = nullptr)
 	{
 		WriteLine("<!doctype html>");
 		StartTag("html");
@@ -15,11 +19,31 @@ struct HTMLFileWriter : public FileWriter
 		StartTag("head");
 		WriteLine("<title>{}{}</title>", title, mOptions.Documentation.PageTitleSuffix);
 		WriteLine(R"(<link rel="stylesheet" href="style.css" />)");
+		WriteLine(R"(<link rel="stylesheet" href="https://microsoft.github.io/vscode-codicons/dist/codicon.css" />)");
 		WriteLine(R"(<script src="https://cdn.jsdelivr.net/gh/MarketingPipeline/Markdown-Tag/markdown-tag.js"></script>)");
 		WriteLine(R"(<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/vs2015.min.css"><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>)");
 		EndTag();
 
 		StartTag("body");
+
+		if (decl)
+		{
+			WriteLine("<div class='breadcrumbs' id='breadcrumbs'>");
+			std::vector<std::string> breadcrumbs;
+			breadcrumbs.emplace_back("<a href='Types.html'>Types</a>");
+			if (auto typedecl = dynamic_cast<TypeDeclaration const*>(decl))
+			{
+				if (!typedecl->Namespace.empty())
+					breadcrumbs.push_back(format(R"({}<a href='Namespace.{}.html'>{}</a>)", IconFor(DeclarationType::Namespace), replaced(typedecl->Namespace, "::", "."), typedecl->Namespace));
+			}
+			else if (auto memdecl = dynamic_cast<BaseMemberDeclaration const*>(decl))
+			{
+				breadcrumbs.push_back(memdecl->ParentDecl()->MakeLink(LinkFlag::DeclarationType));
+			}
+			breadcrumbs.push_back(decl->MakeLink(LinkFlag::DeclarationType));
+			WriteLine("{}", join(breadcrumbs, " / "));
+			WriteLine("</div>");
+		}
 	}
 
 	void EndPage()
@@ -96,13 +120,13 @@ struct DocumentationGenerator
 	{
 		std::string Brief;
 		std::string Description;
-		std::map<std::string, std::string> Parameters;
+		std::map<std::string, std::string, std::less<>> Parameters;
 		std::string ReturnTypeDescription;
 		std::vector<std::string> SeeAlsos;
 		std::string Section;
 	};
 
-	/// @param
+	/// @param or `param_name:`
 	/// @return
 	/// @see
 	/// @warn - e.g @warn deprecated
@@ -125,7 +149,7 @@ struct DocumentationGenerator
 
 		std::vector<std::string> comment_lines;
 		/// Add comments from entity comments (first paragraph only, if requested)
-		if (decl.Comments.size() > 0)
+		if (!decl.Comments.empty())
 		{
 			if (first_paragraph_only)
 			{
@@ -133,7 +157,7 @@ struct DocumentationGenerator
 				comment_lines.insert(comment_lines.end(), decl.Comments.begin(), empty_comment_line);
 			}
 			else
-				comment_lines.append_range(decl.Comments);
+				comment_lines.append_range(decl.NonDirectiveCommentLines());
 		}
 
 		if (!comment_lines.empty())
@@ -141,7 +165,7 @@ struct DocumentationGenerator
 		return result;
 	}
 
-	bool CreateCSSFile(ArtifactArgs args) const
+	bool CreateCSSFile(ArtifactArgs const& args) const
 	{
 		FileWriter out{ args };
 
@@ -158,7 +182,7 @@ struct DocumentationGenerator
 		return true;
 	}
 
-	bool CreateIndexFile(ArtifactArgs args) const
+	bool CreateIndexFile(ArtifactArgs const& args) const
 	{
 		HTMLFileWriter index{ args };
 		index.StartPage("Types");
@@ -253,18 +277,19 @@ struct DocumentationGenerator
 		}
 	}
 
-	bool CreateClassFile(ArtifactArgs args, Class const& klass) const
+	bool CreateClassFile(ArtifactArgs const& args, Class const& klass) const
 	{
 		HTMLFileWriter out{ args };
-		out.StartPage(klass.Name + " Class");
+		out.StartPage(klass.Name + " Class", &klass);
 		out.WriteLine("<h1><pre class='entityname class'>{}</pre> Class</h1>", klass.Name);
 		out.WriteLine("<h2>Description</h2>");
 
-		out.WriteLine(GetPrettyComments(klass));
+		out.WriteLine("{}", GetPrettyComments(klass));
 
 		OutputAttributeDescriptors(out, klass);
 
-		auto documented_fields = klass.Fields | std::views::filter([](auto& field) { return field->Document; });
+		/// TODO: Split private and public fields
+		auto documented_fields = klass.Fields | std::views::filter([](auto& field) { return field->Document && field->Access == AccessMode::Public; });
 		if (!documented_fields.empty())
 		{
 			out.WriteLine("<h2>Fields</h2>");
@@ -279,8 +304,11 @@ struct DocumentationGenerator
 			out.EndBlock("</table>");
 		}
 
-		auto documented_methods = klass.Methods | std::views::filter([](auto& method) { return method->Document; });
-		if (!documented_fields.empty())
+		auto documented_methods = klass.Methods | std::views::filter([](auto& method) { 
+			return method->Document && 
+				!method->Flags.contain(MethodFlags::ForFlag); /// Don't list flag methods by default
+		});
+		if (!documented_methods.empty())
 		{
 			out.WriteLine("<h2>Methods</h2>");
 			out.StartBlock("<table class='decllist'>");
@@ -289,6 +317,48 @@ struct DocumentationGenerator
 				out.StartTag("tr");
 				out.WriteLine("<td class='declnamecol'>{}</td>", method->MakeLink(LinkFlags::all() - LinkFlag::Parent));
 				out.WriteLine("<td>{}</td>", GetPrettyComments(*method, true));
+				out.EndTag();
+			}
+			out.EndBlock("</table>");
+		}
+
+		auto& documented_flags = klass.ClassDeclaredFlags;
+		if (!documented_flags.empty())
+		{
+			out.WriteLine("<h2>Flags</h2>");
+			out.StartBlock("<table class='decllist'>");
+
+			Enum const* parent_enum = nullptr;
+			for (const auto& flag : documented_flags)
+			{
+				/// Print a row for each parent type
+				if (flag.Represents->Parent() != parent_enum)
+				{
+					parent_enum = flag.Represents->Parent();
+
+					out.StartTag("tr", "class='parenttyperow'");
+					out.WriteLine("<td colspan='2'>From {} via {} field:</td>", parent_enum->MakeLink(LinkFlags::all()), flag.SourceField->MakeLink());
+					out.EndTag();
+				}
+
+				out.StartTag("tr");
+				out.WriteLine("<td class='declnamecol classflag'>{}</td>", flag.Represents->MakeLink(LinkFlags::all() - LinkFlag::Parent));
+				out.WriteLine("<td>{}</td>", GetPrettyComments(*flag.Represents, true));
+				out.EndTag();
+			}
+			out.EndBlock("</table>");
+		}
+
+		auto documented_private_fields = klass.Fields | std::views::filter([](auto& field) { return field->Document && field->Access != AccessMode::Public; });
+		if (!documented_private_fields.empty())
+		{
+			out.WriteLine("<h2>Private Fields</h2>");
+			out.StartBlock("<table class='decllist'>");
+			for (auto& field : documented_private_fields)
+			{
+				out.StartTag("tr");
+				out.WriteLine("<td class='declnamecol'>{}</td>", field->MakeLink(LinkFlags::all() - LinkFlag::Parent));
+				out.WriteLine("<td>{}</td>", GetPrettyComments(*field, true));
 				out.EndTag();
 			}
 			out.EndBlock("</table>");
@@ -308,15 +378,15 @@ struct DocumentationGenerator
 			out.WriteLine("<h2>See Also</h2>");
 			for (const auto& am : documented_artificial_methods | std::views::values)
 			{
-				out.WriteLine("<li>{}</li>", am->MakeLink(LinkFlags::all()));
+				out.WriteLine("<li>{}</li>", am->MakeLink(LinkFlags::all() - LinkFlag::DeclarationType));
 			}
 		}
 	}
 
-	bool CreateFieldFile(ArtifactArgs args, Field const& field) const
+	bool CreateFieldFile(ArtifactArgs const& args, Field const& field) const
 	{
 		HTMLFileWriter out{ args };
-		out.StartPage(field.ParentType->Name + "::" + field.Name + " Field");
+		out.StartPage(field.ParentType->Name + "::" + field.Name + " Field", &field);
 		out.WriteLine("<h1><pre class='entityname field'>{}::{}</pre> Field</h1>", field.ParentType->Name, field.Name);
 
 		out.WriteLine("<code class='example language-cpp'>{}{} {}{};</code>",
@@ -329,7 +399,7 @@ struct DocumentationGenerator
 		/// TODO: Special treatment for Flags fields
 		/// ? Like what?
 
-		out.WriteLine(GetPrettyComments(field));
+		out.WriteLine("{}", GetPrettyComments(field));
 
 		OutputAttributeDescriptors(out, field);
 
@@ -341,10 +411,10 @@ struct DocumentationGenerator
 		return true;
 	}
 
-	bool CreateMethodFile(ArtifactArgs args, Method const& method) const
+	bool CreateMethodFile(ArtifactArgs const& args, Method const& method) const
 	{
 		HTMLFileWriter out{ args };
-		out.StartPage(method.ParentType->Name + "::" + method.Name + " Method");
+		out.StartPage(method.ParentType->Name + "::" + method.Name + " Method", &method);
 		out.WriteLine("<h1><pre class='entityname field'>{}::{}</pre> Method</h1>", method.ParentType->Name, method.Name);
 
 		out.WriteLine("<code class='example language-cpp'>{}{} {}({}){};</code>",
@@ -355,15 +425,29 @@ struct DocumentationGenerator
 			FormatPostFlags(method.Flags)
 		);
 
-		out.WriteLine(GetPrettyComments(method));
+		out.WriteLine("{}", GetPrettyComments(method));
 
-		if (method.ParametersSplit.size() > 0)
+		std::map<std::string, std::string> param_comments;
+		method.ForEachCommentDirective("param", [&](std::span<const std::string> param_paragraph) {
+			if (param_paragraph.empty()) return;
+
+			std::string_view first_line = param_paragraph[0];
+			eat(first_line, "@param");
+			auto param_name = eat_identifier(first_line);
+			auto& comments_for_param = param_comments[std::string{param_name}];
+			comments_for_param += first_line;
+			comments_for_param += '\n';
+			comments_for_param += join(param_paragraph.subspan(1), "\n");
+		});
+
+		if (!method.ParametersSplit.empty())
 		{
 			out.WriteLine("<h2>Parameters</h2>");
 			out.StartTag("dl");
 			for (auto& param : method.ParametersSplit)
 			{
-				out.WriteLine("<dt><pre class='paramname'>{}</pre> : <code class='language-cpp'>{} {}</code></dt><dd>{}</dd>", param.Name, Escaped(param.Type), Escaped(param.Initializer), GetPrettyComments(param));
+				auto comments = ghassanpl::map_find(param_comments, param.Name);
+				out.WriteLine("<dt><pre class='paramname'>{}</pre> : <code class='language-cpp'>{} {}</code></dt><dd><md>{}</md></dd>", param.Name, Escaped(param.Type), Escaped(param.Initializer), comments ? *comments : "");
 			}
 			out.EndTag();
 		}
@@ -372,7 +456,7 @@ struct DocumentationGenerator
 		{
 			out.WriteLine("<h2>Return Value</h2>");
 			out.WriteLine("<code class='language-cpp'>{}</code>", Escaped(method.Return.Name));
-			out.WriteLine(GetPrettyComments(method.Return));
+			out.WriteLine("{}", GetPrettyComments(method.Return));
 		}
 
 		OutputAttributeDescriptors(out, method);
@@ -385,26 +469,25 @@ struct DocumentationGenerator
 		return true;
 	}
 
-	bool CreateEnumFile(ArtifactArgs args, Enum const& henum) const
+	bool CreateEnumFile(ArtifactArgs const& args, Enum const& henum) const
 	{
 		HTMLFileWriter out{ args };
 
-		out.StartPage(henum.Name + " Enum");
+		out.StartPage(henum.Name + " Enum", &henum);
 		out.WriteLine("<h1><pre class='entityname enum'>{}</pre> Enum</h1>", henum.Name);
 
 		out.WriteLine("<h2>Description</h2>");
-		out.WriteLine(GetPrettyComments(henum));
+		out.WriteLine("{}", GetPrettyComments(henum));
 
-		auto documented_enumerators = henum.Enumerators | std::views::filter([](auto& enumerator) { return enumerator->Document; });
-		if (!documented_enumerators.empty())
+		if (!henum.Enumerators.empty())
 		{
 			out.WriteLine("<h2>Enumerators</h2>");
 			out.StartBlock("<table class='decllist'>");
 			const bool enum_is_trivial = henum.IsTrivial();
-			for (auto& enumerator : documented_enumerators)
+			for (auto& enumerator : henum.Enumerators)
 			{
 				out.StartTag("tr");
-				out.WriteLine("<td class='enumnamecol'>{}</td>", enumerator->MakeLink());
+				out.WriteLine("<td class='enumnamecol'>{}</td>", enumerator->Document ? enumerator->MakeLink() : enumerator->Name);
 				out.WriteLine("<td class='enumvalcol{}'>= {}</td>", (enum_is_trivial?" trivial":""), enumerator->Value);
 				out.WriteLine("<td>{}</td>", GetPrettyComments(*enumerator, true));
 				out.EndTag();
@@ -422,17 +505,17 @@ struct DocumentationGenerator
 		return true;
 	}
 
-	bool CreateEnumeratorFile(ArtifactArgs args, Enumerator const& enumerator) const
+	bool CreateEnumeratorFile(ArtifactArgs const& args, Enumerator const& enumerator) const
 	{
 		HTMLFileWriter out{ args };
 
 		auto name = format("{}::{}", enumerator.ParentType->Name, enumerator.Name);
 
-		out.StartPage(name + " Enumerator");
+		out.StartPage(name + " Enumerator", &enumerator);
 		out.WriteLine("<h1><pre class='entityname enum'>{}</pre> Enumerator</h1>", name);
 
 		out.WriteLine("<h2>Description</h2>");
-		out.WriteLine(GetPrettyComments(enumerator));
+		out.WriteLine("{}", GetPrettyComments(enumerator));
 
 		OutputAttributeDescriptors(out, enumerator);
 

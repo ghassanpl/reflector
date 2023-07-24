@@ -18,18 +18,18 @@ static path RelativePath(path const& writing_file, path const& referenced_file)
 uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, const Options& opts)
 {
 	const auto stat = std::filesystem::status(target_path);
-	const uint64_t file_change_time = std::max(ChangeTime, static_cast<uint64_t>(std::filesystem::last_write_time(source_path).time_since_epoch().count()));
+	const uint64_t file_change_time = std::max(ExecutableChangeTime, static_cast<uint64_t>(std::filesystem::last_write_time(source_path).time_since_epoch().count()));
 	if (stat.type() != std::filesystem::file_type::not_found)
 	{
 		/// Open file and get first line
 		std::ifstream f(target_path);
 		std::string line;
 		std::getline(f, line);
-		if (line.empty() || line.size() < sizeof(TIMESTAMP_TEXT))
+		if (line.empty() || line.size() < TIMESTAMP_TEXT.size())
 			return 1; /// corrupted file, regenerate
 
 		uint64_t stored_change_time = 0;
-		const auto time = string_view{ string_view{ line }.substr(sizeof(TIMESTAMP_TEXT) - 1) };
+		const auto time = string_view{ string_view{ line }.substr(TIMESTAMP_TEXT.size() - 1) };
 		const auto [ptr, ec] = std::from_chars(to_address(time.begin()), to_address(time.end()), stored_change_time);
 		if (!opts.Force && ec == std::errc{} && file_change_time == stored_change_time)
 			return 0;
@@ -38,7 +38,7 @@ uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, con
 	return file_change_time;
 }
 
-void WriteForwardDeclaration(FileWriter& output, const Class& klass, const Options& options)
+void WriteForwardDeclaration(FileWriter& output, const Class& klass, const Options&)
 {
 	if (klass.Namespace.empty())
 		output.WriteLine("{} {};", (klass.Flags.is_set(ClassFlags::DeclaredStruct) ? "struct" : "class"), klass.FullType());
@@ -46,9 +46,13 @@ void WriteForwardDeclaration(FileWriter& output, const Class& klass, const Optio
 		output.WriteLine("namespace {} {{ {} {}; }}", klass.Namespace, klass.Flags.is_set(ClassFlags::DeclaredStruct) ? "struct" : "class", klass.Name);
 }
 
-void WriteForwardDeclaration(FileWriter& output, const Enum& henum, const Options& options)
+void WriteForwardDeclaration(FileWriter& output, const Enum& henum, const Options&)
 {
-	output.WriteLine("enum class {};", henum.FullType());
+	const auto base = henum.BaseType.empty() ? std::string{} : std::format(" : {}", henum.BaseType);
+	if (henum.Namespace.empty())
+		output.WriteLine("enum class {}{};", henum.FullType(), base);
+	else
+		output.WriteLine("namespace {} {{ enum class {}{}; }}", henum.Namespace, henum.Name, base);
 }
 
 bool CreateJSONDBArtifact(ArtifactArgs args)
@@ -67,7 +71,7 @@ bool CreateJSONDBArtifact(ArtifactArgs args)
 
 bool CreateReflectorDatabaseArtifact(ArtifactArgs args)
 {
-	auto& [_, final_path, opts, factory] = args;
+	auto const& [_, final_path, opts, factory] = args;
 	FileWriter database_file{args};
 	
 	database_file.WriteLine("#include <iostream>");
@@ -80,6 +84,9 @@ bool CreateReflectorDatabaseArtifact(ArtifactArgs args)
 		for (const auto& mirror : GetMirrors())
 			database_file.WriteLine("#include \"{}\"", RelativePath(final_path, mirror->SourceFilePath).string());
 	}
+
+
+	database_file.WriteLine("template <typename T, typename U = T> bool Compare_(T&& t, U&& u) {{ return t == u; }}");
 	
 	for (const auto& mirror : GetMirrors())
 	{
@@ -115,7 +122,7 @@ bool CreateReflectorDatabaseArtifact(ArtifactArgs args)
 
 bool CreateReflectorHeaderArtifact(ArtifactArgs args)
 {
-	auto& [_, final_path, options, factory] = args;
+	auto const& [_, final_path, options, factory] = args;
 
 	const auto reflector_classes_relative_path = RelativePath(final_path, options.ArtifactPath / "ReflectorClasses.h");
 
@@ -129,6 +136,10 @@ bool CreateReflectorHeaderArtifact(ArtifactArgs args)
 		reflect_file.WriteLine("#define REFLECTOR_JSON_HEADER {}", options.JSON.HeaderPath);
 		reflect_file.WriteLine("#define REFLECTOR_JSON_PARSE_FUNC {}", options.JSON.ParseFunction);
 	}
+	if (options.AddGCFunctionality)
+	{
+		reflect_file.WriteLine("#define REFLECTOR_USES_GC 1", options.MacroPrefix);
+	}
 	reflect_file.WriteLine("#include \"{}\"", reflector_classes_relative_path.string());
 	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE3_IMPL(x, y, z) x ## y ## z");
 	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE3(x, y, z) REFLECTOR_TOKENPASTE3_IMPL(x, y, z)");
@@ -141,11 +152,8 @@ bool CreateReflectorHeaderArtifact(ArtifactArgs args)
 	reflect_file.WriteLine("#define {}(...) REFLECTOR_TOKENPASTE2({}_GENERATED_CLASS_BODY_, __LINE__)", options.BodyAnnotationName, options.MacroPrefix);
 	reflect_file.WriteLine("#define {}(...) ", options.EnumAnnotationName);
 	reflect_file.WriteLine("#define {}(...)", options.EnumeratorAnnotationName);
+	reflect_file.WriteLine("#define {}(...)", options.NamespaceAnnotationName);
 	reflect_file.WriteLine("");
-	/*
-	if (options.GenerateLuaFunctionBindings)
-		reflect_file.WriteLine("#define {}_CALLABLE(ret, name, args) static int ScriptFunction_ ## name(struct lua_State* thread) {{ return 0; }}", options.MacroPrefix);
-		*/
 	return true;
 }
 
@@ -194,13 +202,7 @@ void BuildStaticReflectionData(FileWriter& output, const Enum& henum, const Opti
 	}
 	output.StartBlock(".Enumerators = {{");
 	for (auto& enumerator : henum.Enumerators)
-	{
-		output.StartBlock("::Reflector::EnumeratorReflectionData {{");
-		output.WriteLine(".Name = \"{}\",", enumerator->Name);
-		output.WriteLine(".Value = {},", enumerator->Value);
-		output.WriteLine(".Flags = {},", enumerator->Flags.bits);
-		output.EndBlock("}},");
-	}
+		output.WriteLine("{{ \"{}\", {}, {} }},", enumerator->Name, enumerator->Value, enumerator->Flags.bits);
 	output.EndBlock("}},");
 	if (options.GenerateTypeIndices)
 		output.WriteLine(".TypeIndex = typeid({}),", henum.FullType());
@@ -213,6 +215,85 @@ void BuildStaticReflectionData(FileWriter& output, const Enum& henum, const Opti
 
 void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Options& options)
 {
+	if (options.JSON.Use)
+	{
+		if (options.AddGCFunctionality)
+		{
+			output.WriteLine("template <>");
+			output.WriteLine("void ::Reflector::GCMark<{0}>(::Reflector::GCHeap* heap, {0} const* r) {{ ::Reflector::GCMark(heap, (::Reflector::Reflectable const*)r); }}", klass.FullType());
+		}
+
+		output.StartBlock("void {}::JSONLoadFields({} const& src_object) {{", klass.FullType(), options.JSON.Type);
+		if (!klass.BaseClass.empty())
+			output.WriteLine("{}::parent_type::JSONLoadFields(src_object);", klass.FullType());
+		output.WriteLine();
+		output.WriteLine("auto const& _class_reflect_data = ::StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
+		size_t i = 0;
+		for (auto& field : klass.Fields)
+		{
+			if (field->Flags.contain(FieldFlags::NoLoad))
+				continue;
+
+			output.StartBlock("if (auto it = src_object.find(\"{}\"); it == src_object.end())", field->Name);
+
+			if (field->Flags.contain(FieldFlags::Required))
+				output.WriteLine("throw ::Reflector::DataError{{ \"Missing field '{}'\" }};", field->Name);
+			else
+			{
+				if (!field->InitializingExpression.empty())
+					output.WriteLine("this->{} = {};", field->Name, field->InitializingExpression);
+				else
+					output.WriteLine("this->{0} = decltype(this->{0}){{}};", field->Name);
+			}
+
+			output.EndBlock();
+			output.StartBlock("else try {{");
+			output.WriteLine("it->get_to<{}>(this->{});", field->Type, field->Name);
+			output.EndBlock("}}");
+			output.StartBlock("catch (::Reflector::DataError& e) {{");
+			output.WriteLine("e.File += \"/{}\";", field->Name);
+			output.WriteLine("throw;");
+			output.EndBlock("}}");
+
+			output.WriteLine();
+
+			++i;
+		}
+		output.EndBlock("}}");
+
+
+		output.StartBlock("void {}::JSONSaveFields({}& dest_object) const {{", klass.FullType(), options.JSON.Type);
+		if (!klass.BaseClass.empty())
+			output.WriteLine("{}::parent_type::JSONSaveFields(dest_object);", klass.FullType());
+		output.WriteLine("auto const& _class_reflect_data = ::StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
+		i = 0;
+		for (auto& field : klass.Fields)
+		{
+			if (field->Flags.contain(FieldFlags::NoSave))
+				continue;
+
+			const auto check_for_init_value = !field->InitializingExpression.empty() && !options.JSON.AlwaysSaveAllFields;
+
+			if (check_for_init_value)
+			{
+				output.StartBlock("do {{");
+				output.StartBlock("if constexpr (std::equality_comparable<{}>)", field->Type);
+					output.WriteLine("if (::Compare_(this->{}, {})) break;", field->Name, field->InitializingExpression.empty() ? "{}" : field->InitializingExpression);
+				output.EndBlock();
+			}
+
+			output.WriteLine("dest_object[\"{0}\"] = this->{0};", field->Name);
+
+			if (check_for_init_value)
+				output.EndBlock("}} while (false);");
+			
+			output.WriteLine();
+
+			++i;
+		}
+		output.EndBlock("}}");
+	}
+
 	output.StartBlock("::Reflector::ClassReflectionData const& StaticGetReflectionData_For_{}() {{", klass.GeneratedUniqueName());
 	output.StartBlock("static const ::Reflector::ClassReflectionData _data = {{");
 	output.WriteLine(".Name = \"{}\",", klass.Name);
@@ -231,12 +312,13 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 	output.WriteLine(".UID = {}ULL,", klass.UID);
 	if (!klass.Flags.is_set(ClassFlags::NoConstructors))
 		output.WriteLine(".Constructor = +[](const ::Reflector::ClassReflectionData& klass){{ return (void*)new {}{{klass}}; }},", klass.FullType());
+	output.WriteLine(".Destructor = +[](void* obj){{ auto _tobj = ({0}*)obj; _tobj->~{0}(); }},", klass.FullType());
 
 	/// Fields
 	output.StartBlock(".Fields = {{");
 	for (auto& field : klass.Fields)
 	{
-		output.StartBlock("::Reflector::FieldReflectionData {{");
+		output.StartBlock("{{");
 		output.WriteLine(".Name = \"{}\",", field->Name);
 		output.WriteLine(".FieldType = \"{}\",", field->Type);
 		if (!field->InitializingExpression.empty())
@@ -290,11 +372,22 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 	}
 	output.EndBlock("}},");
 
+	if (options.JSON.Use)
+	{
+		output.StartBlock(".JSONLoadFieldsFunc = [](void* dest_object, {} const& src_object){{", options.JSON.Type);
+		output.WriteLine("(({0}*)dest_object)->JSONLoadFields(src_object);", klass.FullType());
+		output.EndBlock("}},");
+		output.StartBlock(".JSONSaveFieldsFunc = [](void const* src_object, {}& dest_object){{", options.JSON.Type);
+		output.WriteLine("(({0} const*)dest_object)->JSONSaveFields(src_object);", klass.FullType());
+		output.EndBlock("}},");
+	}
+
 	if (options.GenerateTypeIndices)
 		output.WriteLine(".TypeIndex = typeid({}),", klass.FullType());
 	output.WriteLine(".Flags = {}", klass.Flags.bits);
 	output.EndBlock("}}; return _data;");
 	output.EndBlock("}}");
+
 }
 
 bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
@@ -418,6 +511,19 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		output.WriteLine("using parent_type = void;");
 	}
 
+	if (options.JSON.Use)
+	{
+		if (!klass.BaseClass.empty())
+		{
+			output.WriteLine("virtual void JSONLoadFields(REFLECTOR_JSON_TYPE const& src_object) override;", options.JSON.Type);
+			output.WriteLine("virtual void JSONSaveFields(REFLECTOR_JSON_TYPE& src_object) const override;", options.JSON.Type);
+		}
+		else
+		{
+			output.WriteLine("void JSONLoadFields(REFLECTOR_JSON_TYPE const& src_object);", options.JSON.Type);
+			output.WriteLine("void JSONSaveFields(REFLECTOR_JSON_TYPE& src_object) const;", options.JSON.Type);
+		}
+	}
 
 	if (klass.Flags.is_set(ClassFlags::HasProxy))
 		output.WriteLine("template <typename PROXY_OBJ> using proxy_class = {0}{1}<{0}, PROXY_OBJ>;", klass.FullType(), options.ProxyClassSuffix);
@@ -458,6 +564,22 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	output.WriteLine("\t{}_VISIT_{}_PROPERTIES(visitor);", options.MacroPrefix, klass.FullName());
 	output.WriteLine("}}");
 
+	if (options.AddGCFunctionality)
+	{
+		/// - Mark
+		if (!klass.Flags.contain(ClassFlags::Struct))
+		{
+			output.WriteLine("virtual void GCMark(class ::Reflector::GCHeap* heap) const override {{");
+		}
+		else
+			output.WriteLine("void GCMark(class ::Reflector::GCHeap* heap) const {{");
+		if (!klass.BaseClass.empty())
+			output.WriteLine("\tparent_type::GCMark(heap);");
+		output.WriteLine("\tForEachField([this, heap](auto&& visitor_data) {{ ::Reflector::GCMark(heap, visitor_data.Getter(this)); }});");
+		output.WriteLine("}}");
+	}
+
+
 	/// ///////////////////////////////////// ///
 	/// All methods
 	/// ///////////////////////////////////// ///
@@ -476,7 +598,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (auto& func : klass.Methods)
 	{
 		if (func->Flags.is_set(Reflector::MethodFlags::Artificial))
-			output.WriteLine("{}auto {}({}){} -> {} {{ {} }}", FormatPreFlags(func->Flags), func->Name, func->GetParameters(), FormatPostFlags(func->Flags), func->Return.Name, func->ArtificialBody);
+			output.WriteLine("{}{}auto {}({}){} -> {} {{ {} }}", FormatAccess(func->Access), FormatPreFlags(func->Flags), func->Name, func->GetParameters(), FormatPostFlags(func->Flags), func->Return.Name, func->ArtificialBody);
 	}
 
 	/// Back to public
@@ -497,7 +619,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 			if (!func->Flags.is_set(Reflector::MethodFlags::Virtual))
 				continue;
 
-			auto base = std::format("virtual auto {0}({1})", func->Name, func->GetParameters());
+			auto base = std::format("virtual auto {}({})", func->Name, func->GetParameters());
 			if (func->Flags.is_set(Reflector::MethodFlags::Const))
 				base += " const";
 			if (func->Flags.is_set(Reflector::MethodFlags::Noexcept))
@@ -507,9 +629,9 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 			/// TODO: Change {1} to std::forward<>({1})
 			output.WriteLine("using return_type = decltype(T::{0}({1}));", func->Name, func->ParametersNamesOnly);
 			if (func->Flags.is_set(MethodFlags::Abstract))
-				output.WriteLine("if (ReflectionProxyObject.Contains(\"{0}\")) return ReflectionProxyObject.CallOverload<return_type>(\"{0}\"{2}{1}); else ReflectionProxyObject.AbstractCall(\"{0}\");", func->Name, func->ParametersNamesOnly, (func->ParametersSplit.size() ? ", " : ""));
+				output.WriteLine(R"(if (ReflectionProxyObject.Contains("{0}")) return ReflectionProxyObject.CallOverload<return_type>("{0}"{2}{1}); else ReflectionProxyObject.AbstractCall("{0}");)", func->Name, func->ParametersNamesOnly, (func->ParametersSplit.size() ? ", " : ""));
 			else
-				output.WriteLine("return ReflectionProxyObject.Contains(\"{0}\") ? ReflectionProxyObject.CallOverload<return_type>(\"{0}\"{2}{1}) : T::{0}({1});", func->Name, func->ParametersNamesOnly, (func->ParametersSplit.size() ? ", " : ""));
+				output.WriteLine(R"(return ReflectionProxyObject.Contains("{0}") ? ReflectionProxyObject.CallOverload<return_type>("{0}"{2}{1}) : T::{0}({1});)", func->Name, func->ParametersNamesOnly, (func->ParametersSplit.size() ? ", " : ""));
 			output.EndBlock("}}");
 		}
 		output.CurrentIndent--;
@@ -523,7 +645,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 
 bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& henum, const Options& options)
 {
-	const auto has_any_enumerators = (henum.Enumerators.size() > 0);
+	const auto has_any_enumerators = !henum.Enumerators.empty();
 	output.WriteLine("/// From enum: {}", henum.FullType());
 
 	WriteForwardDeclaration(output, henum, options);
@@ -532,7 +654,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	output.WriteLine("extern ::Reflector::EnumReflectionData const& StaticGetReflectionData_For_{}();", henum.GeneratedUniqueName());
 	output.StartBlock("namespace Reflector {{");
 	output.WriteLine("template <> inline ::Reflector::EnumReflectionData const& GetEnumReflectionData<{}>() {{ return StaticGetReflectionData_For_{}(); }}", henum.FullType(), henum.GeneratedUniqueName());
-	output.WriteLine("template <> inline constexpr bool IsReflectedEnum<{}>() {{ return true; }}", henum.FullType());
+	output.WriteLine("template <> constexpr bool IsReflectedEnum<{}>() {{ return true; }}", henum.FullType());
 	output.EndBlock("}}");
 
 	/// ///////////////////////////////////// ///
@@ -543,8 +665,6 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	{
 		output.StartBlock("namespace {} {{", henum.Namespace);
 	}
-
-	output.WriteLine("enum class {};", henum.Name); /// forward decl;
 
 	/// TODO: Make the name of ALL these functions and values in the global namespace configurable
 	/// TODO: Instead, we could do something like:
@@ -557,22 +677,22 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	/// 
 	/// Basically do something to avoid declaring any functions/variables in the enum's namespace
 	{
-		output.WriteLine("static constexpr inline size_t {}Count = {};", henum.Name, henum.Enumerators.size());
+		output.WriteLine("constexpr inline size_t {}Count = {};", henum.Name, henum.Enumerators.size());
 		if (has_any_enumerators)
 		{
-			output.WriteLine("static constexpr inline std::string_view {}NamesByIndex[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](auto const& enumerator) { return std::format("\"{}\"", enumerator->Name); }));
-			output.WriteLine("static constexpr inline {0} {0}ValuesByIndex[] = {{ {1} }} ;", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](auto const& enumerator) {
+			output.WriteLine("constexpr inline std::string_view {}NamesByIndex[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](auto const& enumerator) { return std::format("\"{}\"", enumerator->Name); }));
+			output.WriteLine("constexpr inline {0} {0}ValuesByIndex[] = {{ {1} }} ;", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](auto const& enumerator) {
 				return std::format("{}{{{}}}", henum.Name, enumerator->Value);
 				}));
 
-			output.WriteLine("static constexpr inline {0} First{0} = {0}{{{1}}};", henum.Name, henum.Enumerators.front()->Value);
-			output.WriteLine("static constexpr inline {0} Last{0} = {0}{{{1}}};", henum.Name, henum.Enumerators.back()->Value);
+			output.WriteLine("constexpr inline {0} First{0} = {0}{{{1}}};", henum.Name, henum.Enumerators.front()->Value);
+			output.WriteLine("constexpr inline {0} Last{0} = {0}{{{1}}};", henum.Name, henum.Enumerators.back()->Value);
 		}
 	}
 
-	output.WriteLine("inline constexpr std::string_view GetEnumName({0}) {{ return \"{0}\"; }}", henum.Name);
-	output.WriteLine("inline constexpr size_t GetEnumCount({}) {{ return {}; }}", henum.Name, henum.Enumerators.size());
-	output.WriteLine("inline constexpr std::string_view GetEnumeratorName({} v) {{", henum.Name);
+	output.WriteLine("constexpr std::string_view GetEnumName({0}) {{ return \"{0}\"; }}", henum.Name);
+	output.WriteLine("constexpr size_t GetEnumCount({}) {{ return {}; }}", henum.Name, henum.Enumerators.size());
+	output.WriteLine("constexpr std::string_view GetEnumeratorName({} v) {{", henum.Name);
 	{
 		auto indent = output.Indent();
 
@@ -644,7 +764,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	*/
 	/// TODO: Make the name of this function configurable
 	/// TODO: This depends on string_view :/
-	output.WriteLine("inline constexpr {0} GetEnumeratorFromName({0}, std::string_view name) {{", henum.Name);
+	output.WriteLine("constexpr {0} GetEnumeratorFromName({0}, std::string_view name) {{", henum.Name);
 	{
 		auto indent = output.Indent();
 		for (auto& enumerator : henum.Enumerators)
@@ -658,20 +778,20 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	if (has_any_enumerators && Attribute::List(henum))
 	{
 		/// TODO: Make the name of these functions configurable
-		output.WriteLine("inline constexpr {0} GetNext({0} v) {{ return {0}ValuesByIndex[(int64_t(v) + 1) % {0}Count]; }}", henum.Name);
-		output.WriteLine("inline constexpr {0} GetPrev({0} v) {{ return {0}ValuesByIndex[(int64_t(v) + ({0}Count - 1)) % {0}Count]; }}", henum.Name);
+		output.WriteLine("constexpr {0} GetNext({0} v) {{ return {0}ValuesByIndex[(int64_t(v) + 1) % {0}Count]; }}", henum.Name);
+		output.WriteLine("constexpr {0} GetPrev({0} v) {{ return {0}ValuesByIndex[(int64_t(v) + ({0}Count - 1)) % {0}Count]; }}", henum.Name);
 
 		/// Preincrement
-		output.WriteLine("inline constexpr {0}& operator++({0}& v) {{ v = GetNext(v); return v; }}", henum.Name);
-		output.WriteLine("inline constexpr {0}& operator--({0}& v) {{ v = GetPrev(v); return v; }}", henum.Name);
+		output.WriteLine("constexpr {0}& operator++({0}& v) {{ v = GetNext(v); return v; }}", henum.Name);
+		output.WriteLine("constexpr {0}& operator--({0}& v) {{ v = GetPrev(v); return v; }}", henum.Name);
 
 		/// Postincrement
-		output.WriteLine("inline constexpr {0} operator++({0}& v, int) {{ auto result = v; v = GetNext(v); return result; }}", henum.Name);
-		output.WriteLine("inline constexpr {0} operator--({0}& v, int) {{ auto result = v; v = GetPrev(v); return result; }}", henum.Name);
+		output.WriteLine("constexpr {0} operator++({0}& v, int) {{ auto result = v; v = GetNext(v); return result; }}", henum.Name);
+		output.WriteLine("constexpr {0} operator--({0}& v, int) {{ auto result = v; v = GetPrev(v); return result; }}", henum.Name);
 	}
 
-	output.WriteLine("inline constexpr auto operator==(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left == std::to_underlying(right); }}", henum.Name);
-	output.WriteLine("inline constexpr auto operator<=>(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left <=> std::to_underlying(right); }}", henum.Name);
+	output.WriteLine("constexpr auto operator==(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left == std::to_underlying(right); }}", henum.Name);
+	output.WriteLine("constexpr auto operator<=>(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left <=> std::to_underlying(right); }}", henum.Name);
 
 	output.WriteLine("std::ostream& operator<<(std::ostream& strm, {} v);", henum.Name);
 	
@@ -727,7 +847,7 @@ bool BuildDatabaseEntriesForMirror(FileWriter& output, const Options& options, F
 
 bool BuildMirrorFile(ArtifactArgs args, FileMirror const& file, uint64_t file_change_time)
 {
-	auto& [_, final_path, options, factory] = args;
+	auto const& [_, final_path, options, factory] = args;
 	FileWriter f{ args };
 	f.WriteLine("{}{}", TIMESTAMP_TEXT, file_change_time);
 	f.WriteLine("/// Source file: {}", file.SourceFilePath.string());

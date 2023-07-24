@@ -9,6 +9,9 @@ StringAttribute CreateIsChilds{ "CreateIsChilds", "Creates functions IsX (and As
 StringAttribute ScriptAccess{ "ScriptAccess", "Whether or not to hook up the generated accessors (getter, setter) to the scripting system", Targets::Fields, true };
 ```
 
+Look at https://benui.ca/unreal/ufunction/ and others for ideas
+
+* [static field] **Config** - like Unreal's config, but, y'know, for statics
 * [record] **Icon** - for the editors and such
 * [any] **Internal** - do not document, what else? if nothing else, it's handled by `Document`
 * [record] **GenerateResetFunctions** - will generate a Reset*FieldName* for each field in the class (see below), unless it has the Reset = false attribute
@@ -28,6 +31,8 @@ StringAttribute ScriptAccess{ "ScriptAccess", "Whether or not to hook up the gen
 * [record] **DefaultMethodAttributes** = {}
 * [record] **DefaultFieldAttributes** = {}
 * [enum] **DefaultEnumeratorAttributes** = {}
+* [enum] **CreateVariant** - creates a std::variant<> type with types for each of the enumerator
+	* [enumerator] **VariantType**="std::string" - only valid in CreateVariant enums, this enumerator will represent the given type
 
 ### Pre/Post/Validation
 * [record/field] **OnAfterLoad**=funcname, **OnBeforeSave**=funcname

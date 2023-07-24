@@ -1,5 +1,5 @@
 {
-  "body": {
+  "html, body": {
     "background-color": "black",
     "color": "white",
     "font-family": "Segoe UI, SegoeUI, Helvetica Neue, Helvetica, Arial, sans-serif",
@@ -89,6 +89,9 @@
     "min-width": "max-content",
     "padding-right": "1em"
   },
+  ".classflag": {
+    "padding-left": "1em"
+  },
   ".enumvalcol": {
     "width": "0",
     "min-width": "max-content",
@@ -123,5 +126,12 @@
   },
   ".paramname": {
     "font-weight": "bold"
+  },
+  ".breadcrumbs": {
+    "font-size": "small"
+  },
+  ".codicon": {
+    "font-size": "12px !important",
+    "margin-right": "0.2em"
   }
 }

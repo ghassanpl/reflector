@@ -13,7 +13,8 @@
 int main(int argc, const char* argv[])
 {
 	/// If executable changed, it's newer than the files it created in the past, so they need to be rebuild
-	ChangeTime = std::filesystem::last_write_time(argv[0]).time_since_epoch().count();
+	ExecutableChangeTime = std::filesystem::last_write_time(argv[0]).time_since_epoch().count();
+	InvocationTime = std::chrono::system_clock::now().time_since_epoch().count();
 
 	try
 	{
@@ -82,14 +83,15 @@ int main(int argc, const char* argv[])
 			parsers.push_back(std::async(ParseClassFile, std::filesystem::path(file), options));
 		}
 
-		const auto success = std::ranges::all_of(parsers, [](auto& future) { return future.get(); });
-		if (!success)
+		if (!std::ranges::all_of(parsers, [](auto& future) { return future.get(); }))
 			return -1;
 
 		RemoveEmptyMirrors();
-
+		
 		/// Create artificial methods, knowing all the reflected classes
 		CreateArtificialMethodsAndDocument(options);
+
+		SortMirrors();
 
 		Artifactory factory{ options };
 
@@ -134,7 +136,7 @@ int main(int argc, const char* argv[])
 		}
 
 	}
-	catch (json::parse_error e)
+	catch (json::parse_error const& e)
 	{
 		std::cerr << "Invalid options file:\n" << e.what() << "\n";
 		return 3;

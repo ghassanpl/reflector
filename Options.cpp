@@ -22,9 +22,11 @@ Options::Options(path exe_path, path const& options_file_path)
 	OPTION(Files, ".");
 	OPTION(Quiet, true);
 	OPTION(Force, false);
-	OPTION(JSON.Use, false);
+	OPTION(JSON.Use, true);
 	OPTION(CreateDatabase, true);
 #endif
+
+	/// TODO: Spit out warning for unrecognized option
 
 	ArtifactPath = std::filesystem::absolute(ArtifactPath.empty() ? std::filesystem::current_path() : path{ ArtifactPath });
 
@@ -33,15 +35,15 @@ Options::Options(path exe_path, path const& options_file_path)
 
 	if (Files.is_array())
 	{
-		for (auto& file : Files)
+		for (auto const& file : Files)
 		{
 			if (!file.is_string())
 				throw std::exception{ "`Files' array must contain only strings" };
-			mPathsToScan.push_back((std::string)file);
+			mPathsToScan.emplace_back((std::string)file);
 		}
 	}
 	else if (Files.is_string())
-		mPathsToScan.push_back((std::string)Files);
+		mPathsToScan.emplace_back((std::string)Files);
 	else
 		throw std::exception{ "`Files' entry must be an array of strings or a string" };
 
@@ -53,6 +55,7 @@ Options::Options(path exe_path, path const& options_file_path)
 	X(Body);
 	X(Field);
 	X(Method);
+	X(Namespace);
 
 	if (mOptionsFile.size() > 0 && Verbose)
 	{

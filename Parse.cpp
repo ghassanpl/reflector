@@ -61,12 +61,14 @@ std::string ParseIdentifier(string_view& str)
 		if (!ascii::isident(*p)) break;
 	std::string result = { str.begin(), p };
 	str = make_sv(p, str.end());
+	if (result.empty())
+		throw std::runtime_error("Expected identifier");
 	return result;
 }
 
 void ParseCppAttributes(std::string_view& line, json& target_attrs)
 {
-	static const std::map<std::string, std::string> cpp_attributes_to_reflector_attributes = {
+	static const std::map<std::string, std::string, std::less<>> cpp_attributes_to_reflector_attributes = {
 		{"noreturn", "NoReturn"},
 		{"deprecated", "Deprecated"},
 		{"nodiscard", "NoDiscard"},
@@ -118,7 +120,9 @@ std::string ParseType(string_view& str)
 
 	trim_whitespace_left(str);
 
-	int brackets = 0, tris = 0, parens = 0;
+	int brackets = 0;
+	int tris = 0;
+	int parens = 0;
 	for (; !str.empty(); str.remove_prefix(1))
 	{
 		switch (str[0])
@@ -154,7 +158,9 @@ std::string ParseType(string_view& str)
 
 std::string ParseExpression(string_view& str)
 {
-	int brackets = 0, tris = 0, parens = 0;
+	int brackets = 0;
+	int tris = 0;
+	int parens = 0;
 	auto p = str.begin();
 	for (; p != str.end(); ++p)
 	{
@@ -168,11 +174,8 @@ std::string ParseExpression(string_view& str)
 		case '>': tris--; continue;
 		}
 
-		if (*p == ',' || *p == ')')
-		{
-			if (parens == 0 && tris == 0 && brackets == 0)
-				break;
-		}
+		if ((*p == ',' || *p == ')') && parens == 0 && tris == 0 && brackets == 0)
+			break;
 	}
 
 	std::string result = { str.begin(), p };
@@ -188,8 +191,7 @@ json ParseAttributeList(string_view line)
 	if (line.empty())
 		return json::object();
 	auto result = ghassanpl::formats::wilson::consume_object(line, ')');
-	auto unsettable = AttributeProperties::FindUnsettable(result);
-	if (unsettable.size() > 0)
+	if (auto unsettable = AttributeProperties::FindUnsettable(result); !unsettable.empty())
 		throw std::runtime_error(format("The following attributes: '{}' cannot be set by the user, try using the C++ equivalents if applicable.", join(unsettable, ", ")));
 	return result;
 }
@@ -215,69 +217,104 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 	
 	ParseCppAttributes(header_line, henum.Attributes);
 
-	const auto enum_name_start = header_line.begin();
-	const auto enum_name_end = std::ranges::find_if_not(header_line, ascii::isident);
+	henum.Name = ParseIdentifier(header_line);
 
-	henum.Name = TrimWhitespace(string_ops::make_sv(enum_name_start, enum_name_end));
-	///TODO: parse base type
+	header_line = TrimWhitespace(header_line);
 
-	line_num++;
-	Expect(TrimWhitespace(lines[line_num]), "{");
+	if (SwallowOptional(header_line, ":"))
+		henum.BaseType = ParseType(header_line);
+
+	if (!SwallowOptional(header_line, "{"))
+	{
+		line_num++;
+		Expect(TrimWhitespace(lines[line_num]), "{");
+	}
 
 	json attribute_list = json::object();
+
+	/// TODO: Gather comments
+
+	std::vector<std::string> comments;
 
 	line_num++;
 	int64_t enumerator_value = 0;
 	while (TrimWhitespace(lines[line_num]) != "};")
 	{
 		auto enumerator_line = TrimWhitespace(string_view{ lines[line_num] });
-		if (enumerator_line.empty() || enumerator_line.starts_with("//") || enumerator_line.starts_with("/*"))
-		{
-			line_num++;
-			continue;
-		}
 
-		if (enumerator_line.starts_with(options.EnumeratorAnnotationName))
+		if (consume(enumerator_line, "///"))
 		{
-			enumerator_line.remove_prefix(options.EnumeratorAnnotationName.size());
+			comments.push_back((std::string)TrimWhitespace(enumerator_line));
+		}
+		else if (enumerator_line.empty() || enumerator_line.starts_with("//") || enumerator_line.starts_with("/*"))
+		{
+			/// just skip
+		}
+		else if (consume(enumerator_line, options.EnumeratorAnnotationName))
+		{
 			attribute_list = ParseAttributeList(enumerator_line);
-
-			line_num++;
-			continue;
 		}
-
-		const auto enumerator_name_start = enumerator_line.begin();
-		const auto enumerator_name_end = std::ranges::find_if_not(enumerator_line, ascii::isident);
-
-		json cpp_attributes = json::object();
-		ParseCppAttributes(header_line, cpp_attributes);
-
-		if (auto rest = TrimWhitespace(make_sv(enumerator_name_end, enumerator_line.end())); consume(rest, '='))
+		else
 		{
+			auto name = ParseIdentifier(enumerator_line);
+
+			json cpp_attributes = json::object();
+			ParseCppAttributes(header_line, cpp_attributes);
+
+			auto rest = TrimWhitespace(enumerator_line);
+			if (consume(rest, '='))
+			{
+				rest = TrimWhitespace(rest);
+
+				/// TODO: Parse C++ integer literal (including 0x/0b bases, ' separators, suffixes, etc.)
+				int base = 10;
+				if (string_ops::ascii::string_starts_with_ignore_case(rest, "0x"))
+				{
+					rest.remove_prefix(2);
+					base = 16;
+				} 
+				else if (rest.starts_with('0'))
+				{
+					base = 8;
+				}
+				auto fc_result = std::from_chars(std::to_address(rest.begin()), std::to_address(rest.end()), enumerator_value, base);
+
+				if (fc_result.ec != std::errc{})
+					throw std::runtime_error("Non-integer enumerator values are not supported");
+				
+				rest = TrimWhitespace(make_sv(fc_result.ptr, rest.end()));
+			}
+
+			(void)consume(rest, ",");
 			rest = TrimWhitespace(rest);
-			auto result = std::from_chars(std::to_address(rest.begin()), std::to_address(rest.end()), enumerator_value);
-			if (result.ec != std::errc{})
-				throw std::runtime_error("Non-integer enumerator values are not supported");
+
+			if (rest.starts_with("///"))
+				comments.push_back((std::string)rest);
+			else if (!rest.empty())
+				throw std::runtime_error("Enumerators must be the only thing on their line (except comments)");
+
+			if (!name.empty())
+			{
+				auto enumerator_result = std::make_unique<Enumerator>(&henum);
+				Enumerator& enumerator = *enumerator_result;
+				enumerator.Name = TrimWhitespace(name);
+				enumerator.Value = enumerator_value;
+				enumerator.DeclarationLine = line_num;
+				enumerator.Attributes = henum.DefaultEnumeratorAttributes;
+				enumerator.Attributes.update(std::exchange(attribute_list, json::object()), true);
+				enumerator.Attributes.update(cpp_attributes);
+				enumerator.Comments = std::exchange(comments, {});
+				henum.Enumerators.push_back(std::move(enumerator_result));
+				enumerator_value++;
+			}
+
+			comments.clear();
 		}
 
-		if (auto name = make_sv(enumerator_name_start, enumerator_name_end); !name.empty())
-		{
-			auto enumerator_result = std::make_unique<Enumerator>(&henum);
-			Enumerator& enumerator = *enumerator_result;
-			enumerator.Name = TrimWhitespace(name);
-			enumerator.Value = enumerator_value;
-			enumerator.DeclarationLine = line_num;
-			enumerator.Attributes = henum.DefaultEnumeratorAttributes;
-			enumerator.Attributes.update(std::exchange(attribute_list, json::object()), true);
-			enumerator.Attributes.update(cpp_attributes);
-			/// TODO: enumerator.Comments = "";
-			henum.Enumerators.push_back(std::move(enumerator_result));
-			enumerator_value++;
-		}
 		line_num++;
 	}
 
-	henum.Namespace = Attribute::Namespace(henum);
+	henum.Namespace = Attribute::Namespace.GetOr(henum, options.DefaultNamespace);
 
 	return result;
 }
@@ -319,7 +356,9 @@ ParsedClassLine ParseClassLine(string_view line)
 		SwallowOptional(line, "private");
 		SwallowOptional(line, "virtual");
 
-		int parens = 0, triangles = 0, brackets = 0;
+		int parens = 0;
+		int triangles = 0;
+		int brackets = 0;
 
 		line = TrimWhitespace(line);
 		auto start = line;
@@ -386,7 +425,9 @@ ParsedFieldDecl ParseFieldDecl(string_view line)
 	}
 	
 
-	string_view eq = "=", open_brace = "{", colon = ";";
+	const string_view eq = "=";
+	const string_view open_brace = "{";
+	const string_view colon = ";";
 	string_view type_and_name;
 	const auto eq_start = std::ranges::find_first_of(line, eq);
 	const auto brace_start = std::ranges::find_first_of(line, open_brace);
@@ -422,6 +463,9 @@ ParsedFieldDecl ParseFieldDecl(string_view line)
 	result.Type = TrimWhitespace(make_sv(type_and_name.begin(), name_start.base()));
 	result.Name = TrimWhitespace(make_sv(name_start.base(), type_and_name.end()));
 
+	if (!std::ranges::all_of(result.Name, ascii::isident))
+		throw std::runtime_error("Invalid field name");
+
 	return result;
 }
 
@@ -455,10 +499,12 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 	/// Get display name from attributes if set
 	Attribute::DisplayName.TryGet(field, field.DisplayName);
 
+	const bool is_public = field.Access == AccessMode::Public;
+
 	/// Disable if explictly stated
-	if (Attribute::Getter.GetOr(field, true) == false)
+	if (Attribute::Getter.GetOr(field, true) == false || (!is_public && Attribute::PrivateGetters(klass) == false))
 		field.Flags.set(Reflector::FieldFlags::NoGetter);
-	if (Attribute::Setter.GetOr(field, true) == false)
+	if (Attribute::Setter.GetOr(field, true) == false || (!is_public && Attribute::PrivateSetters(klass) == false))
 		field.Flags.set(Reflector::FieldFlags::NoSetter);
 	if (Attribute::Editor.GetOr(field, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoEdit);
@@ -474,6 +520,8 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 	/// Private implies Getter = false, Setter = false, Editor = false
 	if (Attribute::Private.GetOr(field, false))
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
+	if (Attribute::ScriptPrivate.GetOr(field, false))
+		field.Flags.set(Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
 
 	/// ParentPointer implies Editor = false, Setter = false
 	/*
@@ -526,10 +574,12 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 
 	while (true)
 	{
-		if (SwallowOptional(next_line, "virtual")) method.Flags += Reflector::MethodFlags::Virtual;
-		else if (SwallowOptional(next_line, "static")) method.Flags += Reflector::MethodFlags::Static;
-		else if (SwallowOptional(next_line, "inline")) method.Flags += Reflector::MethodFlags::Inline;
-		else if (SwallowOptional(next_line, "explicit")) method.Flags += Reflector::MethodFlags::Explicit;
+		using enum Reflector::MethodFlags;
+
+		if (SwallowOptional(next_line, "virtual")) method.Flags += Virtual;
+		else if (SwallowOptional(next_line, "static")) method.Flags += Static;
+		else if (SwallowOptional(next_line, "inline")) method.Flags += Inline;
+		else if (SwallowOptional(next_line, "explicit")) method.Flags += Explicit;
 		else break;
 	}
 
@@ -537,15 +587,15 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 	auto pre_type = (std::string)TrimWhitespace(string_view{ pre_typestr });
 	next_line = TrimWhitespace(next_line);
 
-	auto name_start = next_line.begin();
-	auto name_end = std::ranges::find_if_not(next_line, ascii::isident);
-	method.Name = TrimWhitespace(make_sv(name_start, name_end));
+	method.Name = ParseIdentifier(next_line);
 
 	ParseCppAttributes(next_line, result->Attributes); /// Unfortunately, C++ attributes on functions can also be after the name: `void q [[ noreturn ]] (int i);`
 
+	if (!next_line.contains('('))
+		throw std::runtime_error(std::format("Misformed method declaration"));
+
 	int num_pars = 0;
-	auto start_args = name_end;
-	next_line = make_sv(name_end, next_line.end());
+	auto start_args = next_line.begin();
 	do
 	{
 		if (next_line.starts_with("("))
@@ -555,6 +605,10 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 		next_line.remove_prefix(1);
 	} while (num_pars);
 	auto params = string_ops::make_sv(start_args + 1, next_line.begin());
+	
+	if (params.empty())
+		throw std::runtime_error(std::format("Misformed method declaration"));
+
 	params.remove_suffix(1);
 	method.SetParameters(std::string{params});
 
@@ -562,9 +616,11 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 
 	while (true)
 	{
-		if (SwallowOptional(next_line, "const")) method.Flags += Reflector::MethodFlags::Const;
-		else if (SwallowOptional(next_line, "final")) method.Flags += Reflector::MethodFlags::Final;
-		else if (SwallowOptional(next_line, "noexcept")) method.Flags += Reflector::MethodFlags::Noexcept;
+		using enum Reflector::MethodFlags;
+
+		if (SwallowOptional(next_line, "const")) method.Flags += Const;
+		else if (SwallowOptional(next_line, "final")) method.Flags += Final;
+		else if (SwallowOptional(next_line, "noexcept")) method.Flags += Noexcept;
 		else break;
 	}
 
@@ -660,7 +716,7 @@ std::unique_ptr<Class> ParseClassDecl(FileMirror* mirror, string_view line, stri
 		throw std::exception(std::format("Non-struct class '{}' must derive from Reflectable or a Reflectable class", klass.FullType()).c_str());
 	}
 
-	klass.Namespace = Attribute::Namespace(klass);
+	klass.Namespace = Attribute::Namespace.GetOr(klass, options.DefaultNamespace);
 
 	return result;
 }
@@ -721,31 +777,43 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 			}
 			else if (current_line.starts_with(options.FieldAnnotationName))
 			{
-				if (mirror.Classes.size() == 0)
+				if (mirror.Classes.empty())
 				{
 					ReportError(path, line_num + 1, "{}() not in class", options.FieldAnnotationName);
 					return false;
 				}
 
 				auto& klass = mirror.Classes.back();
+				if (klass->BodyLine == 0)
+				{
+					ReportError(path, line_num + 1, "Field before Body annotation (did you forget an {}?)", options.BodyAnnotationName);
+					return false;
+				}
+
 				klass->Fields.push_back(ParseFieldDecl(mirror, *klass, current_line, next_line, line_num, current_access, std::exchange(comments, {}), options));
 				klass->Fields.back()->UID = GenerateUID(path, line_num);
 			}
 			else if (current_line.starts_with(options.MethodAnnotationName))
 			{
-				if (mirror.Classes.size() == 0)
+				if (mirror.Classes.empty())
 				{
 					ReportError(path, line_num + 1, "{}() not in class", options.MethodAnnotationName);
 					return false;
 				}
 
 				auto& klass = mirror.Classes.back();
+				if (klass->BodyLine == 0)
+				{
+					ReportError(path, line_num + 1, "Method before Body annotation (did you forget an {}?)", options.BodyAnnotationName);
+					return false;
+				}
+
 				klass->Methods.push_back(ParseMethodDecl(*klass, current_line, next_line, line_num, current_access, std::exchange(comments, {}), options));
 				klass->Methods.back()->UID = GenerateUID(path, line_num);
 			}
 			else if (current_line.starts_with(options.BodyAnnotationName))
 			{
-				if (mirror.Classes.size() == 0)
+				if (mirror.Classes.empty())
 				{
 					ReportError(path, line_num + 1, "{}() not in class", options.BodyAnnotationName);
 					return false;

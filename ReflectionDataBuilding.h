@@ -9,7 +9,7 @@
 #include "Options.h"
 #include "FileWriter.h"
 
-#define TIMESTAMP_TEXT "/// TIMESTAMP: "
+constexpr std::string_view TIMESTAMP_TEXT = "/// TIMESTAMP: ";
 
 uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, const Options& opts);
 

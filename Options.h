@@ -3,18 +3,18 @@
 #include "Common.h"
 #include "ReflectorUtils.h"
 
-#include <nlohmann/json.hpp>
-
 #if __has_include("Options.h.mirror")
-static inline constexpr bool BootstrapBuild = false;
+inline constexpr bool BootstrapBuild = false;
 #include "Options.h.mirror"
 #else
-static inline constexpr bool BootstrapBuild = true;
+inline constexpr bool BootstrapBuild = true;
 #include "DummyReflector.h"
 #endif
 
 /// NOTE: Changing this file requires a bootstrap rebuild!
 
+
+/// TODO: We probably should drop support for anything except nlohmann, or create our own interface to handle json values
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
 struct JSONOptions
 {
@@ -35,6 +35,16 @@ struct JSONOptions
 	/// The function that takes the stringified attribute data and turns into the JSON type
 	RField();
 	std::string ParseFunction = "::nlohmann::json::parse";
+
+	/// When converting object fields to JSON fields, the serializer will check if the field is
+	/// equal to its initializer, skipping serializing that field if it is equal.
+	/// Set AlwaysSaveAllFields to true to always save all object fields to JSON.
+	RField();
+	bool AlwaysSaveAllFields = false;
+
+	/// TODO: Toggles generation of JSON serialization methods for reflected classes
+	RField();
+	bool GenerateSerializationMethods = true;
 };
 
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
@@ -47,8 +57,6 @@ struct DocumentationOptions
 	bool Generate = true;
 
 	/// TODO: A structure that somehow turns filenames into github (or other) links
-	RField();
-	bool FileLinkResolve = false;
 
 	/// Will be added to the end of page titles
 	RField();
@@ -66,7 +74,7 @@ struct DocumentationOptions
 	RField();
 	std::string Language = "en";
 
-	/// TODO: The directory to put documentation into, (relative to artifact directory or options.json file)?
+	/// TODO: The directory to put documentation into, (relative to options.json file)?
 	RField();
 	path DocumentationDirectory = "Documentation";
 
@@ -96,6 +104,16 @@ struct DocumentationOptions
 };
 
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
+struct ArtifactOptions
+{
+};
+
+RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
+struct NameOptions
+{
+};
+
+RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
 struct Options
 {
 	RBody();
@@ -105,6 +123,8 @@ struct Options
 	/// A filename or list of filenames (or directories) to scan for reflectable types
 	RField(Required);
 	json Files{};
+
+	/// TODO: File/dir exclusions
 
 	/// Path to the directory where the general artifact files will be created (relative to ???)
 	RField();
@@ -145,11 +165,19 @@ struct Options
 	RField();
 	bool CreateDatabase = true;
 
+	/// Whether to create Set* and Get* methods for public fields.
+	RField();
+	bool GenerateAccessorsForPublicFields = true;
+
 	//bool GenerateLuaFunctionBindings = false; /// Maybe instead of Lua function bindings, since this options is loaded from a JSON, we can have a nice JSON structure that defines how to create scripting bindings?
 
 	/// Whether to create `typeid(...)` expressions in the reflection data. Useful if you have RTTI turned off.
 	RField();
 	bool GenerateTypeIndices = true;
+
+	/// Whether to add support for garbage-collected heaps for reflected classes.
+	RField();
+	bool AddGCFunctionality = true;
 
 	/// Whether to output forward declarations of reflected classes
 	RField();
@@ -159,9 +187,16 @@ struct Options
 	RField();
 	bool DebuggingComments = true;
 
+	/// The default namespace for all reflected types.
+	/// TODO: Can be modified by the file-level `RNamespace(...);` annotation, or by the entity-level `Namespace` attribute
+	RField();
+	std::string DefaultNamespace = {};
+
 	/// Documentation options
 	RField();
 	DocumentationOptions Documentation = {};
+
+	/// TODO: Move affixes and macro names to a different struct
 
 	/// Prefix for all the annotation macros, e.g. X => XClass, XBody, XField, XMethod, etc
 	RField();
@@ -207,6 +242,10 @@ struct Options
 	/// Name of class body macro. If not set, will be `AnnotationPrefix + "Body"`.
 	RField();
 	std::string BodyAnnotationName;
+
+	/// TODO: Name of namespace annotation macro. If not set, will be `AnnotationPrefix + "Namespace"`.
+	RField();
+	std::string NamespaceAnnotationName;
 
 	RField();
 	std::string GetterPrefix = "Get";
@@ -260,57 +299,3 @@ private:
 	json mOptionsFile;
 	std::vector<path> mPathsToScan;
 };
-
-NLOHMANN_JSON_NAMESPACE_BEGIN
-template <Reflector::reflected_class SERIALIZABLE>
-struct adl_serializer<SERIALIZABLE>
-{
-	static void to_json(json& j, const SERIALIZABLE& p)
-	{
-		SERIALIZABLE::ForEachField([&]<typename FIELD>(FIELD properties) {
-			if constexpr (!FIELD::HasFlag(Reflector::FieldFlags::NoSave))
-			{
-				j[FIELD::Name] = (p).*(FIELD::Pointer);
-			}
-		});
-	}
-
-	static void from_json(const json& j, SERIALIZABLE& p)
-	{
-		SERIALIZABLE::ForEachField([&]<typename FIELD>(FIELD properties) {
-			if constexpr (!FIELD::HasFlag(Reflector::FieldFlags::NoLoad))
-			{
-				auto it = j.find(FIELD::Name);
-				if (it == j.end())
-				{
-					if constexpr (FIELD::HasFlag(Reflector::FieldFlags::Required))
-					{
-						throw std::runtime_error{ std::format("Missing field '{}'", FIELD::Name) };
-					}
-					else
-					{
-						; /// ignore
-					}
-				}
-				else
-				{
-					FIELD::CopySetter(&p, it->template get<typename FIELD::Type>());
-				}
-			}
-		});
-	}
-};
-template <Reflector::reflected_enum SERIALIZABLE>
-struct adl_serializer<SERIALIZABLE>
-{
-	static void to_json(json& j, const SERIALIZABLE& p)
-	{
-		j = std::underlying_type_t<SERIALIZABLE>(p);
-	}
-
-	static void from_json(const json& j, SERIALIZABLE& p)
-	{
-		if (j.is_string()) p = GetEnumeratorFromName(p, j); else p = (SERIALIZABLE)(std::underlying_type_t<SERIALIZABLE>)j;
-	}
-};
-NLOHMANN_JSON_NAMESPACE_END

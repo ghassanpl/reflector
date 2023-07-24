@@ -7,6 +7,8 @@ into
 
 - we should unify and simplify error reporting
 
+- use icons everywhere instead of 'method' and 'field', etc
+
 - we COULD, if we're still using RMethod macros, add [[nodiscard]] by default to all methods
 
 - since we're using `header_utils` anyway, might as well use Assuming

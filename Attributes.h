@@ -55,7 +55,7 @@ struct AttributeProperties
 	void Set(AttributeValidatorFunc validator) { this->Validator = std::move(validator); }
 	void Set(enum_flags<AttributePropertyFlags> flags) { this->Flags += flags; }
 	void Set(AttributePropertyFlags flag) { this->Flags += flag; }
-	void Set(AttributeCategory ac) { this->Category = move(ac.value); }
+	void Set(AttributeCategory ac) { this->Category.assign(ac.value); }
 
 	std::optional<std::string> ExistsIn(Declaration const& decl) const;
 	std::optional<std::string> ExistsIn(json const& attrs) const;
@@ -193,11 +193,16 @@ struct Attribute
 	static const BoolAttributeProperties Load;
 
 	static const BoolAttributeProperties Document;
+	static const BoolAttributeProperties DocumentMembers;
 
 	static const BoolAttributeProperties Serialize;
 	static const BoolAttributeProperties Private;
-	//static const BoolAttributeProperties ParentPointer;
+	static const BoolAttributeProperties Transient;
+	static const BoolAttributeProperties ScriptPrivate;
 	static const BoolAttributeProperties Required;
+
+	static const BoolAttributeProperties PrivateGetters;
+	static const BoolAttributeProperties PrivateSetters;
 
 	static const StringAttributeProperties OnChange;
 

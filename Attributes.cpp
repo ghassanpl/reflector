@@ -37,14 +37,14 @@ std::optional<std::string> AttributeProperties::ExistsIn(json const& attrs) cons
 
 namespace Targets
 {
-	enum_flags<DeclarationType> Enums = DeclarationType::Enum;
-	enum_flags<DeclarationType> Fields = DeclarationType::Field;
-	enum_flags<DeclarationType> Methods = DeclarationType::Method;
-	enum_flags<DeclarationType> Classes = DeclarationType::Class;
-	enum_flags<DeclarationType> Members { DeclarationType::Method, DeclarationType::Field };
-	enum_flags<DeclarationType> Enumerators { DeclarationType::Enumerator };
-	enum_flags<DeclarationType> Any = enum_flags<DeclarationType>::all();
-	enum_flags<DeclarationType> Types { DeclarationType::Class, DeclarationType::Enum };
+	enum_flags Enums = DeclarationType::Enum;
+	enum_flags Fields = DeclarationType::Field;
+	enum_flags Methods = DeclarationType::Method;
+	enum_flags Classes = DeclarationType::Class;
+	enum_flags Members { DeclarationType::Method, DeclarationType::Field };
+	enum_flags Enumerators = DeclarationType::Enumerator;
+	enum_flags Any = enum_flags<DeclarationType>::all();
+	enum_flags Types { DeclarationType::Class, DeclarationType::Enum };
 }
 
 AttributeValidatorFunc IsString = [](json const& attr_value, Declaration const& on_decl) -> expected<void, std::string> {
@@ -144,8 +144,17 @@ const BoolAttributeProperties Attribute::Document {
 	true
 };
 
+const BoolAttributeProperties Attribute::DocumentMembers {
+	"DocumentMembers",
+	"Whether or not to create documentation entries for members of this entity",
+	Targets::Types,
+	true
+};
+
 const BoolAttributeProperties Attribute::Serialize{ "Serialize", "False means both 'Save' and 'Load' are false", Targets::Fields, true };
 const BoolAttributeProperties Attribute::Private{ "Private", "True sets 'Edit', 'Setter', 'Getter' to false", Targets::Fields, false };
+const BoolAttributeProperties Attribute::Transient{ "Transient", "True sets 'Setter' and 'Serialize' to false", Targets::Fields, false }; /// TODO: This
+const BoolAttributeProperties Attribute::ScriptPrivate{ "ScriptPrivate", "True sets 'Setter', 'Getter' to false", Targets::Fields, false };
 
 /// TODO: Add AMs and docnotes for this
 //const BoolAttributeProperties Attribute::ParentPointer{ "ParentPointer", "Whether or not this field is a pointer to parent object, in a tree hierarchy; implies Edit = false, Setter = false", Targets::Fields, false };
@@ -154,6 +163,20 @@ const BoolAttributeProperties Attribute::Required {
 	"Required",
 	"A helper flag for the serialization system - will set the FieldFlags::Required flag",
 	Targets::Fields,
+	false
+};
+
+const BoolAttributeProperties Attribute::PrivateGetters {
+	"PrivateGetters",
+	"Whether to generate getters for private members",
+	Targets::Classes,
+	true
+};
+
+const BoolAttributeProperties Attribute::PrivateSetters {
+	"PrivateSetters",
+	"Whether to generate setters for private members",
+	Targets::Classes,
 	false
 };
 
@@ -166,13 +189,13 @@ const StringAttributeProperties Attribute::OnChange {
 
 const StringAttributeProperties Attribute::FlagGetters {
 	"FlagGetters",
-	"If set to an (reflected) enum name, creates getter functions (IsFlag) for each Flag in this field; can't be set if 'Flags' is set",
+	"If set to an (reflected) enum name, creates public getter functions (IsFlag) for each Flag in this field, and private setters; can't be set if 'Flags' is set",
 	Targets::Fields,
 	IsReflectedEnum
 };
 const StringAttributeProperties Attribute::Flags {
 	"Flags",
-	"If set to an (reflected) enum name, creates getter and setter functions (IsFlag, SetFlag, UnsetFlag, ToggleFlag) for each Flag in this field; can't be set if 'FlagGetters' is set",
+	"If set to an (reflected) enum name, creates public getter and setter functions (IsFlag, SetFlag, UnsetFlag, ToggleFlag) for each Flag in this field; can't be set if 'FlagGetters' is set",
 	Targets::Fields,
 	IsReflectedEnum
 };

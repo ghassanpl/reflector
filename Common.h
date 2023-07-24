@@ -23,6 +23,15 @@ using tl::unexpected;
 #include <magic_enum_format.hpp>
 #include <format>
 using std::string_view;
+using nlohmann::json;
+
+/// We define these so that all code in artifacts is included, making sure it compiles
+#define REFLECTOR_USES_JSON 1
+#define REFLECTOR_JSON_TYPE ::nlohmann::json
+#define REFLECTOR_JSON_HEADER <nlohmann/json.hpp>
+#define REFLECTOR_JSON_PARSE_FUNC ::nlohmann::json::parse
+#define REFLECTOR_USES_GC 1
+
 #include "Include/ReflectorClasses.h"
 using Reflector::ClassFlags;
 using Reflector::EnumeratorFlags;
@@ -30,8 +39,6 @@ using Reflector::EnumFlags;
 using Reflector::FieldFlags;
 using Reflector::MethodFlags;
 using std::filesystem::path;
-
-using nlohmann::json;
 
 using namespace ghassanpl;
 using namespace ghassanpl::string_ops;
@@ -49,7 +56,7 @@ inline string_view TrimWhitespace(std::string_view str)
 void PrintSafe(std::ostream& strm, std::string val);
 
 template <typename... ARGS>
-void ReportError(path path, size_t line_num, std::string_view fmt, ARGS&& ... args)
+void ReportError(path const& path, size_t line_num, std::string_view fmt, ARGS&& ... args)
 {
 	PrintSafe(std::cerr, std::format("{}({},1): error: {}\n", path.string(), line_num, std::vformat(fmt, std::make_format_args(std::forward<ARGS>(args)...))));
 }
@@ -70,6 +77,7 @@ std::string EscapeJSON(json const& json);
 std::string EscapeString(std::string_view str);
 
 enum class AccessMode { Unspecified, Public, Private, Protected };
+std::string FormatAccess(AccessMode mode);
 
 static constexpr const char* AMStrings[] = { "Unspecified", "Public", "Private", "Protected" };
 
@@ -79,6 +87,7 @@ struct FileMirror;
 struct Class;
 struct Method;
 struct Enum;
+struct Enumerator;
 
 enum class DeclarationType
 {
@@ -88,6 +97,16 @@ enum class DeclarationType
 	Class,
 	Enum,
 	Enumerator,
+	Namespace,
+	Parameter,
+	ReturnType,
+
+	/*
+	* Constant,
+	* Event,
+	* Interface,
+	* Operator,
+	*/
 };
 
 /// TODO: How much of the data in these classes should we output into the reflection system (*ReflectionData classes, etc)?
@@ -97,6 +116,13 @@ struct SimpleDeclaration
 {
 	std::string Name;
 	std::vector<std::string> Comments;
+
+	void ForEachCommentDirective(std::string_view directive_name, std::function<void(std::span<const std::string>)> callback) const;
+
+	auto NonDirectiveCommentLines() const
+	{
+		return Comments | std::ranges::views::filter([](std::string_view s) { return !trimmed_whitespace_left(s).starts_with('@'); });
+	}
 
 	bool Document = true;
 	std::optional<std::string> Deprecation;
@@ -120,6 +146,7 @@ enum class LinkFlag
 	ReturnType,
 	Parameters,
 	Namespace,
+	DeclarationType,
 };
 using LinkFlags = enum_flags<LinkFlag>;
 
@@ -134,6 +161,8 @@ struct Declaration : public SimpleDeclaration
 
 	/// These are in a map for historical reasons mostly, but it's easier to find bugs this way
 	std::map<std::string, Method const*, std::less<>> AssociatedArtificialMethods;
+
+	bool DocumentMembers = true;
 	
 	std::string GeneratedUniqueName() const { return std::format("{}_{:016x}", Name, UID); }
 
@@ -198,12 +227,26 @@ struct TypeDeclaration : public Declaration
 	virtual std::string MakeLink(LinkFlags flags = {}) const override;
 };
 
+struct BaseMemberDeclaration : Declaration
+{
+	virtual Declaration* ParentDecl() const = 0;
+
+	void CreateArtificialMethodsAndDocument(Options const& options);
+};
+
 template <typename PARENT_TYPE>
-struct MemberDeclaration : public Declaration
+struct MemberDeclaration : public BaseMemberDeclaration
 {
 	PARENT_TYPE* ParentType{};
 
-	MemberDeclaration(PARENT_TYPE* parent) : ParentType(parent) {}
+	MemberDeclaration(PARENT_TYPE* parent) : ParentType(parent)
+	{
+		this->Document = ParentType->DocumentMembers;
+	}
+
+	virtual Declaration* ParentDecl() const override { return ParentType; }
+
+	PARENT_TYPE* Parent() const { return ParentType; }
 
 	virtual std::string FullName(std::string_view sep = "_") const override
 	{
@@ -317,8 +360,18 @@ struct Class : public TypeDeclaration
 
 	std::vector<std::unique_ptr<Field>> Fields;
 	std::vector<std::unique_ptr<Method>> Methods;
-	std::map<std::string, Property, std::less<>> Properties; /// TODO: Document these! These are generated via 'GetterFor'/'SetterFor' methods
+	std::map<std::string, Property, std::less<>> Properties; /// TODO: Document these! These are generated via 'GetterFor'/'SetterFor' methods and via private fields with getters/setters
 	std::vector<std::string> AdditionalBodyLines;
+
+	struct ClassDeclaredFlag
+	{
+		std::string Name;
+		Field* SourceField = nullptr;
+		Enumerator* Represents = nullptr;
+		std::vector<Method*> GeneratedArtificialMethods;
+	};
+
+	std::vector<ClassDeclaredFlag> ClassDeclaredFlags; /// TODO: Generated from Flags=... fields. Should create a Fields section in the class documentation if not empty
 
 	json DefaultFieldAttributes = json::object();
 	json DefaultMethodAttributes = json::object();
@@ -391,6 +444,8 @@ struct Enumerator : public MemberDeclaration<Enum>
 struct Enum : public TypeDeclaration
 {
 	using TypeDeclaration::TypeDeclaration;
+	
+	std::string BaseType;
 
 	std::vector<std::unique_ptr<Enumerator>> Enumerators;
 
@@ -408,7 +463,7 @@ struct Enum : public TypeDeclaration
 
 	bool IsTrivial() const
 	{
-		return Enumerators.size() > 0 && Enumerators[0]->Value == 0 && IsConsecutive();
+		return !Enumerators.empty() && Enumerators[0]->Value == 0 && IsConsecutive();
 	}
 
 	virtual json ToJSON() const override;
@@ -426,13 +481,15 @@ struct FileMirror
 	std::vector<std::unique_ptr<Class>> Classes;
 	std::vector<std::unique_ptr<Enum>> Enums;
 
-	bool IsEmpty() const { return !(Classes.size() > 0 || Enums.size() > 0); }
+	bool IsEmpty() const { return Classes.empty() && Enums.empty(); }
 
 	json ToJSON() const;
 
 	void CreateArtificialMethodsAndDocument(Options const& options);
+
+	void Sort();
 	
-	FileMirror();
+	FileMirror() = default;
 	FileMirror(FileMirror const&) = delete;
 	FileMirror(FileMirror&&) noexcept = default;
 	FileMirror& operator=(FileMirror const&) = delete;
@@ -442,11 +499,14 @@ struct FileMirror
 std::string FormatPreFlags(enum_flags<Reflector::FieldFlags> flags, enum_flags<Reflector::FieldFlags> except = {});
 std::string FormatPreFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except = {});
 std::string FormatPostFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except = {});
+std::string IconFor(DeclarationType type);
 
-extern uint64_t ChangeTime;
+extern uint64_t ExecutableChangeTime;
+extern uint64_t InvocationTime;
 std::vector<FileMirror const*> GetMirrors();
 FileMirror* AddMirror();
 void RemoveEmptyMirrors();
+void SortMirrors();
 void CreateArtificialMethodsAndDocument(Options const& options);
 
 inline std::string OnlyType(std::string str)

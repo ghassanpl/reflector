@@ -80,6 +80,7 @@
     <None Include="AttributeIdeas.md" />
     <None Include="options_reflection.json" />
     <None Include="documentation_default_css.json" />
+    <None Include="cpp.hint" />
   </ItemGroup>
   <ItemGroup>
     <Text Include="todo.txt" />

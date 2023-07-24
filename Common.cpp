@@ -8,11 +8,13 @@
 #include "Options.h"
 #include "Documentation.h"
 #include <ghassanpl/string_ops.h>
+#include <ghassanpl/hashes.h>
 #include <mutex>
 #include <future>
 using namespace std::string_literals;
 
-uint64_t ChangeTime = 0;
+uint64_t ExecutableChangeTime = 0;
+uint64_t InvocationTime = 0;
 std::vector<std::unique_ptr<FileMirror>> Mirrors;
 
 void Declaration::CreateArtificialMethodsAndDocument(Options const& options)
@@ -24,7 +26,7 @@ void Declaration::CreateArtificialMethodsAndDocument(Options const& options)
 		this->Deprecation = attr.is_string() ? std::string{attr} : std::string{};
 	}
 
-	Attribute::Document.TryGet(*this, Document);
+	Attribute::DocumentMembers.TryGet(*this, DocumentMembers);
 
 	if (auto& attr = Attribute::NoDiscard.TryGet(*this); !attr.is_null())
 	{
@@ -44,6 +46,7 @@ json Declaration::ToJSON() const
 	if (!Attributes.empty())
 		result["Attributes"] = Attributes;
 	result["FullName"] = FullName(".");
+	if (!DocumentMembers) result["DocumentMembers"] = DocumentMembers;
 	if (DeclarationLine != 0) result["DeclarationLine"] = DeclarationLine;
 	if (Access != AccessMode::Unspecified) result["Access"] = AMStrings[(int)Access];
 	if (!AssociatedArtificialMethods.empty())
@@ -73,7 +76,7 @@ Method* Field::AddArtificialMethod(std::string function_type, std::string result
 
 void Field::CreateArtificialMethodsAndDocument(Options const& options)
 {
-	Declaration::CreateArtificialMethodsAndDocument(options);
+	MemberDeclaration::CreateArtificialMethodsAndDocument(options);
 
 	/// Create comments string
 	/// TODO: Improve this
@@ -84,15 +87,16 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 	/// Getters and Setters
 	if (!Flags.is_set(Reflector::FieldFlags::NoGetter))
 	{
+		using enum Reflector::MethodFlags;
 		auto getter = AddArtificialMethod("Getter", Type + " const &", options.GetterPrefix + CleanName, "", "return this->" + Name + ";", {"Gets " + field_comments},
-			{MethodFlags::Const, MethodFlags::Noexcept, MethodFlags::NoDiscard});
+			{Const, Noexcept, NoDiscard});
 		AddDocNote("Getter", "The value of this field is retrieved by the {} method.", getter->MakeLink());
 	}
 
 	if (!Flags.is_set(Reflector::FieldFlags::NoSetter))
 	{
 		auto on_change = Attribute::OnChange(*this);
-		auto setter = AddArtificialMethod("Setter", "void", options.SetterPrefix + CleanName, Type + " const & value", "this->" + Name + " = value; " + on_change + ";", {"Sets " + field_comments}, {});
+		auto setter = AddArtificialMethod("Setter", "void", options.SetterPrefix + CleanName, Type + " const & value", "static_assert(std::is_copy_assignable_v<decltype(this->"+Name+")>, \"err\"); this->" + Name + " = value; " + on_change + ";", {"Sets " + field_comments}, {});
 		AddDocNote("Setter", "The value of this field is set by the {} method.", setter->MakeLink());
 		if (!on_change.empty())
 			AddDocNote("On Change", "When this field is changed (via its setter and other such functions), the following code will be executed: `{}`", Escaped(on_change));
@@ -101,8 +105,8 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 	if (Flags.is_set(Reflector::FieldFlags::NoEdit)) AddDocNote("Not Editable", "This field is not be editable in the editor.");
 	if (Flags.is_set(Reflector::FieldFlags::NoScript)) AddDocNote("Not Scriptable", "This field is not accessible via script.");
 	if (Flags.is_set(Reflector::FieldFlags::NoSave)) AddDocNote("Not Saved", "This field will not be serialized when saving {}.", ParentType->MakeLink());
-	if (Flags.is_set(Reflector::FieldFlags::NoLoad)) AddDocNote("Not Editable", "This field will not be deserialized when loading {}.", ParentType->MakeLink());
-	if (Flags.is_set(Reflector::FieldFlags::NoDebug)) AddDocNote("Not Editable", "This field will not be debuggable when debugging {}.", ParentType->MakeLink());
+	if (Flags.is_set(Reflector::FieldFlags::NoLoad)) AddDocNote("Not Loaded", "This field will not be deserialized when loading {}.", ParentType->MakeLink());
+	if (Flags.is_set(Reflector::FieldFlags::NoDebug)) AddDocNote("Not Debuggable", "This field will not be debuggable when debugging {}.", ParentType->MakeLink());
 
 	if (Flags.is_set(Reflector::FieldFlags::NoUniqueAddress)) AddDocNote("No Unique Address", "This field has the [\\[\\[no_unique_address\\]\\]](https://en.cppreference.com/w/cpp/language/attributes/no_unique_address) attribute applied to it..", ParentType->MakeLink());
 
@@ -119,8 +123,8 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 
 	if (do_flags)
 	{
-		constexpr auto enum_getter_flags = enum_flags{ MethodFlags::Const, MethodFlags::Inline, MethodFlags::Noexcept, MethodFlags::NoDiscard };
-		constexpr auto enum_setter_flags = enum_flags{ MethodFlags::Inline };
+		constexpr auto enum_getter_flags = enum_flags{ MethodFlags::Const, MethodFlags::Inline, MethodFlags::Noexcept, MethodFlags::NoDiscard, MethodFlags::ForFlag };
+		constexpr auto enum_setter_flags = enum_flags{ MethodFlags::Inline, MethodFlags::ForFlag };
 		auto henum = FindEnum(*enum_name);
 		if (!henum)
 		{
@@ -134,8 +138,16 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 
 		const auto flag_nots = Attribute::FlagNots(*this);
 
+		/// TODO: Make sure we're generating the proper accesses for flag methods generated from private fields!
+
 		for (auto& enumerator : henum->Enumerators)
 		{
+			this->Parent()->ClassDeclaredFlags.push_back(Class::ClassDeclaredFlag{
+				.Name = enumerator->Name,
+				.SourceField = this,
+				.Represents = enumerator.get()
+			});
+
 			AddArtificialMethod(format("FlagGetter.{}.{}", henum->FullName(), enumerator->Name), "bool", options.IsPrefix + enumerator->Name, "", std::format("return (this->{} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator->Value),
 				{ "Checks whether the " + enumerator->MakeLink() + " flag is set in " + MakeLink()}, enum_getter_flags);
 
@@ -151,47 +163,51 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 			}
 		}
 
-		if (do_setters)
+		/// Setters
 		{
+			auto setter_access = do_setters ? AccessMode::Public : AccessMode::Protected;
 			for (auto& enumerator : henum->Enumerators)
 			{
 				AddArtificialMethod(format("FlagSetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.SetterPrefix + enumerator->Name, "", std::format("this->{} |= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
-					{ "Sets the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags);
+					{ "Sets the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
+				AddArtificialMethod(format("FlagSetterTo.{}.{}", henum->FullName(), enumerator->Name), "void", options.SetterPrefix + enumerator->Name, "bool val", 
+					std::format("val ? (this->{0} |= {1}{{{2}}}) : (this->{0} &= ~{1}{{{2}}});", Name, Type, 1ULL << enumerator->Value),
+					{ "Sets or unsets the " + enumerator->MakeLink() + " flag in " + MakeLink() + " depending on the given value" }, enum_setter_flags)->Access = setter_access;
 
 				if (auto opposite = Attribute::Opposite.SafeGet(*enumerator))
 				{
 					AddArtificialMethod(format("FlagOppositeSetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.SetterPrefix + *opposite, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator->Value),
-						{ "Clears the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags);
+						{ "Clears the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 
 				}
 				else if (flag_nots)
 				{
 					AddArtificialMethod(format("FlagOppositeSetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.SetNotPrefix + enumerator->Name, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator->Value),
-						{ "Clears the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags);
+						{ "Clears the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 				}
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
 				AddArtificialMethod(format("FlagUnsetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.UnsetPrefix + enumerator->Name, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator->Value),
-					{ "Clears the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags);
+					{ "Clears the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 
 
 				if (auto opposite = Attribute::Opposite.SafeGet(*enumerator))
 				{
 					AddArtificialMethod(format("FlagOppositeUnsetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.UnsetPrefix + *opposite, "", std::format("this->{} |= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
-						{ "Sets the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags);
+						{ "Sets the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 
 				}
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
 				AddArtificialMethod(format("FlagToggler.{}.{}", henum->FullName(), enumerator->Name), "void", options.TogglePrefix + enumerator->Name, "", std::format("this->{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
-					{ "Toggles the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags);
+					{ "Toggles the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 
 				if (auto opposite = Attribute::Opposite.SafeGet(*enumerator))
 				{
 					AddArtificialMethod(format("FlagOppositeToggler.{}.{}", henum->FullName(), enumerator->Name), "void", options.TogglePrefix + *opposite, "", std::format("this->{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
-						{ "Toggles the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags);
+						{ "Toggles the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 				}
 			}
 		}
@@ -229,7 +245,9 @@ json Field::ToJSON() const
 void Method::Split()
 {
 	std::vector<MethodParameter> args;
-	int brackets = 0, tris = 0, parens = 0;
+	int brackets = 0;
+	int tris = 0;
+	int parens = 0;
 	auto argstring = std::string_view{ mParameters };
 	auto begin = argstring.begin();
 	MethodParameter current{};
@@ -304,13 +322,15 @@ void Method::SetParameters(std::string params)
 
 std::string Method::GetSignature(Class const& parent_class) const
 {
-	auto base = Flags.is_set(MethodFlags::Static) ? 
+	using enum Reflector::MethodFlags;
+
+	auto base = Flags.is_set(Static) ? 
 		std::format("{} (*)({})", Return.Name, ParametersTypesOnly)
 	:
 		std::format("{} ({}::*)({})", Return.Name, parent_class.FullType(), ParametersTypesOnly);
-	if (Flags.is_set(Reflector::MethodFlags::Const))
+	if (Flags.is_set(Const))
 		base += " const";
-	if (Flags.is_set(Reflector::MethodFlags::Noexcept))
+	if (Flags.is_set(Noexcept))
 		base += " noexcept";
 	return base;
 }
@@ -322,20 +342,22 @@ Method* Method::AddArtificialMethod(std::string function_type, std::string resul
 
 void Method::CreateArtificialMethodsAndDocument(Options const& options)
 {
-	Declaration::CreateArtificialMethodsAndDocument(options);
+	using enum Reflector::MethodFlags;
 
-	if (ParentType->Flags.is_set(ClassFlags::HasProxy) && Flags.is_set(MethodFlags::Virtual))
+	MemberDeclaration::CreateArtificialMethodsAndDocument(options);
+
+	if (ParentType->Flags.is_set(ClassFlags::HasProxy) && Flags.is_set(Virtual))
 	{
 		Method* proxy_method = nullptr;
-		const auto flags = (Flags - MethodFlags::Virtual) + MethodFlags::Proxy;
-		if (Flags.is_set(MethodFlags::Abstract))
+		const auto flags = (Flags - Virtual) + Proxy;
+		if (Flags.is_set(Abstract))
 			proxy_method = AddArtificialMethod("Proxy", Return.Name, options.ProxyMethodPrefix + Name, GetParameters(), std::format("throw std::runtime_error{{\"invalid abstract call to function {}::{}\"}};", ParentType->FullType(), Name), {"Proxy function for " + MakeLink() }, flags);
 		else
 			proxy_method = AddArtificialMethod("Proxy", Return.Name, options.ProxyMethodPrefix + Name, GetParameters(), "return self_type::" + Name + "(" + ParametersNamesOnly + ");", { "Proxy function for " + MakeLink() }, flags);
 		proxy_method->Document = false;
 	}
 
-	if (Flags.is_set(MethodFlags::NoReturn)) AddDocNote("Does Not Return", "This function does not return.");
+	if (Flags.is_set(NoReturn)) AddDocNote("Does Not Return", "This function does not return.");
 }
 
 std::string Method::FullName(std::string_view sep) const
@@ -347,7 +369,7 @@ json Method::ToJSON() const
 {
 	json result = MemberDeclaration<Class>::ToJSON();
 	result["Return.Name"] = Return.Name;
-	if (ParametersSplit.size() > 0) std::ranges::transform(ParametersSplit, std::back_inserter(result["Parameters"]), [](auto& param) { return param.ToJSON(); });
+	if (!ParametersSplit.empty()) std::ranges::transform(ParametersSplit, std::back_inserter(result["Parameters"]), [](auto& param) { return param.ToJSON(); });
 	if (!ArtificialBody.empty()) result["ArtificialBody"] = ArtificialBody;
 	if (SourceDeclaration) result["SourceDeclaration"] = SourceDeclaration->FullName(".");
 	if (!UniqueName.empty()) result["UniqueName"] = UniqueName;
@@ -357,7 +379,7 @@ json Method::ToJSON() const
 
 void Property::CreateArtificialMethodsAndDocument(Options const& options)
 {
-	Declaration::CreateArtificialMethodsAndDocument(options);
+	MemberDeclaration::CreateArtificialMethodsAndDocument(options);
 }
 
 json Property::ToJSON() const
@@ -393,7 +415,7 @@ Method* Class::AddArtificialMethod(Declaration& for_decl, std::string function_t
 		ReportError(for_decl, "Artificial method '{}' already exists in class {}: {}", function_type, MakeLink(), it->second->MakeLink());
 		throw std::runtime_error("Internal error");
 	}
-	method.UID = GenerateUID(ParentMirror->SourceFilePath, method.ActualDeclarationLine());
+	method.UID = ghassanpl::hash(ParentMirror->SourceFilePath.string(), method.ActualDeclarationLine(), method.GetParameters());
 	return &method;
 }
 
@@ -422,8 +444,9 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 	/// Create singleton method if singleton
 	if (Attribute::Singleton(*this))
 	{
+		using enum Reflector::MethodFlags;
 		const auto getter = AddArtificialMethod(*this, "SingletonGetter", format("{}&", this->FullType()), options.SingletonInstanceGetterName, "", "static self_type instance; return instance;",
-			{ "Returns the single instance of this class" }, { MethodFlags::Noexcept, MethodFlags::Static, MethodFlags::NoDiscard });
+			{ "Returns the single instance of this class" }, { Noexcept, Static, NoDiscard });
 		AddDocNote("Singleton", "This class is a singleton. Call {} to get the instance.", getter->MakeLink());
 	}
 
@@ -438,8 +461,8 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 		method->CreateArtificialMethodsAndDocument(options);
 	for (const auto& field : Fields)
 		field->CreateArtificialMethodsAndDocument(options);
-	for (auto& property : Properties)
-		property.second.CreateArtificialMethodsAndDocument(options);
+	for (auto& [name, property] : Properties)
+		property.CreateArtificialMethodsAndDocument(options);
 
 	for (auto& am : mArtificialMethods)
 	{
@@ -481,7 +504,7 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 
 Property& Class::EnsureProperty(std::string name)
 {
-	auto [it, added] = Properties.try_emplace(name, Property{ this });
+	auto [it, added] = Properties.try_emplace(name, this);
 	if (added)
 		it->second.Name = name;
 	else
@@ -542,7 +565,7 @@ json Enumerator::ToJSON() const
 
 void Enumerator::CreateArtificialMethodsAndDocument(Options const& options)
 {
-	Declaration::CreateArtificialMethodsAndDocument(options);
+	MemberDeclaration::CreateArtificialMethodsAndDocument(options);
 
 	if (auto opposite = Attribute::Opposite(*this); !opposite.empty())
 	{
@@ -614,25 +637,42 @@ std::string FormatPreFlags(enum_flags<Reflector::FieldFlags> flags, enum_flags<R
 	return join(prefixes, "");
 }
 
+std::string FormatAccess(AccessMode mode)
+{
+	switch (mode)
+	{
+	case AccessMode::Public: return "public: ";
+	case AccessMode::Protected: return "protected: ";
+	case AccessMode::Private: return "private: ";
+	default:
+		break;
+	}
+	return {};
+}
+
 std::string FormatPreFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except)
 {
+	using enum Reflector::MethodFlags;
+
 	std::vector<std::string_view> prefixes;
 	flags = flags - except;
-	if (flags.is_set(MethodFlags::NoDiscard)) prefixes.push_back("[[nodiscard]] ");
-	if (flags.is_set(MethodFlags::Inline)) prefixes.push_back("inline ");
-	if (flags.is_set(MethodFlags::Static)) prefixes.push_back("static ");
-	if (flags.is_set(MethodFlags::Virtual)) prefixes.push_back("virtual ");
-	if (flags.is_set(MethodFlags::Explicit)) prefixes.push_back("explicit ");
+	if (flags.is_set(NoDiscard)) prefixes.push_back("[[nodiscard]] ");
+	if (flags.is_set(Inline)) prefixes.push_back("inline ");
+	if (flags.is_set(Static)) prefixes.push_back("static ");
+	if (flags.is_set(Virtual)) prefixes.push_back("virtual ");
+	if (flags.is_set(Explicit)) prefixes.push_back("explicit ");
 	return join(prefixes, "");
 }
 
 std::string FormatPostFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except)
 {
+	using enum Reflector::MethodFlags;
+
 	std::vector<std::string_view> suffixes;
 	flags = flags - except;
-	if (flags.is_set(MethodFlags::Const)) suffixes.push_back(" const");
-	if (flags.is_set(MethodFlags::Final)) suffixes.push_back(" final");
-	if (flags.is_set(MethodFlags::Noexcept)) suffixes.push_back(" noexcept");
+	if (flags.is_set(Const)) suffixes.push_back(" const");
+	if (flags.is_set(Final)) suffixes.push_back(" final");
+	if (flags.is_set(Noexcept)) suffixes.push_back(" noexcept");
 	return join(suffixes, "");
 }
 
@@ -655,6 +695,12 @@ void RemoveEmptyMirrors()
 	std::erase_if(Mirrors, [](auto& mirror) { return mirror->IsEmpty(); });
 }
 
+void SortMirrors()
+{
+	std::unique_lock lock{ mirror_mutex };
+	std::ranges::sort(Mirrors, [](auto& mirror_a, auto& mirror_b) { return mirror_a->SourceFilePath < mirror_b->SourceFilePath; });
+}
+
 void CreateArtificialMethodsAndDocument(Options const& options)
 {
 	std::unique_lock lock{ mirror_mutex };
@@ -664,8 +710,22 @@ void CreateArtificialMethodsAndDocument(Options const& options)
 		mirror->CreateArtificialMethodsAndDocument(options);
 }
 
-FileMirror::FileMirror()
+void SimpleDeclaration::ForEachCommentDirective(std::string_view directive_name, std::function<void(std::span<const std::string>)> callback) const
 {
+	const auto directive = std::format("@{}", directive_name);
+	auto start_find = Comments.begin();
+	const auto end_find = Comments.end();
+	while (start_find != end_find)
+	{
+		auto directive_start = std::find_if(start_find, end_find, [&](std::string_view line) { return line.starts_with(directive); });
+		if (directive_start == end_find) return;
+
+		auto directive_end = std::find_if(std::next(directive_start), end_find, [&](std::string_view line) { return line.empty() || line.starts_with('@'); });
+
+		callback({ directive_start, directive_end });
+
+		start_find = directive_end;
+	}
 }
 
 json SimpleDeclaration::ToJSON() const
@@ -687,13 +747,33 @@ json MethodParameter::ToJSON() const
 	return result;
 }
 
+std::string IconFor(DeclarationType type)
+{
+	static constexpr std::array<std::string_view, magic_enum::enum_count<DeclarationType>()> icons = {
+		"field",
+		"method",
+		"property",
+		"class",
+		"enum",
+		"enum-member",
+		"namespace",
+		"parameter",
+		"parameter",
+	};
+	return format(R"(<i class="codicon codicon-symbol-{}"></i>)", icons[(int)type]);
+}
+
 struct LinkParts
 {
-	LinkParts(Declaration const& decl)
+	LinkParts(Declaration const& decl, LinkFlags flags)
 		: Name(decl.Name)
 		, Href(decl.FullName("."))
+		, SourceDeclaration(decl)
 	{
-		if (decl.Deprecation) LinkClasses.push_back("deprecated");
+		if (flags.contain(LinkFlag::DeclarationType))
+			this->DeclarationType = IconFor(decl.DeclarationType());
+		if (decl.Deprecation) 
+			LinkClasses.emplace_back("deprecated");
 	}
 
 	std::string Name;
@@ -705,61 +785,90 @@ struct LinkParts
 	std::string Parameters;
 	std::string Namespace;
 	std::vector<std::string> LinkClasses;
+	std::string DeclarationType;
+	Declaration const& SourceDeclaration;
 };
 
 std::string ConstructLink(LinkParts const& parts)
 {
-	return std::format("<small class='specifiers'>{0}</small><a href='{1}.html' class='entitylink {2}'><small class='namespace'>{8}</small><small class='parent'>{3}</small>{4}{5}<small class='specifiers'>{6}</small></a> <small class='membertype'>{7}</small>",
-		parts.PreSpecifiers, /// 0
-		parts.Href, /// 1
-		join(parts.LinkClasses, " "), /// 2
-		Escaped(parts.Parent), /// 3
-		parts.Name, /// 4
-		Escaped(parts.Parameters), /// 5
-		parts.PostSpecifiers, /// 6
-		Escaped(parts.ReturnType), /// 7
-		parts.Namespace
-	);
+	if (parts.SourceDeclaration.Document)
+	{
+		return std::format("{9}<small class='specifiers'>{0}</small><a href='{1}.html' class='entitylink {2}'><small class='namespace'>{8}</small><small class='parent'>{3}</small>{4}{5}<small class='specifiers'>{6}</small></a> <small class='membertype'>{7}</small>",
+			parts.PreSpecifiers, /// 0
+			parts.Href, /// 1
+			join(parts.LinkClasses, " "), /// 2
+			Escaped(parts.Parent), /// 3
+			parts.Name, /// 4
+			Escaped(parts.Parameters), /// 5
+			parts.PostSpecifiers, /// 6
+			Escaped(parts.ReturnType), /// 7
+			parts.Namespace, /// 8
+			parts.DeclarationType
+		);
+	}
+	else
+	{
+		return std::format("{9}<small class='specifiers'>{0}</small><span class='entitylink {2}'><small class='namespace'>{8}</small><small class='parent'>{3}</small>{4}{5}<small class='specifiers'>{6}</small></span> <small class='membertype'>{7}</small>",
+			parts.PreSpecifiers, /// 0
+			parts.Href, /// 1
+			join(parts.LinkClasses, " "), /// 2
+			Escaped(parts.Parent), /// 3
+			parts.Name, /// 4
+			Escaped(parts.Parameters), /// 5
+			parts.PostSpecifiers, /// 6
+			Escaped(parts.ReturnType), /// 7
+			parts.Namespace, /// 8
+			parts.DeclarationType
+		);
+	}
 }
 
 std::string Enumerator::MakeLink(LinkFlags flags) const
 {
-	LinkParts parts{ *this };
-	return ConstructLink(std::move(parts));
+	LinkParts parts{ *this, flags };
+	if (flags.contain(LinkFlag::Parent)) parts.Parent = ParentType->Name + ".";
+	return ConstructLink(parts);
 }
 
 std::string TypeDeclaration::MakeLink(LinkFlags flags) const
 {
-	LinkParts parts{ *this };
-	if (flags.contain(LinkFlag::SignatureSpecifiers)) {}
-	if (flags.contain(LinkFlag::Specifiers)) {}
+	LinkParts parts{ *this, flags };
+	//if (flags.contain(LinkFlag::SignatureSpecifiers)) {}
+	//if (flags.contain(LinkFlag::Specifiers)) {}
 	if (flags.contain(LinkFlag::Namespace) && !parts.Namespace.empty()) parts.Namespace = Namespace + "::";
-	return ConstructLink(std::move(parts));
+	return ConstructLink(parts);
 }
 
 std::string Field::MakeLink(LinkFlags flags) const
 {
-	LinkParts parts{ *this };
+	LinkParts parts{ *this, flags };
 	if (flags.contain(LinkFlag::Parent)) parts.Parent = ParentType->Name + ".";
 	if (flags.contain(LinkFlag::ReturnType)) parts.ReturnType = Type;
-	return ConstructLink(std::move(parts));
+	return ConstructLink(parts);
 }
 
 std::string Method::MakeLink(LinkFlags flags) const
 {
-	LinkParts parts{ *this };
+	using enum Reflector::MethodFlags;
+	LinkParts parts{ *this, flags };
 	if (flags.contain(LinkFlag::Parent)) parts.Parent = ParentType->Name + "::";
-	if (flags.contain(LinkFlag::SignatureSpecifiers)) parts.PostSpecifiers = FormatPostFlags(Flags, { MethodFlags::Final, MethodFlags::Noexcept });
-	if (flags.contain(LinkFlag::Specifiers)) parts.PreSpecifiers = FormatPreFlags(Flags, { MethodFlags::Inline, MethodFlags::NoDiscard });
+	if (flags.contain(LinkFlag::SignatureSpecifiers)) parts.PostSpecifiers = FormatPostFlags(Flags, { Final, Noexcept });
+	if (flags.contain(LinkFlag::Specifiers)) parts.PreSpecifiers = FormatPreFlags(Flags, { Inline, NoDiscard });
 	if (flags.contain(LinkFlag::ReturnType) && Return.Name != "void") parts.ReturnType = "-> " + Return.Name;
 	if (flags.contain(LinkFlag::Parameters)) parts.Parameters = std::format("({})", join(ParametersTypesOnly));
-	return ConstructLink(std::move(parts));
+	return ConstructLink(parts);
 }
 
 std::string Property::MakeLink(LinkFlags flags) const
 {
-	LinkParts parts{ *this };
+	LinkParts parts{ *this, flags };
 	if (flags.contain(LinkFlag::Parent)) parts.Parent = ParentType->Name + ".";
 	if (flags.contain(LinkFlag::ReturnType)) parts.ReturnType = Type;
-	return ConstructLink(std::move(parts));
+	return ConstructLink(parts);
+}
+
+void BaseMemberDeclaration::CreateArtificialMethodsAndDocument(Options const& options)
+{
+	Declaration::CreateArtificialMethodsAndDocument(options);
+	Document = Attribute::Document.GetOr(*this, ParentDecl()->DocumentMembers);
 }

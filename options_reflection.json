@@ -6,6 +6,6 @@
 
 	"Quiet": true,
 	"Force": false,
-	"UseJSON": false,
+	"UseJSON": true,
 	"CreateDatabase": true
 }
