@@ -8,14 +8,16 @@
 #include <iostream>
 #include <filesystem>
 #include <vector>
-#if __has_include(<expected>)
+#if defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L && __has_include(<expected>)
 #include <expected>
 using std::expected;
 using std::unexpected;
 #else
 #include <tl/expected.hpp>
-using tl::expected;
-using tl::unexpected;
+namespace std { /// NOTE: Undefined behavior, technically
+	using tl::expected;
+	using tl::unexpected;
+}
 #endif
 #include <nlohmann/json.hpp>
 #include <ghassanpl/enum_flags.h>

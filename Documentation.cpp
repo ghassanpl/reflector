@@ -157,7 +157,10 @@ struct DocumentationGenerator
 				comment_lines.insert(comment_lines.end(), decl.Comments.begin(), empty_comment_line);
 			}
 			else
-				comment_lines.append_range(decl.NonDirectiveCommentLines());
+			{
+				for (auto& line: decl.NonDirectiveCommentLines())
+					comment_lines.push_back(line);
+			}
 		}
 
 		if (!comment_lines.empty())

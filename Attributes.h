@@ -5,7 +5,7 @@
 
 struct AttributeProperties;
 
-using AttributeValidatorFunc = std::function<expected<void, std::string>(json const&, Declaration const&)>;
+using AttributeValidatorFunc = std::function<std::expected<void, std::string>(json const&, Declaration const&)>;
 extern AttributeValidatorFunc IsString;
 extern AttributeValidatorFunc NotEmptyString;
 
@@ -50,7 +50,7 @@ struct AttributeProperties
 		(this->Set(std::forward<ARGS>(args)), ...);
 	}
 
-	expected<void, std::string> Validate(json const& attr_value, Declaration const& decl) const;
+	std::expected<void, std::string> Validate(json const& attr_value, Declaration const& decl) const;
 
 	void Set(AttributeValidatorFunc validator) { this->Validator = std::move(validator); }
 	void Set(enum_flags<AttributePropertyFlags> flags) { this->Flags += flags; }

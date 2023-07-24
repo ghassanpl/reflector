@@ -9,6 +9,7 @@
 #include "Documentation.h"
 #include <ghassanpl/string_ops.h>
 #include <ghassanpl/hashes.h>
+#include <ghassanpl/ranges.h>
 #include <mutex>
 #include <future>
 using namespace std::string_literals;
@@ -679,7 +680,7 @@ std::string FormatPostFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags
 std::vector<FileMirror const*> GetMirrors()
 {
 	std::unique_lock lock{ mirror_mutex };
-	return Mirrors | std::views::transform([](auto& mir) { return (FileMirror const*)mir.get(); }) | std::ranges::to<std::vector>();
+	return ghassanpl::to<std::vector<FileMirror const*>>(Mirrors | std::views::transform([](auto& mir) { return (FileMirror const*)mir.get(); }));
 }
 
 

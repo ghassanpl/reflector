@@ -591,7 +591,7 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 
 	ParseCppAttributes(next_line, result->Attributes); /// Unfortunately, C++ attributes on functions can also be after the name: `void q [[ noreturn ]] (int i);`
 
-	if (!next_line.contains('('))
+	if (!string_ops::contains(next_line, '('))
 		throw std::runtime_error(std::format("Misformed method declaration"));
 
 	int num_pars = 0;
