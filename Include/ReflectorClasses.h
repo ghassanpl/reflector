@@ -148,6 +148,9 @@ namespace Reflector
 		HasProxy
 	};
 
+	void* AlignedAlloc(size_t alignment, size_t size);
+	void AlignedFree(void* obj);
+
 	struct ClassReflectionData
 	{
 		std::string_view Name = "";
@@ -158,8 +161,14 @@ namespace Reflector
 		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
 		uint64_t UID = 0;
-		void* (*Constructor)(const ClassReflectionData&) = {};
+		size_t Alignment{};
+		size_t Size{};
+		void (*Constructor)(void*, const ClassReflectionData&) = {};
 		void (*Destructor)(void*) = {};
+
+		void* Alloc() const;
+		void Delete(void* obj) const;
+		void* New() const;
 
 		/// These are vectors and not e.g. initializer_list's because you might want to create your own classes
 		std::vector<FieldReflectionData> Fields;
@@ -169,7 +178,6 @@ namespace Reflector
 		void(*JSONLoadFieldsFunc)(void* dest_object, REFLECTOR_JSON_TYPE const& src_object);
 		void(*JSONSaveFieldsFunc)(void const* src_object, REFLECTOR_JSON_TYPE& dest_object);
 #endif
-
 		auto FindField(std::string_view name) const->FieldReflectionData const*;
 		template <typename T>
 		auto FindFirstFieldByType() const->FieldReflectionData const*;
@@ -183,6 +191,17 @@ namespace Reflector
 		std::type_index TypeIndex = typeid(void);
 
 		uint64_t Flags = 0;
+
+		/*
+		bool IsDerivedFrom(ClassReflectionData const& klass) const
+		{
+			if (this->)
+		}
+		bool IsBaseOf(ClassReflectionData const& klass) const
+		{
+
+		}
+		*/
 
 		bool IsStruct() const { return (Flags & (1ULL << uint64_t(ClassFlags::Struct))) != 0; }
 		bool WasDeclaredStruct() const { return (Flags & (1ULL << uint64_t(ClassFlags::DeclaredStruct))) != 0; }
@@ -323,22 +342,10 @@ namespace Reflector
 
 	struct Reflectable
 	{
-		virtual ClassReflectionData const& GetReflectionData() const
-		{
-			static const ClassReflectionData data = {
-				.Name = "Reflectable",
-				.FullType = "Reflector::Reflectable",
-				.BaseClassName = "",
-				.Attributes = "",
-#if REFLECTOR_USES_JSON
-				.AttributesJSON = {},
-#endif
-				.TypeIndex = typeid(Reflectable)
-			};
-			return data;
-		}
+		virtual ClassReflectionData const& GetReflectionData() const;
+		static ClassReflectionData const& StaticGetReflectionData();
 
-		Reflectable() noexcept = default;
+		//Reflectable() noexcept = default;
 		explicit Reflectable(::Reflector::ClassReflectionData const& klass) noexcept : mClass(&klass) {}
 
 		template <typename T> bool Is() const { return dynamic_cast<T const*>(this) != nullptr; }
@@ -362,28 +369,27 @@ namespace Reflector
 
 #if defined(REFLECTOR_USES_GC) && REFLECTOR_USES_GC
 
+		enum class Flags { OnHeap, Marked, };
+
+		friend struct Heap;
+
+		mutable uint32_t mFlags = 0;
+		mutable uint32_t mRootCount = 0;
+
 	public:
 
-		virtual void GCMark(class GCHeap* heap) const
+		virtual void GCMark() const
 		{
-			mFlags |= (1ULL << int(Flags::Marked));
+			if (GC_IsOnHeap())
+				mFlags |= (1ULL << int(Flags::Marked));
 		}
 
-		bool IsMarked() const noexcept { return (mFlags & (1ULL << int(Flags::Marked))) != 0; }
+		bool GC_IsMarked() const noexcept { return (mFlags & (1ULL << int(Flags::Marked))) != 0; }
+		bool GC_IsOnHeap() const noexcept { return (mFlags & (1ULL << int(Flags::OnHeap))) != 0; }
 
-		class GCHeap* GetParentHeap() const { return mParentHeap; }
+		template <typename T>
+		T* New();
 
-		template <typename T, typename... ARGS>
-		T* New(ARGS&&... args);
-
-	protected:
-
-		enum class Flags { Marked, };
-
-		friend class GCHeap;
-
-		mutable uintptr_t mFlags = 0;
-		class GCHeap* mParentHeap = nullptr;
 #endif
 	};
 
@@ -401,67 +407,13 @@ namespace Reflector
 	template <typename ENUM>
 	::Reflector::EnumReflectionData const& GetEnumReflectionData();
 
+	template <typename T> concept reflected_class = requires {
+		T::StaticClassFlags();
+		typename T::self_type;
+	} && std::same_as<T, typename T::self_type>;
 
-#if defined(REFLECTOR_USES_GC) && REFLECTOR_USES_GC
+	template <typename T> concept reflectable_class = (reflected_class<std::remove_cvref_t<T>> && std::derived_from<std::remove_cvref_t<T>, Reflectable>) || std::same_as<std::remove_cvref_t<T>, Reflectable>;
 
-	template <typename T>
-	struct could_be_marked
-	{
-		static constexpr bool value = std::is_class_v<std::remove_cvref_t<T>> || std::is_array_v<std::remove_cvref_t<T>>;
-	};
+	template <typename T> concept reflected_enum = IsReflectedEnum<T>();
 
-	template <typename T>
-	requires std::is_pointer_v<std::remove_cvref_t<T>>
-	struct could_be_marked<T> : could_be_marked<std::remove_pointer_t<std::remove_cvref_t<T>>>
-	{
-	};
-
-	template <typename T>
-	concept has_mark_func = requires (T const& val, class GCHeap* heap) { val.GCMark(heap); };
-	
-	template <typename T, typename PT = std::remove_cvref_t<T>>
-	requires (!has_mark_func<PT> 
-		&& !std::derived_from<std::remove_pointer_t<PT>, Reflectable>
-		&& !std::is_pointer_v<PT>
-	)
-	void GCMark(class GCHeap const*, T&&)
-	{
-		/// Don't mark stuff that isn't an aggregate
-		static_assert(!could_be_marked<T>::value, "Type is an aggregate but cannot be marked. Make sure you overload the Reflector::GCMark(GCHeap*, T&) function.");
-	}
-
-	template <typename T> void GCMark(class GCHeap* heap, std::basic_string<T> const& val) {}
-	template <typename T> void GCMark(class GCHeap* heap, std::basic_string_view<T> const& val) {}
-	template <typename... ELS>
-	void GCMark(class GCHeap* heap, std::tuple<ELS...> const& val) { std::apply([heap](auto const& ...x) { (GCMark(heap, x), ...); }, val); }
-	template <typename F, typename S>
-	void GCMark(class GCHeap* heap, std::pair<F, S> const& val) { GCMark(heap, val.first); GCMark(heap, val.second); }
-
-	template <typename T>
-	requires (has_mark_func<std::remove_cvref_t<T>>)
-	void GCMark(class GCHeap* heap, T& val)
-	{
-		val.GCMark(heap);
-	}
-
-	inline void GCMark(class GCHeap* heap, Reflectable const* r)
-	{
-		if (r && heap == r->GetParentHeap() && !r->IsMarked())
-			r->GCMark(heap);
-	}
-
-	template <typename T>
-	void GCMark(class GCHeap* heap, T const* r);
-
-	template <std::ranges::range RANGE>
-	void GCMark(class GCHeap* heap, RANGE&& range)
-	{
-		if constexpr (could_be_marked<std::ranges::range_value_t<RANGE>>::value)
-		{
-			for (auto&& val : range)
-				GCMark(heap, val);
-		}
-	}
-
-#endif
 }

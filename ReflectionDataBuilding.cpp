@@ -125,6 +125,7 @@ bool CreateReflectorHeaderArtifact(ArtifactArgs args)
 	auto const& [_, final_path, options, factory] = args;
 
 	const auto reflector_classes_relative_path = RelativePath(final_path, options.ArtifactPath / "ReflectorClasses.h");
+	const auto reflector_gc_relative_path = RelativePath(final_path, options.ArtifactPath / "ReflectorGC.h");
 
 	FileWriter reflect_file{args};
 	reflect_file.WriteLine("#pragma once");
@@ -137,10 +138,10 @@ bool CreateReflectorHeaderArtifact(ArtifactArgs args)
 		reflect_file.WriteLine("#define REFLECTOR_JSON_PARSE_FUNC {}", options.JSON.ParseFunction);
 	}
 	if (options.AddGCFunctionality)
-	{
 		reflect_file.WriteLine("#define REFLECTOR_USES_GC 1", options.MacroPrefix);
-	}
 	reflect_file.WriteLine("#include \"{}\"", reflector_classes_relative_path.string());
+	if (options.AddGCFunctionality)
+		reflect_file.WriteLine("#include \"{}\"", reflector_gc_relative_path.string());
 	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE3_IMPL(x, y, z) x ## y ## z");
 	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE3(x, y, z) REFLECTOR_TOKENPASTE3_IMPL(x, y, z)");
 	reflect_file.WriteLine("#define REFLECTOR_TOKENPASTE2_IMPL(x, y) x ## y");
@@ -218,7 +219,7 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 	if (options.AddGCFunctionality)
 	{
 		output.WriteLine("template <>");
-		output.WriteLine("void ::Reflector::GCMark<{0}>(::Reflector::GCHeap* heap, {0} const* r) {{ ::Reflector::GCMark(heap, (::Reflector::Reflectable const*)r); }}", klass.FullType());
+		output.WriteLine("void ::Reflector::GCMark<{0}>({0} const* r) {{ ::Reflector::GCMark((::Reflector::Reflectable const*)r); }}", klass.FullType());
 	}
 
 	if (options.JSON.Use && options.JSON.GenerateSerializationMethods)
@@ -272,7 +273,7 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 			if (field->Flags.contain(FieldFlags::NoSave))
 				continue;
 
-			const auto check_for_init_value = !field->InitializingExpression.empty() && !options.JSON.AlwaysSaveAllFields;
+			const auto check_for_init_value = !field->InitializingExpression.empty() && !options.JSON.AlwaysSaveAllFields && !field->Flags.contain(FieldFlags::Required);
 
 			if (check_for_init_value)
 			{
@@ -310,8 +311,10 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 			output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(klass.Attributes));
 	}
 	output.WriteLine(".UID = {}ULL,", klass.UID);
+	output.WriteLine(".Alignment = alignof({0}),", klass.FullType());
+	output.WriteLine(".Size = sizeof({0}),", klass.FullType());
 	if (!klass.Flags.is_set(ClassFlags::NoConstructors))
-		output.WriteLine(".Constructor = +[](const ::Reflector::ClassReflectionData& klass){{ return (void*)new {}{{klass}}; }},", klass.FullType());
+		output.WriteLine(".Constructor = +[](void* ptr, const ::Reflector::ClassReflectionData& klass){{ new (ptr){}{{klass}}; }},", klass.FullType());
 	output.WriteLine(".Destructor = +[](void* obj){{ auto _tobj = ({0}*)obj; _tobj->~{0}(); }},", klass.FullType());
 
 	/// Fields
@@ -502,6 +505,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		{
 			output.WriteLine("static self_type* Construct(){{ return new self_type{{StaticGetReflectionData()}}; }}");
 			output.WriteLine("{}(::Reflector::ClassReflectionData const& klass) : {}(klass) {{}}", klass.Name, klass.BaseClass);
+			output.WriteLine("{0}() : {0}(self_type::StaticGetReflectionData()) {{}}", klass.Name, klass.BaseClass);
 
 			/// TODO: Should we =delete copy and move constructors? What about operators?
 		}
@@ -560,13 +564,13 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 		/// - Mark
 		if (!klass.Flags.contain(ClassFlags::Struct))
 		{
-			output.WriteLine("virtual void GCMark(class ::Reflector::GCHeap* heap) const override {{");
+			output.WriteLine("virtual void GCMark() const override {{");
 		}
 		else
-			output.WriteLine("void GCMark(class ::Reflector::GCHeap* heap) const {{");
+			output.WriteLine("void GCMark() const {{");
 		if (!klass.BaseClass.empty())
-			output.WriteLine("\tparent_type::GCMark(heap);");
-		output.WriteLine("\tForEachField([this, heap](auto&& visitor_data) {{ ::Reflector::GCMark(heap, visitor_data.Getter(this)); }});");
+			output.WriteLine("\tparent_type::GCMark();");
+		output.WriteLine("\tForEachField([this](auto&& visitor_data) {{ ::Reflector::GCMark(visitor_data.Getter(this)); }});");
 		output.WriteLine("}}");
 	}
 

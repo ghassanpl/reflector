@@ -2,6 +2,7 @@
 
 #include "Common.h"
 #include "ReflectorUtils.h"
+#include "ReflectorGC.h"
 
 #if __has_include("Options.h.mirror")
 inline constexpr bool BootstrapBuild = false;
@@ -12,7 +13,6 @@ inline constexpr bool BootstrapBuild = true;
 #endif
 
 /// NOTE: Changing this file requires a bootstrap rebuild!
-
 
 /// TODO: We probably should drop support for anything except nlohmann, or create our own interface to handle json values
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
@@ -157,7 +157,7 @@ struct Options
 	RField();
 	bool WarnOnUnknownAttributes = false;
 
-	/// Whether or not to create optional files in the target directory; in particular: `Includes.reflect.h`, `Classes.reflect.h`, `ReflectorClasses.h` and `ReflectorUtils.h`.
+	/// Whether or not to create optional files in the target directory; in particular: `Includes.reflect.h`, `Classes.reflect.h`, `Reflector*.h`.
 	/// `ReflectorClasses.h` is required for reflection to work, but you can include it from the reflector codebase yourself if you prefer.
 	/// See documentation for more information on what is stored in each artifact file.
 	RField();

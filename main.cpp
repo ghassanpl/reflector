@@ -116,8 +116,11 @@ int main(int argc, const char* argv[])
 		{
 			factory.QueueArtifact(options.ArtifactPath / "Includes.reflect.h", CreateIncludeListArtifact);
 			factory.QueueArtifact(options.ArtifactPath / "Classes.reflect.h", CreateTypeListArtifact);
+			factory.QueueLinkOrCopyArtifact(options.ArtifactPath / "Reflector.cpp", options.GetExePath().parent_path() / "Include" / "Reflector.cpp");
 			factory.QueueLinkOrCopyArtifact(options.ArtifactPath / "ReflectorClasses.h", options.GetExePath().parent_path() / "Include" / "ReflectorClasses.h");
 			factory.QueueLinkOrCopyArtifact(options.ArtifactPath / "ReflectorUtils.h", options.GetExePath().parent_path() / "Include" / "ReflectorUtils.h");
+			if (options.AddGCFunctionality)
+				factory.QueueLinkOrCopyArtifact(options.ArtifactPath / "ReflectorGC.h", options.GetExePath().parent_path() / "Include" / "ReflectorGC.h");
 		}
 		if (options.CreateDatabase)
 			factory.QueueArtifact(options.ArtifactPath / "ReflectDatabase.json", CreateJSONDBArtifact);

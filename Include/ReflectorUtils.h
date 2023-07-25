@@ -1,14 +1,9 @@
 #pragma once
 
 #include "ReflectorClasses.h"
-#include <set>
-#include <map>
-#include <ranges>
 
 namespace Reflector
 {
-	template <typename T> concept reflected_class = requires { T::StaticClassFlags(); };
-	template <typename T> concept reflected_enum = IsReflectedEnum<T>();
 
 	template <typename REFLECTABLE_TYPE>
 	auto const& Reflect()
@@ -24,6 +19,26 @@ namespace Reflector
 		static_assert(reflected_class<REFLECTABLE_TYPE> || reflected_enum<REFLECTABLE_TYPE>, "Type must be marked as reflectable");
 	}
 
+	extern ClassReflectionData const* Classes[];
+	extern EnumReflectionData const* Enums[];
+
+	template <typename FUNC>
+	void ForEachClass(FUNC&& func)
+	{
+		for (auto klass = Classes; *klass; ++klass)
+			func(*klass);
+	}
+
+	inline ClassReflectionData const* FindClassByFullType(std::string_view class_name)
+	{
+		for (auto klass = Classes; *klass; ++klass)
+		{
+			if ((*klass)->FullType == class_name)
+				return *klass;
+		}
+		return nullptr;
+	}
+
 	template <typename T, typename VISITOR>
 	void ForEachField(T& object, VISITOR&& visitor);
 
@@ -32,39 +47,15 @@ namespace Reflector
 	template <CompileTimeLiteral NAME, typename T, typename... ARGS>
 	void WithMethodOverloadThatCanTake(auto&& func, std::type_identity<std::tuple<ARGS...>> argument_types = {});
 
-	extern ClassReflectionData const* Classes[];
-	extern EnumReflectionData const* Enums[];
-
 	/// Method implementation
 
-	inline auto ClassReflectionData::FindField(std::string_view name) const -> FieldReflectionData const*
-	{
-		for (auto& field : Fields)
-			if (field.Name == name) return &field;
-		return nullptr;
-	}
-
+	
 	template<typename T>
 	auto ClassReflectionData::FindFirstFieldByType() const -> FieldReflectionData const*
 	{
 		for (auto& field : Fields)
 			if (field.FieldTypeIndex == typeid(T)) return &field;
 		return nullptr;
-	}
-
-	inline auto ClassReflectionData::FindFirstMethod(std::string_view name) const -> MethodReflectionData const*
-	{
-		for (auto& method : Methods)
-			if (method.Name == name) return &method;
-		return nullptr;
-	}
-
-	inline auto ClassReflectionData::FindAllMethods(std::string_view name) const -> std::vector<MethodReflectionData const*>
-	{
-		std::vector<MethodReflectionData const*> result;
-		for (auto& method : Methods)
-			if (method.Name == name) result.push_back(&method);
-		return result;
 	}
 
 	template <typename FUNC>
@@ -187,200 +178,6 @@ namespace Reflector
 
 #endif
 
-#if defined(REFLECTOR_USES_GC) && REFLECTOR_USES_GC
-	class GCHeap
-	{
-	public:
-
-		std::vector<Reflectable*> AllAllocated;
-		std::set<Reflectable*> RootSet;
-		std::map<ClassReflectionData const*, std::vector<Reflectable*>> FreeLists;
-
-		template <typename T>
-		auto AllOfType() const
-		{
-			return AllAllocated | std::views::filter([](auto* ptr) { return ptr->Is<T>(); }) | std::views::transform([](auto* ptr) { return (T*)ptr; });
-		}
-
-		template <typename T, typename... ARGS>
-		requires std::derived_from<T, Reflectable>
-		T* Alloc(ARGS&&... args)
-		{
-			Reflectable* result = nullptr;
-
-			auto klass_data = &T::StaticGetReflectionData();
-			if (auto listit = FreeLists.find(klass_data); listit != FreeLists.end() && !listit->second.empty())
-			{
-				result = listit->second.back();
-				listit->second.pop_back();
-			}
-			else
-			{
-#ifdef _WIN32
-				result = reinterpret_cast<T*>(_aligned_malloc(sizeof(T), alignof(T)));
-#else
-				result = reinterpret_cast<T*>(std::aligned_alloc(alignof(T), sizeof(T)));
-#endif
-			}
-
-			new (result) T(std::forward<ARGS>(args)...);
-			result->mParentHeap = this;
-			return (T*)AllAllocated.emplace_back(result);
-		}
-
-		template <typename T>
-		requires std::derived_from<T, Reflectable>
-		void Free(T* ptr)
-		{
-			auto klass_data = &ptr->GetReflectionData();
-			FreeLists[klass_data].push_back(ptr);
-			ptr->~T();
-		}
-
-		~GCHeap()
-		{
-			for (auto& obj : AllAllocated)
-			{
-				obj->~Reflectable();
-				std::free(obj);
-			}
-			for (auto& [klass, vec] : FreeLists)
-			{
-				for (auto& obj : vec)
-					std::free(obj);
-			}
-		}
-
-		template <typename... ROOTS>
-		void Collect(ROOTS&... roots)
-		{
-			(Reflector::GCMark(this, roots), ...);
-			Mark();
-			Sweep();
-		}
-
-		void GCMark(auto) const noexcept {}
-
-	private:
-
-#if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)
-		friend void from_json(REFLECTOR_JSON_TYPE const& j, GCHeap& heap);
-		intptr_t mID = 0;
-#endif
-
-		void Mark()
-		{
-			for (auto& root : RootSet)
-			{
-				::Reflector::GCMark(this, root);
-			}
-		}
-
-		void Sweep()
-		{
-			std::erase_if(AllAllocated, [this](Reflectable* obj) {
-				if (obj->mFlags & (1ULL << int(Reflectable::Flags::Marked)))
-				{
-					obj->mFlags &= ~(1ULL << int(Reflectable::Flags::Marked));
-					return false;
-				}
-				Free(obj);
-				return true;
-			});
-		}
-
-	};
-
-	template <typename T, typename... ARGS>
-	T* Reflectable::New(ARGS&&... args)
-	{
-		if (!mParentHeap)
-			throw std::runtime_error("member New() can only be used in objects allocated on a GCHeap");
-
-		return mParentHeap->Alloc<T>(std::forward<ARGS>(args)...);
-	}
-
-
-	template <typename T>
-	struct GCRootPointer
-	{
-	private:
-		T* mPointer = nullptr;
-	};
-
-#if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)
-
-	struct GCHeapLoader
-	{
-		static GCHeapLoader& ResolveHeapLoader(intptr_t heap_id)
-		{
-			if (heap_id == 0)
-				throw std::invalid_argument("heap_id");
-
-			auto& result = mLoadingHeaps[heap_id];
-			if (result.mHeapID == 0)
-				result.mHeapID = heap_id;
-			return result;
-		}
-
-		std::map<intptr_t, Reflectable*> Objects;
-
-		GCHeap CreateHeap(REFLECTOR_JSON_TYPE const& heap_data_obj)
-		{
-			GCHeap result;
-			if (heap_data_obj.at("ID") != mHeapID)
-				throw std::runtime_error(std::string{ "Heap needs to be loaded from a heap json object with the ID " } + std::to_string(mHeapID));
-
-			std::vector<intptr_t> AllAllocated = heap_data_obj.at("Objects");
-			std::vector<intptr_t> RootSet = heap_data_obj.at("RootSet");
-
-			for (auto& obj_id : AllAllocated)
-				result.AllAllocated.push_back(Objects.at(obj_id));
-			for (auto& obj_id : AllAllocated)
-				result.RootSet.insert(Objects.at(obj_id));
-
-			return result;
-		}
-
-	private:
-
-		static inline std::map<intptr_t, GCHeapLoader> mLoadingHeaps;
-		intptr_t mHeapID = 0;
-	};
-
-	inline void to_json(REFLECTOR_JSON_TYPE& j, GCHeap const& heap)
-	{
-		using json = REFLECTOR_JSON_TYPE;
-		j = json::object();
-		j["ID"] = (intptr_t)&heap;
-		auto& roots = j["RootSet"] = json::array();
-		auto& objects= j["Objects"] = json::array();
-
-		std::vector<Reflectable*> AllAllocated;
-		std::set<Reflectable*> RootSet;
-		for (auto obj : heap.AllAllocated)
-		{
-			auto& j = objects.emplace_back();
-			j["$id"] = (intptr_t)obj;
-			j["$type"] = obj->GetReflectionData().FullType;
-			obj->JSONSaveFields(j);
-		}
-		for (auto obj : heap.RootSet)
-			roots.push_back((intptr_t)obj);
-	}
-
-	inline void from_json(REFLECTOR_JSON_TYPE const& j, GCHeap& heap)
-	{
-		const intptr_t heap_id = j.at("ID");
-
-		heap.mID = heap_id;
-		GCHeapLoader& heap_loader = GCHeapLoader::ResolveHeapLoader(heap_id);
-	}
-
-#endif
-
-
-#endif
 }
 
 #if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)
@@ -409,38 +206,6 @@ struct adl_serializer<SERIALIZABLE>
 		p.JSONLoadFields(j);
 	}
 };
-
-#if defined(REFLECTOR_USES_GC) && REFLECTOR_USES_GC
-template <typename SERIALIZABLE>
-requires std::is_pointer_v<SERIALIZABLE> && std::derived_from<std::remove_pointer_t<SERIALIZABLE>, ::Reflector::Reflectable>
-struct adl_serializer<SERIALIZABLE>
-{
-	using GCHeapLoader = ::Reflector::GCHeapLoader;
-	using GCHeap = ::Reflector::GCHeap;
-
-	static void to_json(REFLECTOR_JSON_TYPE& j, const SERIALIZABLE& p)
-	{
-		if (p)
-			j = { (intptr_t)p->GetParentHeap(), (intptr_t)p, p->GetReflectionData().FullType };
-		else
-			j = nullptr;
-	}
-
-	static void from_json(const REFLECTOR_JSON_TYPE& j, SERIALIZABLE& p)
-	{
-		if (j.is_null())
-			p = nullptr;
-		else
-		{
-			const intptr_t heap_id = j[0];
-			const intptr_t obj_id = j[1];
-			const std::string_view obj_type = j[2];
-			GCHeapLoader& heap_loader = GCHeapLoader::ResolveHeapLoader(heap_id);
-			///p = heap.ResolveObject(obj_id);
-		}
-	}
-};
-#endif
 
 template <::Reflector::reflected_enum SERIALIZABLE>
 struct adl_serializer<SERIALIZABLE>
