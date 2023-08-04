@@ -112,16 +112,18 @@ int main(int argc, const char* argv[])
 		std::filesystem::create_directories(options.ArtifactPath);
 		factory.QueueArtifact(options.ArtifactPath / "Reflector.h", CreateReflectorHeaderArtifact);
 		factory.QueueArtifact(options.ArtifactPath / "Database.reflect.cpp", CreateReflectorDatabaseArtifact);
-		if (options.CreateArtifacts)
+		
+		factory.QueueArtifact(options.ArtifactPath / "Includes.reflect.h", CreateIncludeListArtifact);
+		factory.QueueArtifact(options.ArtifactPath / "Classes.reflect.h", CreateTypeListArtifact);
+		if (!BootstrapBuild)
 		{
-			factory.QueueArtifact(options.ArtifactPath / "Includes.reflect.h", CreateIncludeListArtifact);
-			factory.QueueArtifact(options.ArtifactPath / "Classes.reflect.h", CreateTypeListArtifact);
 			factory.QueueLinkOrCopyArtifact(options.ArtifactPath / "Reflector.cpp", options.GetExePath().parent_path() / "Include" / "Reflector.cpp");
 			factory.QueueLinkOrCopyArtifact(options.ArtifactPath / "ReflectorClasses.h", options.GetExePath().parent_path() / "Include" / "ReflectorClasses.h");
 			factory.QueueLinkOrCopyArtifact(options.ArtifactPath / "ReflectorUtils.h", options.GetExePath().parent_path() / "Include" / "ReflectorUtils.h");
 			if (options.AddGCFunctionality)
 				factory.QueueLinkOrCopyArtifact(options.ArtifactPath / "ReflectorGC.h", options.GetExePath().parent_path() / "Include" / "ReflectorGC.h");
 		}
+
 		if (options.CreateDatabase)
 			factory.QueueArtifact(options.ArtifactPath / "ReflectDatabase.json", CreateJSONDBArtifact);
 

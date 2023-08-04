@@ -8,6 +8,19 @@
 #include <charconv>
 #include <fstream>
 
+/*
+struct OutputContext
+{
+	FileWriter& output;
+	const Options& options;
+};
+
+struct FileMirrorOutputContext : OutputContext
+{
+	const FileMirror& mirror;
+};
+*/
+
 bool BuildDatabaseEntriesForMirror(FileWriter& output, const Options& options, FileMirror const& file);
 
 static path RelativePath(path const& writing_file, path const& referenced_file)
@@ -77,14 +90,7 @@ bool CreateReflectorDatabaseArtifact(ArtifactArgs args)
 	database_file.WriteLine("#include <iostream>");
 	database_file.WriteLine("#include \"Reflector.h\"");
 
-	if (opts.CreateArtifacts)
-		database_file.WriteLine("#include \"Includes.reflect.h\"");
-	else
-	{
-		for (const auto& mirror : GetMirrors())
-			database_file.WriteLine("#include \"{}\"", RelativePath(final_path, mirror->SourceFilePath).string());
-	}
-
+	database_file.WriteLine("#include \"Includes.reflect.h\"");
 
 	database_file.WriteLine("template <typename T, typename U = T> bool Compare_(T&& t, U&& u) {{ return t == u; }}");
 	
@@ -205,8 +211,7 @@ void BuildStaticReflectionData(FileWriter& output, const Enum& henum, const Opti
 	for (auto& enumerator : henum.Enumerators)
 		output.WriteLine("{{ \"{}\", {}, {} }},", enumerator->Name, enumerator->Value, enumerator->Flags.bits);
 	output.EndBlock("}},");
-	if (options.GenerateTypeIndices)
-		output.WriteLine(".TypeIndex = typeid({}),", henum.FullType());
+	output.WriteLine(".TypeIndex = typeid({}),", henum.FullType());
 	output.WriteLine(".Flags = {},", henum.Flags.bits);
 	output.EndBlock("}}; return _data;");
 	output.EndBlock("}}");
@@ -332,8 +337,7 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 			if (options.JSON.Use)
 				output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(field->Attributes));
 		}
-		if (options.GenerateTypeIndices)
-			output.WriteLine(".FieldTypeIndex = typeid({}),", field->Type);
+		output.WriteLine(".FieldTypeIndex = typeid({}),", field->Type);
 		output.WriteLine(".Flags = {},", field->Flags.bits);
 		output.WriteLine(".ParentClass = &_data");
 		output.EndBlock("}},");
@@ -364,11 +368,8 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 			output.WriteLine(".UniqueName = \"{}\",", method->UniqueName);
 		if (!method->ArtificialBody.empty())
 			output.WriteLine(".ArtificialBody = {},", EscapeString(method->ArtificialBody));
-		if (options.GenerateTypeIndices)
-		{
-			output.WriteLine(".ReturnTypeIndex = typeid({}),", method->Return.Name);
-			output.WriteLine(".ParameterTypeIndices = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { return format("typeid({})", param.Type); }));
-		}
+		output.WriteLine(".ReturnTypeIndex = typeid({}),", method->Return.Name);
+		output.WriteLine(".ParameterTypeIndices = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { return format("typeid({})", param.Type); }));
 		output.WriteLine(".Flags = {},", method->Flags.bits);
 		output.WriteLine(".ParentClass = &_data");
 		output.EndBlock("}},");
@@ -385,12 +386,17 @@ void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Opt
 		output.EndBlock("}},");
 	}
 
-	if (options.GenerateTypeIndices)
-		output.WriteLine(".TypeIndex = typeid({}),", klass.FullType());
+	output.WriteLine(".TypeIndex = typeid({}),", klass.FullType());
 	output.WriteLine(".Flags = {}", klass.Flags.bits);
 	output.EndBlock("}}; return _data;");
 	output.EndBlock("}}");
 
+}
+
+
+std::string DebuggingComment(const Options& options, std::string_view content)
+{
+	return options.DebuggingComments ? std::format("/* {} */ ", content) : std::string{};
 }
 
 bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
@@ -417,10 +423,9 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	for (size_t i = 0; i < klass.Fields.size(); i++)
 	{
 		const auto& field = klass.Fields[i];
-		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", field->Name) : std::string{};
 		const auto ptr_str = "&" + klass.FullType() + "::" + field->Name;
 		output.WriteLine("{0}{1}_VISITOR(::Reflector::FieldVisitorData<::Reflector::CompileTimeFieldData<{2}, {3}, {4}, {5}, decltype({6}), {6}>>{{ &{3}::StaticGetReflectionData().Fields[{7}] }});",
-			debugging_comment_prefix, 
+			DebuggingComment(options, field->Name),
 			options.MacroPrefix, 
 			field->Type, /// 2
 			klass.FullType(), /// 3 

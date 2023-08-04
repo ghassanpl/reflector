@@ -27,13 +27,6 @@ namespace std { /// NOTE: Undefined behavior, technically
 using std::string_view;
 using nlohmann::json;
 
-/// We define these so that all code in artifacts is included, making sure it compiles
-#define REFLECTOR_USES_JSON 1
-#define REFLECTOR_JSON_TYPE ::nlohmann::json
-#define REFLECTOR_JSON_HEADER <nlohmann/json.hpp>
-#define REFLECTOR_JSON_PARSE_FUNC ::nlohmann::json::parse
-#define REFLECTOR_USES_GC 1
-
 #include "Include/ReflectorClasses.h"
 using Reflector::ClassFlags;
 using Reflector::EnumeratorFlags;

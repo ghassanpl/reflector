@@ -143,11 +143,7 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 
 		for (auto& enumerator : henum->Enumerators)
 		{
-			this->Parent()->ClassDeclaredFlags.push_back(Class::ClassDeclaredFlag{
-				.Name = enumerator->Name,
-				.SourceField = this,
-				.Represents = enumerator.get()
-			});
+			this->Parent()->ClassDeclaredFlags.emplace_back(enumerator->Name, this, enumerator.get());
 
 			AddArtificialMethod(format("FlagGetter.{}.{}", henum->FullName(), enumerator->Name), "bool", options.IsPrefix + enumerator->Name, "", std::format("return (this->{} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator->Value),
 				{ "Checks whether the " + enumerator->MakeLink() + " flag is set in " + MakeLink()}, enum_getter_flags);
@@ -475,7 +471,7 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 	/// First check unique method names
 	MethodsByName.clear();
 
-	for (auto& method : Methods)
+	for (auto const& method : Methods)
 	{
 		MethodsByName[method->Name].push_back(method.get());
 		if (!method->UniqueName.empty() && method->Name != method->UniqueName)

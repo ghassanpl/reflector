@@ -122,15 +122,15 @@ struct Options
 
 	Options(path exe_path, path const& options_file_path);
 
-	/// A filename or list of filenames (or directories) to scan for reflectable types
+	/// **Required** A filename or list of filenames (or directories) to scan for reflectable types
 	RField(Required);
-	json Files{};
+	json Files;
 
 	/// TODO: File/dir exclusions
 
-	/// Path to the directory where the general artifact files will be created (relative to ???)
+	/// Path to the directory where the general artifact files will be created (relative to the directory with options file)
 	RField();
-	path ArtifactPath;
+	path ArtifactPath = "Reflection/";
 
 	/// Whether to recursively search the provided directories for reflectable files
 	RField();
@@ -157,25 +157,15 @@ struct Options
 	RField();
 	bool WarnOnUnknownAttributes = false;
 
-	/// Whether or not to create optional files in the target directory; in particular: `Includes.reflect.h`, `Classes.reflect.h`, `Reflector*.h`.
-	/// `ReflectorClasses.h` is required for reflection to work, but you can include it from the reflector codebase yourself if you prefer.
-	/// See documentation for more information on what is stored in each artifact file.
-	RField();
-	bool CreateArtifacts = true;
-
 	/// Whether or not to create the `ReflectDatabase.json` database file with reflection data.
 	RField();
-	bool CreateDatabase = true;
+	bool CreateDatabase = false;
 
 	/// Whether to create Set* and Get* methods for public fields.
 	RField();
 	bool GenerateAccessorsForPublicFields = true;
 
 	//bool GenerateLuaFunctionBindings = false; /// Maybe instead of Lua function bindings, since this options is loaded from a JSON, we can have a nice JSON structure that defines how to create scripting bindings?
-
-	/// Whether to create `typeid(...)` expressions in the reflection data. Useful if you have RTTI turned off.
-	RField();
-	bool GenerateTypeIndices = true;
 
 	/// Whether to add support for garbage-collected heaps for reflected classes.
 	RField();
@@ -216,7 +206,7 @@ struct Options
 	RField();
 	std::vector<std::string> ExtensionsToScan = { ".h", ".hpp" };
 
-	/// If true, will keep the history of all reflected entities (timestamps of when they were added/changed/removed),
+	/// TODO: If true, will keep the history of all reflected entities (timestamps of when they were added/changed/removed),
 	/// in an artifact file. If this is true, the generated documentation will provide the information as well.
 	RField();
 	bool KeepEntityHistory = false;

@@ -301,6 +301,7 @@ struct DocumentationGenerator
 			{
 				out.StartTag("tr");
 				out.WriteLine("<td class='declnamecol'>{}</td>", field->MakeLink(LinkFlags::all() - LinkFlag::Parent));
+				out.WriteLine("<td class='code'><code class='language-cpp'>{}</code></td>", field->InitializingExpression);
 				out.WriteLine("<td>{}</td>", GetPrettyComments(*field, true));
 				out.EndTag();
 			}
