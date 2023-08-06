@@ -42,7 +42,7 @@ struct JSONOptions
 	RField();
 	bool AlwaysSaveAllFields = false;
 
-	/// TODO: Toggles generation of JSON serialization methods for reflected classes
+	/// Toggles generation of JSON serialization methods for reflected classes
 	RField();
 	bool GenerateSerializationMethods = true;
 };
@@ -62,21 +62,21 @@ struct DocumentationOptions
 	RField();
 	std::string PageTitleSuffix = " - Documentation";
 
-	/// TODO: Will be used in addition to and instead of the default styles
+	/// Will be used in addition to and instead of the default styles
 	RField();
 	json AdditionalStyles = json::object();
 	
-	/// TODO: Will be added directly to the <head> tag of each page
+	/// Will be added directly to the <head> tag of each page
 	RField();
 	std::string AdditionalHeadTags {};
 
-	/// TODO: language tag (e.g. "en") to add to the <html> tag to define the language of the page
+	/// language tag (e.g. "en") to add to the <html> tag to define the language of the page
 	RField();
 	std::string Language = "en";
 
-	/// TODO: The directory to put documentation into, (relative to options.json file)?
+	/// The directory to put documentation into, (relative to options.json file)?
 	RField();
-	path DocumentationDirectory = "Documentation";
+	path TargetDirectory = "Documentation";
 
 	/// TODO: Types in signatures to replace, e.g "ImageResolvable" -> "Resolvable<Image>", or smth
 	RField();
@@ -126,11 +126,19 @@ struct Options
 	RField(Required);
 	json Files;
 
+	/// List of extensions for files to scan for reflectable types
+	RField();
+	std::vector<std::string> ExtensionsToScan = { ".h", ".hpp" };
+
 	/// TODO: File/dir exclusions
 
 	/// Path to the directory where the general artifact files will be created (relative to the directory with options file)
 	RField();
 	path ArtifactPath = "Reflection/";
+
+	/// The extension for generated mirror files (`bla.h` => `bla.h.mirror`)
+	RField();
+	std::string MirrorExtension = ".mirror";
 
 	/// Whether to recursively search the provided directories for reflectable files
 	RField();
@@ -148,14 +156,19 @@ struct Options
 	RField();
 	bool Verbose = false;
 
-	/// JSON options
-	RField();
-	JSONOptions JSON = {};
-
 	/// TODO: Whether to warn when a reflected attribute is not recognized by the program.
 	/// This will have to wait until we have a full reflected list of attributes.
 	RField();
 	bool WarnOnUnknownAttributes = false;
+
+	/// TODO: Will add `Opposite` attributes to every flag enumerator with the given values (e.g. if you set this to {'Alive': 'Dead'}, any flag enumerator called Alive will get an opposite called 'Dead')
+	RField();
+	std::map<std::string, std::string> DefaultFlagOpposites;
+
+	/// For later
+	std::map<std::string, json> DefaultClassAttributes;
+	std::map<std::string, json> DefaultFieldAttributes;
+	std::map<std::string, json> DefaultMethodAttributes;
 
 	/// Whether or not to create the `ReflectDatabase.json` database file with reflection data.
 	RField();
@@ -184,9 +197,18 @@ struct Options
 	RField();
 	std::string DefaultNamespace = {};
 
+	/// TODO: If true, will keep the history of all reflected entities (timestamps of when they were added/changed/removed),
+	/// in an artifact file. If this is true, the generated documentation will provide the information as well.
+	RField();
+	bool KeepEntityHistory = false;
+
 	/// Documentation options
 	RField();
 	DocumentationOptions Documentation = {};
+
+	/// JSON options
+	RField();
+	JSONOptions JSON = {};
 
 	/// TODO: Move affixes and macro names to a different struct
 
@@ -197,19 +219,6 @@ struct Options
 	/// Prefix for all the generated special macros, like *REFLECT*\_VISIT\_Class\_METHODS
 	RField();
 	std::string MacroPrefix = "REFLECT";
-
-	/// The extension for generated mirror files (`bla.h` => `bla.h.mirror`)
-	RField();
-	std::string MirrorExtension = ".mirror";
-
-	/// List of extensions for files to scan for reflectable types
-	RField();
-	std::vector<std::string> ExtensionsToScan = { ".h", ".hpp" };
-
-	/// TODO: If true, will keep the history of all reflected entities (timestamps of when they were added/changed/removed),
-	/// in an artifact file. If this is true, the generated documentation will provide the information as well.
-	RField();
-	bool KeepEntityHistory = false;
 
 	/// Name of enum annotation macro. If not set, will be `AnnotationPrefix + "Enum"`.
 	RField();
@@ -269,15 +278,6 @@ struct Options
 
 	RField();
 	std::string ProxyClassSuffix = "_Proxy";
-
-	/// TODO: Will add `Opposite` attributes to every flag enumerator with the given values (e.g. if you set this to {'Alive': 'Dead'}, any flag enumerator called Alive will get an opposite called 'Dead')
-	RField();
-	std::map<std::string, std::string> DefaultFlagOpposites;
-
-	/// For later
-	std::map<std::string, json> DefaultClassAttributes;
-	std::map<std::string, json> DefaultFieldAttributes;
-	std::map<std::string, json> DefaultMethodAttributes;
 
 	auto const& GetExePath() const { return mExePath; }
 	auto const& GetOptionsFilePath() const { return mOptionsFilePath; }

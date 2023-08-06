@@ -14,7 +14,7 @@ struct HTMLFileWriter : public FileWriter
 	void StartPage(std::string_view title, Declaration const* decl = nullptr)
 	{
 		WriteLine("<!doctype html>");
-		StartTag("html");
+		StartTag("html", "lang='{}'", mOptions.Documentation.Language);
 
 		StartTag("head");
 		WriteLine("<title>{}{}</title>", title, mOptions.Documentation.PageTitleSuffix);
@@ -22,6 +22,7 @@ struct HTMLFileWriter : public FileWriter
 		WriteLine(R"(<link rel="stylesheet" href="https://microsoft.github.io/vscode-codicons/dist/codicon.css" />)");
 		WriteLine(R"(<script src="https://cdn.jsdelivr.net/gh/MarketingPipeline/Markdown-Tag/markdown-tag.js"></script>)");
 		WriteLine(R"(<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/vs2015.min.css"><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>)");
+		WriteLine("{}", mOptions.Documentation.AdditionalHeadTags);
 		EndTag();
 
 		StartTag("body");
@@ -95,7 +96,7 @@ struct DocumentationGenerator
 		/// Load and create styles
 		const json default_styles = ghassanpl::formats::json::load_file(mOptions.GetExePath().parent_path() / "documentation_default_css.json");
 		styles = default_styles;
-		/// styles.update(mOptions.Documentation.CustomStyles);
+		styles.update(mOptions.Documentation.AdditionalStyles, true);
 
 		/// Prepare the lists of types
 		for (const auto& mirror : GetMirrors())
@@ -301,7 +302,7 @@ struct DocumentationGenerator
 			{
 				out.StartTag("tr");
 				out.WriteLine("<td class='declnamecol'>{}</td>", field->MakeLink(LinkFlags::all() - LinkFlag::Parent));
-				out.WriteLine("<td class='code'><code class='language-cpp'>{}</code></td>", field->InitializingExpression);
+				out.WriteLine("<td class='code'><code class='language-cpp'>{}</code></td>", Escaped(field->InitializingExpression));
 				out.WriteLine("<td>{}</td>", GetPrettyComments(*field, true));
 				out.EndTag();
 			}
@@ -536,19 +537,19 @@ struct DocumentationGenerator
 	void QueueArtifacts(Artifactory& factory) const
 	{
 		/// Create basic files
-		factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / "Types.html", std::bind_front(&DocumentationGenerator::CreateIndexFile, this));
-		factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / "style.css", std::bind_front(&DocumentationGenerator::CreateCSSFile, this));
+		factory.QueueArtifact(mOptions.ArtifactPath / mOptions.Documentation.TargetDirectory / "Types.html", std::bind_front(&DocumentationGenerator::CreateIndexFile, this));
+		factory.QueueArtifact(mOptions.ArtifactPath / mOptions.Documentation.TargetDirectory / "style.css", std::bind_front(&DocumentationGenerator::CreateCSSFile, this));
 
 		for (auto& klass : classes)
 		{
-			factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / FilenameFor(*klass), std::bind_front(&DocumentationGenerator::CreateClassFile, this), std::ref(*klass));
+			factory.QueueArtifact(mOptions.ArtifactPath / mOptions.Documentation.TargetDirectory / FilenameFor(*klass), std::bind_front(&DocumentationGenerator::CreateClassFile, this), std::ref(*klass));
 
 			for (auto& field : klass->Fields)
 			{
 				if (!field->Document)
 					continue;
 
-				factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / FilenameFor(*field), std::bind_front(&DocumentationGenerator::CreateFieldFile, this), std::ref(*field)); /// 
+				factory.QueueArtifact(mOptions.ArtifactPath / mOptions.Documentation.TargetDirectory / FilenameFor(*field), std::bind_front(&DocumentationGenerator::CreateFieldFile, this), std::ref(*field)); /// 
 			}
 
 			for (auto& method : klass->Methods)
@@ -556,20 +557,20 @@ struct DocumentationGenerator
 				if (!method->Document)
 					continue;
 
-				factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / FilenameFor(*method), std::bind_front(&DocumentationGenerator::CreateMethodFile, this), std::ref(*method)); /// 
+				factory.QueueArtifact(mOptions.ArtifactPath / mOptions.Documentation.TargetDirectory / FilenameFor(*method), std::bind_front(&DocumentationGenerator::CreateMethodFile, this), std::ref(*method)); /// 
 			}
 		}
 
 		for (auto& henum : enums)
 		{
-			factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / FilenameFor(*henum), std::bind_front(&DocumentationGenerator::CreateEnumFile, this), std::ref(*henum)); ///
+			factory.QueueArtifact(mOptions.ArtifactPath / mOptions.Documentation.TargetDirectory / FilenameFor(*henum), std::bind_front(&DocumentationGenerator::CreateEnumFile, this), std::ref(*henum)); ///
 			
 			for (auto& enumerator : henum->Enumerators)
 			{
 				if (!enumerator->Document)
 					continue;
 
-				factory.QueueArtifact(mOptions.ArtifactPath / "Documentation" / FilenameFor(*enumerator), std::bind_front(&DocumentationGenerator::CreateEnumeratorFile, this), std::ref(*enumerator)); /// 
+				factory.QueueArtifact(mOptions.ArtifactPath / mOptions.Documentation.TargetDirectory / FilenameFor(*enumerator), std::bind_front(&DocumentationGenerator::CreateEnumeratorFile, this), std::ref(*enumerator)); /// 
 			}
 		}
 	}

@@ -8,20 +8,35 @@
 #include <charconv>
 #include <fstream>
 
-/*
 struct OutputContext
 {
 	FileWriter& output;
 	const Options& options;
+
+	void WriteForwardDeclaration(const Class& klass);
+	void WriteForwardDeclaration(const Enum& henum);
+
+	void BuildStaticReflectionData(const Enum& henum);
+	void BuildStaticReflectionData(const Class& klass);
 };
 
 struct FileMirrorOutputContext : OutputContext
 {
 	const FileMirror& mirror;
-};
-*/
 
-bool BuildDatabaseEntriesForMirror(FileWriter& output, const Options& options, FileMirror const& file);
+	FileMirrorOutputContext(const FileMirror& mirror_, FileWriter& output_, const Options& options_)
+		: OutputContext{ output_, options_ }
+		, mirror(mirror_)
+	{
+
+	}
+
+	bool BuildDatabaseEntriesForMirror();
+
+	bool BuildClassEntry(const Class& klass);
+	bool BuildEnumEntry(const Enum& henum);
+};
+
 
 static path RelativePath(path const& writing_file, path const& referenced_file)
 {
@@ -49,23 +64,6 @@ uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, con
 	}
 
 	return file_change_time;
-}
-
-void WriteForwardDeclaration(FileWriter& output, const Class& klass, const Options&)
-{
-	if (klass.Namespace.empty())
-		output.WriteLine("{} {};", (klass.Flags.is_set(ClassFlags::DeclaredStruct) ? "struct" : "class"), klass.FullType());
-	else
-		output.WriteLine("namespace {} {{ {} {}; }}", klass.Namespace, klass.Flags.is_set(ClassFlags::DeclaredStruct) ? "struct" : "class", klass.Name);
-}
-
-void WriteForwardDeclaration(FileWriter& output, const Enum& henum, const Options&)
-{
-	const auto base = henum.BaseType.empty() ? std::string{} : std::format(" : {}", henum.BaseType);
-	if (henum.Namespace.empty())
-		output.WriteLine("enum class {}{};", henum.FullType(), base);
-	else
-		output.WriteLine("namespace {} {{ enum class {}{}; }}", henum.Namespace, henum.Name, base);
 }
 
 bool CreateJSONDBArtifact(ArtifactArgs args)
@@ -96,7 +94,8 @@ bool CreateReflectorDatabaseArtifact(ArtifactArgs args)
 	
 	for (const auto& mirror : GetMirrors())
 	{
-		if (!BuildDatabaseEntriesForMirror(database_file, opts, *mirror))
+		FileMirrorOutputContext context{ *mirror, database_file, opts };
+		if (!context.BuildDatabaseEntriesForMirror())
 			return false;
 	}
 
@@ -194,214 +193,15 @@ std::string BuildCompileTimeLiteral(std::string_view str)
 	return std::format("\"{}\"",ghassanpl::string_ops::escaped(str));
 }
 
-void BuildStaticReflectionData(FileWriter& output, const Enum& henum, const Options& options)
-{
-	output.StartBlock("::Reflector::EnumReflectionData const& StaticGetReflectionData_For_{}() {{", henum.GeneratedUniqueName());
-	output.StartBlock("static const ::Reflector::EnumReflectionData _data = {{");
-
-	output.WriteLine(".Name = \"{}\",", henum.Name);
-	output.WriteLine(".FullType = \"{}\",", henum.FullType());
-	if (!henum.Attributes.empty())
-	{
-		output.WriteLine(".Attributes = {},", EscapeJSON(henum.Attributes));
-		if (options.JSON.Use)
-			output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(henum.Attributes));
-	}
-	output.StartBlock(".Enumerators = {{");
-	for (auto& enumerator : henum.Enumerators)
-		output.WriteLine("{{ \"{}\", {}, {} }},", enumerator->Name, enumerator->Value, enumerator->Flags.bits);
-	output.EndBlock("}},");
-	output.WriteLine(".TypeIndex = typeid({}),", henum.FullType());
-	output.WriteLine(".Flags = {},", henum.Flags.bits);
-	output.EndBlock("}}; return _data;");
-	output.EndBlock("}}");
-
-	output.WriteLine("std::ostream& operator<<(std::ostream& strm, {} v) {{ strm << GetEnumeratorName(v); return strm; }}", henum.Name);
-}
-
-void BuildStaticReflectionData(FileWriter& output, const Class& klass, const Options& options)
-{
-	if (options.AddGCFunctionality)
-	{
-		output.WriteLine("template <>");
-		output.WriteLine("void ::Reflector::GCMark<{0}>({0} const* r) {{ ::Reflector::GCMark((::Reflector::Reflectable const*)r); }}", klass.FullType());
-	}
-
-	if (options.JSON.Use && options.JSON.GenerateSerializationMethods)
-	{
-		output.StartBlock("void {}::JSONLoadFields({} const& src_object) {{", klass.FullType(), options.JSON.Type);
-		if (!klass.BaseClass.empty())
-			output.WriteLine("{}::parent_type::JSONLoadFields(src_object);", klass.FullType());
-		output.WriteLine();
-		output.WriteLine("auto const& _class_reflect_data = ::StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
-		size_t i = 0;
-		for (auto& field : klass.Fields)
-		{
-			if (field->Flags.contain(FieldFlags::NoLoad))
-				continue;
-
-			output.StartBlock("if (auto it = src_object.find(\"{}\"); it == src_object.end())", field->Name);
-
-			if (field->Flags.contain(FieldFlags::Required))
-				output.WriteLine("throw ::Reflector::DataError{{ \"Missing field '{}'\" }};", field->Name);
-			else
-			{
-				if (!field->InitializingExpression.empty())
-					output.WriteLine("this->{} = {};", field->Name, field->InitializingExpression);
-				else
-					output.WriteLine("this->{0} = decltype(this->{0}){{}};", field->Name);
-			}
-
-			output.EndBlock();
-			output.StartBlock("else try {{");
-			output.WriteLine("it->get_to<{}>(this->{});", field->Type, field->Name);
-			output.EndBlock("}}");
-			output.StartBlock("catch (::Reflector::DataError& e) {{");
-			output.WriteLine("e.File += \"/{}\";", field->Name);
-			output.WriteLine("throw;");
-			output.EndBlock("}}");
-
-			output.WriteLine();
-
-			++i;
-		}
-		output.EndBlock("}}");
-
-
-		output.StartBlock("void {}::JSONSaveFields({}& dest_object) const {{", klass.FullType(), options.JSON.Type);
-		if (!klass.BaseClass.empty())
-			output.WriteLine("{}::parent_type::JSONSaveFields(dest_object);", klass.FullType());
-		output.WriteLine("auto const& _class_reflect_data = ::StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
-		i = 0;
-		for (auto& field : klass.Fields)
-		{
-			if (field->Flags.contain(FieldFlags::NoSave))
-				continue;
-
-			const auto check_for_init_value = !field->InitializingExpression.empty() && !options.JSON.AlwaysSaveAllFields && !field->Flags.contain(FieldFlags::Required);
-
-			if (check_for_init_value)
-			{
-				output.StartBlock("do {{");
-				output.StartBlock("if constexpr (std::equality_comparable<{}>)", field->Type);
-					output.WriteLine("if (::Compare_(this->{}, {})) break;", field->Name, field->InitializingExpression.empty() ? "{}" : field->InitializingExpression);
-				output.EndBlock();
-			}
-
-			output.WriteLine("dest_object[\"{0}\"] = this->{0};", field->Name);
-
-			if (check_for_init_value)
-				output.EndBlock("}} while (false);");
-			
-			output.WriteLine();
-
-			++i;
-		}
-		output.EndBlock("}}");
-	}
-
-	output.StartBlock("::Reflector::ClassReflectionData const& StaticGetReflectionData_For_{}() {{", klass.GeneratedUniqueName());
-	output.StartBlock("static const ::Reflector::ClassReflectionData _data = {{");
-	output.WriteLine(".Name = \"{}\",", klass.Name);
-	output.WriteLine(".FullType = \"{}\",", klass.FullType());
-
-	/// TODO: Comment and describe here why we should only give the type as the parent class name, since we support full namespaced names?
-	///output.WriteLine(".BaseClassName = \"{}\",", OnlyType(klass.BaseClass));
-	output.WriteLine(".BaseClassName = \"{}\",", klass.BaseClass);
-
-	if (!klass.Attributes.empty())
-	{
-		output.WriteLine(".Attributes = {},", EscapeJSON(klass.Attributes));
-		if (options.JSON.Use)
-			output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(klass.Attributes));
-	}
-	output.WriteLine(".UID = {}ULL,", klass.UID);
-	output.WriteLine(".Alignment = alignof({0}),", klass.FullType());
-	output.WriteLine(".Size = sizeof({0}),", klass.FullType());
-	if (!klass.Flags.is_set(ClassFlags::NoConstructors))
-		output.WriteLine(".Constructor = +[](void* ptr, const ::Reflector::ClassReflectionData& klass){{ new (ptr){}{{klass}}; }},", klass.FullType());
-	output.WriteLine(".Destructor = +[](void* obj){{ auto _tobj = ({0}*)obj; _tobj->~{0}(); }},", klass.FullType());
-
-	/// Fields
-	output.StartBlock(".Fields = {{");
-	for (auto& field : klass.Fields)
-	{
-		output.StartBlock("{{");
-		output.WriteLine(".Name = \"{}\",", field->Name);
-		output.WriteLine(".FieldType = \"{}\",", field->Type);
-		if (!field->InitializingExpression.empty())
-			output.WriteLine(".Initializer = {},", EscapeString(field->InitializingExpression));
-		if (!field->Attributes.empty())
-		{
-			output.WriteLine(".Attributes = {},", EscapeJSON(field->Attributes));
-			if (options.JSON.Use)
-				output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(field->Attributes));
-		}
-		output.WriteLine(".FieldTypeIndex = typeid({}),", field->Type);
-		output.WriteLine(".Flags = {},", field->Flags.bits);
-		output.WriteLine(".ParentClass = &_data");
-		output.EndBlock("}},");
-	}
-	output.EndBlock("}},");
-
-	/// Methods
-	output.StartBlock(".Methods = {{");
-	for (auto& method : klass.Methods)
-	{
-		output.StartBlock("::Reflector::MethodReflectionData {{");
-		output.WriteLine(".Name = \"{}\",", method->Name);
-		output.WriteLine(".ReturnType= \"{}\",", method->Return.Name);
-		if (!method->GetParameters().empty())
-		{
-			output.WriteLine(".Parameters = {},", EscapeString(method->GetParameters()));
-			output.WriteLine(".ParametersSplit = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { 
-				return format("{{ {}, {}, {} }}", EscapeString(param.Name), EscapeString(param.Type), EscapeString(param.Initializer));
-			}));
-		}
-		if (!method->Attributes.empty())
-		{
-			output.WriteLine(".Attributes = {},", EscapeJSON(method->Attributes));
-			if (options.JSON.Use)
-				output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(method->Attributes));
-		}
-		if (!method->UniqueName.empty())
-			output.WriteLine(".UniqueName = \"{}\",", method->UniqueName);
-		if (!method->ArtificialBody.empty())
-			output.WriteLine(".ArtificialBody = {},", EscapeString(method->ArtificialBody));
-		output.WriteLine(".ReturnTypeIndex = typeid({}),", method->Return.Name);
-		output.WriteLine(".ParameterTypeIndices = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { return format("typeid({})", param.Type); }));
-		output.WriteLine(".Flags = {},", method->Flags.bits);
-		output.WriteLine(".ParentClass = &_data");
-		output.EndBlock("}},");
-	}
-	output.EndBlock("}},");
-
-	if (options.JSON.Use)
-	{
-		output.StartBlock(".JSONLoadFieldsFunc = [](void* dest_object, {} const& src_object){{", options.JSON.Type);
-		output.WriteLine("(({0}*)dest_object)->JSONLoadFields(src_object);", klass.FullType());
-		output.EndBlock("}},");
-		output.StartBlock(".JSONSaveFieldsFunc = [](void const* src_object, {}& dest_object){{", options.JSON.Type);
-		output.WriteLine("(({0} const*)src_object)->JSONSaveFields(dest_object);", klass.FullType());
-		output.EndBlock("}},");
-	}
-
-	output.WriteLine(".TypeIndex = typeid({}),", klass.FullType());
-	output.WriteLine(".Flags = {}", klass.Flags.bits);
-	output.EndBlock("}}; return _data;");
-	output.EndBlock("}}");
-
-}
-
 
 std::string DebuggingComment(const Options& options, std::string_view content)
 {
 	return options.DebuggingComments ? std::format("/* {} */ ", content) : std::string{};
 }
 
-bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& klass, const Options& options)
+bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 {
-	output.WriteLine("/// From class: {}", klass. FullType());
+	output.WriteLine("/// From class: {}", klass.FullType());
 
 	/// ///////////////////////////////////// ///
 	/// Forward declare all classes
@@ -409,7 +209,7 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 
 	if (options.ForwardDeclare)
 	{
-		WriteForwardDeclaration(output, klass, options);
+		WriteForwardDeclaration(klass);
 	}
 	/// TODO: Make the name of this function configurable?
 	output.WriteLine("::Reflector::ClassReflectionData const& StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
@@ -643,12 +443,12 @@ bool BuildClassEntry(FileWriter& output, const FileMirror& mirror, const Class& 
 	return true;
 }
 
-bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& henum, const Options& options)
+bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 {
 	const auto has_any_enumerators = !henum.Enumerators.empty();
 	output.WriteLine("/// From enum: {}", henum.FullType());
 
-	WriteForwardDeclaration(output, henum, options);
+	WriteForwardDeclaration(henum);
 
 	/// TODO: Make the name of this function configurable
 	output.WriteLine("extern ::Reflector::EnumReflectionData const& StaticGetReflectionData_For_{}();", henum.GeneratedUniqueName());
@@ -683,7 +483,7 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 			output.WriteLine("constexpr inline std::string_view {}NamesByIndex[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](auto const& enumerator) { return std::format("\"{}\"", enumerator->Name); }));
 			output.WriteLine("constexpr inline {0} {0}ValuesByIndex[] = {{ {1} }} ;", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](auto const& enumerator) {
 				return std::format("{}{{{}}}", henum.Name, enumerator->Value);
-				}));
+			}));
 
 			output.WriteLine("constexpr inline {0} First{0} = {0}{{{1}}};", henum.Name, henum.Enumerators.front()->Value);
 			output.WriteLine("constexpr inline {0} Last{0} = {0}{{{1}}};", henum.Name, henum.Enumerators.back()->Value);
@@ -763,7 +563,6 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 		}
 	*/
 	/// TODO: Make the name of this function configurable
-	/// TODO: This depends on string_view :/
 	output.WriteLine("constexpr {0} GetEnumeratorFromName({0}, std::string_view name) {{", henum.Name);
 	{
 		auto indent = output.Indent();
@@ -829,46 +628,268 @@ bool BuildEnumEntry(FileWriter& output, const FileMirror& mirror, const Enum& he
 	return true;
 }
 
-bool BuildDatabaseEntriesForMirror(FileWriter& output, const Options& options, FileMirror const& file)
+bool FileMirrorOutputContext::BuildDatabaseEntriesForMirror()
 {
-	for (auto& klass : file.Classes)
+	for (auto& klass : mirror.Classes)
 	{
-		BuildStaticReflectionData(output, *klass, options);
+		BuildStaticReflectionData(*klass);
 		output.WriteLine();
 	}
-	for (auto& henum : file.Enums)
+	for (auto& henum : mirror.Enums)
 	{
-		BuildStaticReflectionData(output, *henum, options);
+		BuildStaticReflectionData(*henum);
 		output.WriteLine();
 	}
 
 	return true;
 }
 
-bool BuildMirrorFile(ArtifactArgs args, FileMirror const& file, uint64_t file_change_time)
+bool BuildMirrorFile(ArtifactArgs args, FileMirror const& mirror, uint64_t file_change_time)
 {
 	auto const& [_, final_path, options, factory] = args;
 	FileWriter f{ args };
 	f.WriteLine("{}{}", TIMESTAMP_TEXT, file_change_time);
-	f.WriteLine("/// Source file: {}", file.SourceFilePath.string());
+	f.WriteLine("/// Source file: {}", mirror.SourceFilePath.string());
 	f.WriteLine("#pragma once");
 
 	const auto rel = RelativePath(final_path, options.ArtifactPath / "Reflector.h");
 	f.WriteLine("#include \"{}\"", rel.string());
 
-	for (auto& klass : file.Classes)
+	FileMirrorOutputContext context{ 
+		mirror,
+		f,
+		options, 
+	};
+
+	for (auto& klass : mirror.Classes)
 	{
-		if (!BuildClassEntry(f, file, *klass, options))
+		if (!context.BuildClassEntry(*klass))
 			continue;
 		f.WriteLine();
 	}
 
-	for (auto& henum : file.Enums)
+	for (auto& henum : mirror.Enums)
 	{
-		if (!BuildEnumEntry(f, file, *henum, options))
+		if (!context.BuildEnumEntry(*henum))
 			continue;
 		f.WriteLine();
 	}
 
 	return true;
+}
+
+void OutputContext::WriteForwardDeclaration(const Class& klass)
+{
+	if (klass.Namespace.empty())
+		output.WriteLine("{} {};", (klass.Flags.is_set(ClassFlags::DeclaredStruct) ? "struct" : "class"), klass.FullType());
+	else
+		output.WriteLine("namespace {} {{ {} {}; }}", klass.Namespace, klass.Flags.is_set(ClassFlags::DeclaredStruct) ? "struct" : "class", klass.Name);
+}
+
+void OutputContext::WriteForwardDeclaration(const Enum& henum)
+{
+	const auto base = henum.BaseType.empty() ? std::string{} : std::format(" : {}", henum.BaseType);
+	if (henum.Namespace.empty())
+		output.WriteLine("enum class {}{};", henum.FullType(), base);
+	else
+		output.WriteLine("namespace {} {{ enum class {}{}; }}", henum.Namespace, henum.Name, base);
+}
+
+void OutputContext::BuildStaticReflectionData(const Enum& henum)
+{
+	output.StartBlock("::Reflector::EnumReflectionData const& StaticGetReflectionData_For_{}() {{", henum.GeneratedUniqueName());
+	output.StartBlock("static const ::Reflector::EnumReflectionData _data = {{");
+
+	output.WriteLine(".Name = \"{}\",", henum.Name);
+	output.WriteLine(".FullType = \"{}\",", henum.FullType());
+	if (!henum.Attributes.empty())
+	{
+		output.WriteLine(".Attributes = {},", EscapeJSON(henum.Attributes));
+		if (options.JSON.Use)
+			output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(henum.Attributes));
+	}
+	output.StartBlock(".Enumerators = {{");
+	for (auto& enumerator : henum.Enumerators)
+		output.WriteLine("{{ \"{}\", {}, {} }},", enumerator->Name, enumerator->Value, enumerator->Flags.bits);
+	output.EndBlock("}},");
+	output.WriteLine(".TypeIndex = typeid({}),", henum.FullType());
+	output.WriteLine(".Flags = {},", henum.Flags.bits);
+	output.EndBlock("}}; return _data;");
+	output.EndBlock("}}");
+
+	output.WriteLine("std::ostream& operator<<(std::ostream& strm, {} v) {{ strm << GetEnumeratorName(v); return strm; }}", henum.Name);
+}
+
+void OutputContext::BuildStaticReflectionData(const Class& klass)
+{
+	if (options.AddGCFunctionality)
+	{
+		output.WriteLine("template <>");
+		output.WriteLine("void ::Reflector::GCMark<{0}>({0} const* r) {{ ::Reflector::GCMark((::Reflector::Reflectable const*)r); }}", klass.FullType());
+	}
+
+	if (options.JSON.Use && options.JSON.GenerateSerializationMethods)
+	{
+		output.StartBlock("void {}::JSONLoadFields({} const& src_object) {{", klass.FullType(), options.JSON.Type);
+		if (!klass.BaseClass.empty())
+			output.WriteLine("{}::parent_type::JSONLoadFields(src_object);", klass.FullType());
+		output.WriteLine();
+		output.WriteLine("auto const& _class_reflect_data = ::StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
+		size_t i = 0;
+		for (auto& field : klass.Fields)
+		{
+			if (field->Flags.contain(FieldFlags::NoLoad))
+				continue;
+
+			output.StartBlock("if (auto it = src_object.find(\"{}\"); it == src_object.end())", field->Name);
+
+			if (field->Flags.contain(FieldFlags::Required))
+				output.WriteLine("throw ::Reflector::DataError{{ \"Missing field '{}'\" }};", field->Name);
+			else
+			{
+				if (!field->InitializingExpression.empty())
+					output.WriteLine("this->{} = {};", field->Name, field->InitializingExpression);
+				else
+					output.WriteLine("this->{0} = decltype(this->{0}){{}};", field->Name);
+			}
+
+			output.EndBlock();
+			output.StartBlock("else try {{");
+			output.WriteLine("it->get_to<{}>(this->{});", field->Type, field->Name);
+			output.EndBlock("}}");
+			output.StartBlock("catch (::Reflector::DataError& e) {{");
+			output.WriteLine("e.File += \"/{}\";", field->Name);
+			output.WriteLine("throw;");
+			output.EndBlock("}}");
+
+			output.WriteLine();
+
+			++i;
+		}
+		output.EndBlock("}}");
+
+
+		output.StartBlock("void {}::JSONSaveFields({}& dest_object) const {{", klass.FullType(), options.JSON.Type);
+		if (!klass.BaseClass.empty())
+			output.WriteLine("{}::parent_type::JSONSaveFields(dest_object);", klass.FullType());
+		output.WriteLine("auto const& _class_reflect_data = ::StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
+		i = 0;
+		for (auto& field : klass.Fields)
+		{
+			if (field->Flags.contain(FieldFlags::NoSave))
+				continue;
+
+			const auto check_for_init_value = !field->InitializingExpression.empty() && !options.JSON.AlwaysSaveAllFields && !field->Flags.contain(FieldFlags::Required);
+
+			if (check_for_init_value)
+			{
+				output.StartBlock("do {{");
+				output.StartBlock("if constexpr (std::equality_comparable<{}>)", field->Type);
+				output.WriteLine("if (::Compare_(this->{}, {})) break;", field->Name, field->InitializingExpression.empty() ? "{}" : field->InitializingExpression);
+				output.EndBlock();
+			}
+
+			output.WriteLine("dest_object[\"{0}\"] = this->{0};", field->Name);
+
+			if (check_for_init_value)
+				output.EndBlock("}} while (false);");
+
+			output.WriteLine();
+
+			++i;
+		}
+		output.EndBlock("}}");
+	}
+
+	output.StartBlock("::Reflector::ClassReflectionData const& StaticGetReflectionData_For_{}() {{", klass.GeneratedUniqueName());
+	output.StartBlock("static const ::Reflector::ClassReflectionData _data = {{");
+	output.WriteLine(".Name = \"{}\",", klass.Name);
+	output.WriteLine(".FullType = \"{}\",", klass.FullType());
+
+	/// TODO: Comment and describe here why we should only give the type as the parent class name, since we support full namespaced names?
+	///output.WriteLine(".BaseClassName = \"{}\",", OnlyType(klass.BaseClass));
+	output.WriteLine(".BaseClassName = \"{}\",", klass.BaseClass);
+
+	if (!klass.Attributes.empty())
+	{
+		output.WriteLine(".Attributes = {},", EscapeJSON(klass.Attributes));
+		if (options.JSON.Use)
+			output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(klass.Attributes));
+	}
+	output.WriteLine(".UID = {}ULL,", klass.UID);
+	output.WriteLine(".Alignment = alignof({0}),", klass.FullType());
+	output.WriteLine(".Size = sizeof({0}),", klass.FullType());
+	if (!klass.Flags.is_set(ClassFlags::NoConstructors))
+		output.WriteLine(".Constructor = +[](void* ptr, const ::Reflector::ClassReflectionData& klass){{ new (ptr){}{{klass}}; }},", klass.FullType());
+	output.WriteLine(".Destructor = +[](void* obj){{ auto _tobj = ({0}*)obj; _tobj->~{0}(); }},", klass.FullType());
+
+	/// Fields
+	output.StartBlock(".Fields = {{");
+	for (auto& field : klass.Fields)
+	{
+		output.StartBlock("{{");
+		output.WriteLine(".Name = \"{}\",", field->Name);
+		output.WriteLine(".FieldType = \"{}\",", field->Type);
+		if (!field->InitializingExpression.empty())
+			output.WriteLine(".Initializer = {},", EscapeString(field->InitializingExpression));
+		if (!field->Attributes.empty())
+		{
+			output.WriteLine(".Attributes = {},", EscapeJSON(field->Attributes));
+			if (options.JSON.Use)
+				output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(field->Attributes));
+		}
+		output.WriteLine(".FieldTypeIndex = typeid({}),", field->Type);
+		output.WriteLine(".Flags = {},", field->Flags.bits);
+		output.WriteLine(".ParentClass = &_data");
+		output.EndBlock("}},");
+	}
+	output.EndBlock("}},");
+
+	/// Methods
+	output.StartBlock(".Methods = {{");
+	for (auto& method : klass.Methods)
+	{
+		output.StartBlock("::Reflector::MethodReflectionData {{");
+		output.WriteLine(".Name = \"{}\",", method->Name);
+		output.WriteLine(".ReturnType= \"{}\",", method->Return.Name);
+		if (!method->GetParameters().empty())
+		{
+			output.WriteLine(".Parameters = {},", EscapeString(method->GetParameters()));
+			output.WriteLine(".ParametersSplit = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) {
+				return format("{{ {}, {}, {} }}", EscapeString(param.Name), EscapeString(param.Type), EscapeString(param.Initializer));
+				}));
+		}
+		if (!method->Attributes.empty())
+		{
+			output.WriteLine(".Attributes = {},", EscapeJSON(method->Attributes));
+			if (options.JSON.Use)
+				output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(method->Attributes));
+		}
+		if (!method->UniqueName.empty())
+			output.WriteLine(".UniqueName = \"{}\",", method->UniqueName);
+		if (!method->ArtificialBody.empty())
+			output.WriteLine(".ArtificialBody = {},", EscapeString(method->ArtificialBody));
+		output.WriteLine(".ReturnTypeIndex = typeid({}),", method->Return.Name);
+		output.WriteLine(".ParameterTypeIndices = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { return format("typeid({})", param.Type); }));
+		output.WriteLine(".Flags = {},", method->Flags.bits);
+		output.WriteLine(".ParentClass = &_data");
+		output.EndBlock("}},");
+	}
+	output.EndBlock("}},");
+
+	if (options.JSON.Use)
+	{
+		output.StartBlock(".JSONLoadFieldsFunc = [](void* dest_object, {} const& src_object){{", options.JSON.Type);
+		output.WriteLine("(({0}*)dest_object)->JSONLoadFields(src_object);", klass.FullType());
+		output.EndBlock("}},");
+		output.StartBlock(".JSONSaveFieldsFunc = [](void const* src_object, {}& dest_object){{", options.JSON.Type);
+		output.WriteLine("(({0} const*)src_object)->JSONSaveFields(dest_object);", klass.FullType());
+		output.EndBlock("}},");
+	}
+
+	output.WriteLine(".TypeIndex = typeid({}),", klass.FullType());
+	output.WriteLine(".Flags = {}", klass.Flags.bits);
+	output.EndBlock("}}; return _data;");
+	output.EndBlock("}}");
+
 }
