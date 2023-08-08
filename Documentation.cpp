@@ -262,7 +262,7 @@ struct DocumentationGenerator
 		{
 			if (decl.SourceDeclaration && decl.SourceDeclaration != decl.ParentType)
 			{
-				out.WriteLine("<li><b>Source Declaration</b>: {} {}</li>", decl.SourceDeclaration->DeclarationType(), decl.SourceDeclaration->MakeLink());
+				out.WriteLine("<li><b>Source Declaration</b>: {} {}</li>", magic_enum::enum_name(decl.SourceDeclaration->DeclarationType()), decl.SourceDeclaration->MakeLink());
 			}
 
 			if (!decl.UniqueName.empty())

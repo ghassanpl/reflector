@@ -41,11 +41,14 @@ namespace Reflector
 		AlignedFree(obj);
 	}
 
-	void* ClassReflectionData::New() const
+	void* ClassReflectionData::NewDefault(void* at) const
 	{
-		void* result = Alloc();
-		Constructor(result, *this);
-		return result;
+		if (at && DefaultConstructor)
+		{
+			DefaultConstructor(at);
+			return at;
+		}
+		return nullptr;
 	}
 
 	auto ClassReflectionData::FindField(std::string_view name) const -> FieldReflectionData const*
@@ -82,7 +85,6 @@ namespace Reflector
 	#endif
 			.Alignment = alignof(Reflectable),
 			.Size = sizeof(Reflectable),
-			.Constructor = [](void* into, const ClassReflectionData& data) { new(into) Reflectable(data); },
 			.Destructor = [](void* obj) { auto ptr = (Reflectable*)obj; ptr->~Reflectable(); },
 			.TypeIndex = typeid(Reflectable)
 		};
@@ -147,12 +149,14 @@ namespace Reflector
 		return mExtantObjects;
 	}
 
+	/*
 	Reflectable* Heap::New(ClassReflectionData const* type)
 	{
 		Reflectable* result = Alloc(type);
-		type->Constructor(result, *type);
+		type->DefaultConstructor(result);
 		return Add(result);
 	}
+	*/
 
 	void Heap::MinimizeMemory()
 	{
@@ -182,7 +186,7 @@ namespace Reflector
 
 	Reflectable* Heap::Alloc(ClassReflectionData const* klass_data)
 	{
-		Reflectable* result = nullptr;
+		void* result = nullptr;
 
 		if (auto listit = mFreeLists.find(klass_data); listit != mFreeLists.end() && !listit->second.empty())
 		{
@@ -191,10 +195,11 @@ namespace Reflector
 		}
 		else
 		{
-			result = reinterpret_cast<Reflectable*>(klass_data->Alloc());
+			result = klass_data->Alloc();
 		}
 
-		return result;
+		::memset(result, 0, klass_data->Size);
+		return new (result) Reflectable(*klass_data, (1ULL << int(Reflectable::Flags::OnHeap)));
 	}
 
 #if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)
@@ -249,7 +254,7 @@ namespace Reflector
 
 			auto [obj, klass] = mLoadingMapping[id];
 
-			klass->Constructor(obj, *klass);
+			klass->DefaultConstructor(obj);
 			Add(obj);
 			obj->JSONLoadFields(obj_data);
 		}
@@ -265,7 +270,7 @@ namespace Reflector
 			auto klass = mapping.second;
 			assert(klass);
 
-			klass->Constructor(mapping.first, *klass);
+			klass->DefaultConstructor(mapping.first);
 			Add(mapping.first);
 		}
 

@@ -93,14 +93,14 @@ namespace Reflector
 			return Objects() | std::views::filter([](auto* ptr) { return ptr->Is<T>(); }) | std::views::transform([](auto* ptr) { return (T*)ptr; });
 		}
 
-		static Reflectable* New(ClassReflectionData const* type);
+		//static Reflectable* New(ClassReflectionData const* type);
 
-		template <typename T>
-		static T* New()
+		template <typename T, typename... ARGS>
+		static T* New(ARGS&&... args)
 		{
 			static_assert(reflectable_class<T>, "Only reflectable classes can be New()ed");
 
-			return (T*)Add(new (Alloc<T>()) T());
+			return (T*)Add(new (Alloc<T>()) T(T::StaticGetReflectionData(), std::forward<ARGS>(args)...));
 		}
 
 		template <typename T>
@@ -157,12 +157,21 @@ namespace Reflector
 		friend struct GCRootPointer;
 	};
 
-	template <typename T>
-	T* Reflectable::New()
+	template <reflected_class T, typename... ARGS>
+	T* New(ARGS&&... args)
 	{
-		return Heap::New<T>();
+		if constexpr (reflectable_class<T>)
+			return ::Reflector::Heap::New<T>(std::forward<ARGS>(args)...);
+		else
+			return nullptr;
 	}
 
+	template <typename T, typename... ARGS>
+	T* Reflectable::New(ARGS&&... args)
+	{
+		static_assert(reflected_class<T>, "Only reflected classes can be created using New<T>()");
+		return ::Reflector::New<T>(std::forward<ARGS>(args)...);
+	}
 }
 
 #if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)
@@ -176,7 +185,12 @@ struct adl_serializer<SERIALIZABLE>
 	static void to_json(REFLECTOR_JSON_TYPE& j, const SERIALIZABLE& p)
 	{
 		if (p)
+		{
+			if (!p->GC_IsOnHeap())
+				throw std::runtime_error("Pointer to a GC-enabled object points to an object not on the GC heap, cannot serialize");
+
 			j = { (intptr_t)p, p->GetReflectionData().FullType };
+		}
 		else
 			j = nullptr;
 	}

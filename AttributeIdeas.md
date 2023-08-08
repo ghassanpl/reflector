@@ -11,11 +11,11 @@ StringAttribute ScriptAccess{ "ScriptAccess", "Whether or not to hook up the gen
 
 Look at https://benui.ca/unreal/ufunction/ and others for ideas
 
+* [record] **GenerateResetFunctions** - will generate a Reset*FieldName* for each field in the class (see below), unless it has the Reset = false attribute
+* [field] **Reset/Resettable** - will generate a Reset[FieldName] function that sets the field value to its initial value); having any of these in a class will create a Reset() function that resets every field
 * [static field] **Config** - like Unreal's config, but, y'know, for statics
 * [record] **Icon** - for the editors and such
 * [any] **Internal** - do not document, what else? if nothing else, it's handled by `Document`
-* [record] **GenerateResetFunctions** - will generate a Reset*FieldName* for each field in the class (see below), unless it has the Reset = false attribute
-* [field] **Reset/Resettable** - will generate a Reset[FieldName] function that sets the field value to its initial value); having any of these in a class will create a Reset() function that resets every field
 * [field] **Delegate** - creates Is*FieldName*Set() and Call*FieldName*() script-callable functions that check for std::function assignment and (optionally) call it  
 	*Not sure if this is necessary, or it should be handled by the field type itself*
 * [field] **Optional** - requires an optional type (like std::optional); will create Is#field_name and Reset#field_name in addition to regular accessors  
@@ -27,7 +27,6 @@ Look at https://benui.ca/unreal/ufunction/ and others for ideas
 		ForceLimits - will clamp the input value in the setter
 * [any] **Plural/Singular** - whether to create Is or Are prefixes and such;   
 	*NOTE: Give example or where this could be useful*
-* [record] **PublicFieldAccessors** = false - will disable creation of Get/Set functions for public fields (also should be a global option)
 * [record] **DefaultMethodAttributes** = {}
 * [record] **DefaultFieldAttributes** = {}
 * [enum] **DefaultEnumeratorAttributes** = {}

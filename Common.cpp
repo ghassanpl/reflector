@@ -252,7 +252,7 @@ void SetFlags(enum_flags<T> Flags, json& result)
 	{
 		auto& flag_array = result["Flags"] = json::array();
 		Flags.for_each([&](auto v) {
-			flag_array.push_back(std::format("{}", v));
+			flag_array.push_back(std::format("{}", magic_enum::enum_name(v)));
 		});
 	}
 }

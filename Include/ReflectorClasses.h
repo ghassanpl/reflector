@@ -163,12 +163,12 @@ namespace Reflector
 		uint64_t UID = 0;
 		size_t Alignment{};
 		size_t Size{};
-		void (*Constructor)(void*, const ClassReflectionData&) = {};
+		void (*DefaultConstructor)(void*) = {};
 		void (*Destructor)(void*) = {};
 
 		void* Alloc() const;
 		void Delete(void* obj) const;
-		void* New() const;
+		void* NewDefault(void* at) const;
 
 		/// These are vectors and not e.g. initializer_list's because you might want to create your own classes
 		std::vector<FieldReflectionData> Fields;
@@ -345,11 +345,15 @@ namespace Reflector
 		virtual ClassReflectionData const& GetReflectionData() const;
 		static ClassReflectionData const& StaticGetReflectionData();
 
-		explicit Reflectable(::Reflector::ClassReflectionData const& klass) noexcept : mClass(&klass) {}
-
 		template <typename T> bool Is() const { return dynamic_cast<T const*>(this) != nullptr; }
 		template <typename T> T const* As() const { return dynamic_cast<T const*>(this); }
 		template <typename T> T* As() { return dynamic_cast<T*>(this); }
+
+		explicit Reflectable(::Reflector::ClassReflectionData const& klass) noexcept
+			: mClass(&klass)
+		{
+
+		}
 
 		virtual ~Reflectable() = default;
 
@@ -364,16 +368,20 @@ namespace Reflector
 
 	protected:
 
-		ClassReflectionData const* mClass = nullptr;
-
+		ClassReflectionData const* mClass;
+		
 #if defined(REFLECTOR_USES_GC) && REFLECTOR_USES_GC
 
 		enum class Flags { OnHeap, Marked, };
 
 		friend struct Heap;
 
-		mutable uint32_t mFlags = 0;
-		mutable uint32_t mRootCount = 0;
+		mutable uint32_t mFlags;
+
+
+	private:
+
+		explicit Reflectable(::Reflector::ClassReflectionData const& klass, uint32_t flags) noexcept : mClass(&klass), mFlags(flags) {}
 
 	public:
 
@@ -386,9 +394,8 @@ namespace Reflector
 		bool GC_IsMarked() const noexcept { return (mFlags & (1ULL << int(Flags::Marked))) != 0; }
 		bool GC_IsOnHeap() const noexcept { return (mFlags & (1ULL << int(Flags::OnHeap))) != 0; }
 
-		template <typename T>
-		T* New();
-
+		template <typename T, typename... ARGS>
+		T* New(ARGS&&... args);
 #endif
 	};
 
@@ -410,9 +417,9 @@ namespace Reflector
 		T::StaticClassFlags();
 		typename T::self_type;
 	} && std::same_as<T, typename T::self_type>;
-
-	template <typename T> concept reflectable_class = (reflected_class<std::remove_cvref_t<T>> && std::derived_from<std::remove_cvref_t<T>, Reflectable>) || std::same_as<std::remove_cvref_t<T>, Reflectable>;
+	
+	template <typename T> concept reflectable_class = (::Reflector::reflected_class<std::remove_cvref_t<T>> && std::derived_from<std::remove_cvref_t<T>, ::Reflector::Reflectable>) 
+		|| std::same_as<std::remove_cvref_t<T>, ::Reflector::Reflectable>;
 
 	template <typename T> concept reflected_enum = IsReflectedEnum<T>();
-
 }

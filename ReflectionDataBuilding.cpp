@@ -304,16 +304,6 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 	{
 		output.WriteLine("using parent_type = {};", klass.BaseClass);
 		output.WriteLine("using parent_type::parent_type;");
-
-		/// Constructors
-		if (!klass.Flags.is_set(ClassFlags::NoConstructors))
-		{
-			output.WriteLine("static self_type* Construct(){{ return new self_type{{StaticGetReflectionData()}}; }}");
-			output.WriteLine("{}(::Reflector::ClassReflectionData const& klass) : {}(klass) {{}}", klass.Name, klass.BaseClass);
-			output.WriteLine("{0}() : {0}(self_type::StaticGetReflectionData()) {{}}", klass.Name, klass.BaseClass);
-
-			/// TODO: Should we =delete copy and move constructors? What about operators?
-		}
 	}
 	else
 	{
@@ -722,6 +712,8 @@ void OutputContext::BuildStaticReflectionData(const Enum& henum)
 
 void OutputContext::BuildStaticReflectionData(const Class& klass)
 {
+	output.WriteLine("static_assert(!::Reflector::reflectable_class<{0}> || ::Reflector::reflectable_class<{0}::parent_type>, \"Base class of {0} ({1}) must also be reflectable (marked with RClass+RBody)\");", klass.FullType(), klass.BaseClass);
+
 	if (options.AddGCFunctionality)
 	{
 		output.WriteLine("template <>");
@@ -733,6 +725,9 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 		output.StartBlock("void {}::JSONLoadFields({} const& src_object) {{", klass.FullType(), options.JSON.Type);
 		if (!klass.BaseClass.empty())
 			output.WriteLine("{}::parent_type::JSONLoadFields(src_object);", klass.FullType());
+
+		/// TODO: call this->BeforeSerialize(src_object);, etc
+
 		output.WriteLine();
 		output.WriteLine("auto const& _class_reflect_data = ::StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
 		size_t i = 0;
@@ -755,6 +750,8 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 
 			output.EndBlock();
 			output.StartBlock("else try {{");
+			output.WriteLine("using field_type = std::remove_cvref_t<decltype({})>;", field->FullName("::"));
+			output.WriteLine("static_assert(::nlohmann::detail::is_basic_json<field_type>::value || ::nlohmann::detail::has_from_json<::nlohmann::json, field_type>::value, \"cannot serialize type '{0}' of field {1}\");", field->Type, field->FullName("::"));
 			output.WriteLine("it->get_to<{}>(this->{});", field->Type, field->Name);
 			output.EndBlock("}}");
 			output.StartBlock("catch (::Reflector::DataError& e) {{");
@@ -820,8 +817,8 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 	output.WriteLine(".Alignment = alignof({0}),", klass.FullType());
 	output.WriteLine(".Size = sizeof({0}),", klass.FullType());
 	if (!klass.Flags.is_set(ClassFlags::NoConstructors))
-		output.WriteLine(".Constructor = +[](void* ptr, const ::Reflector::ClassReflectionData& klass){{ new (ptr){}{{klass}}; }},", klass.FullType());
-	output.WriteLine(".Destructor = +[](void* obj){{ auto _tobj = ({0}*)obj; _tobj->~{0}(); }},", klass.FullType());
+		output.WriteLine(".DefaultConstructor = +[](void* ptr){{ new (ptr) {0}({0}::StaticGetReflectionData()); }},", klass.FullType());
+	output.WriteLine(".Destructor = +[](void* obj){{ auto _tobj = ({}*)obj; _tobj->~{}(); }},", klass.FullType(), klass.Name);
 
 	/// Fields
 	output.StartBlock(".Fields = {{");

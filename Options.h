@@ -142,6 +142,7 @@ struct Options
 {
 	RBody();
 
+	Options() = default;
 	Options(path exe_path, path const& options_file_path);
 
 	/// **Required** A filename or list of filenames (or directories) to scan for reflectable types
