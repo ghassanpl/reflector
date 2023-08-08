@@ -10,6 +10,8 @@
 #include <vector>
 #include <future>
 
+Options const* global_options = nullptr;
+
 int main(int argc, const char* argv[])
 {
 	/// If executable changed, it's newer than the files it created in the past, so they need to be rebuild
@@ -38,6 +40,7 @@ int main(int argc, const char* argv[])
 		}
 
 		Options options{ argv[0], (BootstrapBuild ? "options_reflection.json" : argv[1])};
+		global_options = &options;
 
 		std::vector<std::filesystem::path> final_files;
 		for (auto& path : options.GetPathsToScan())

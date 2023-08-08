@@ -7,6 +7,8 @@
 
 using namespace ghassanpl::parsing;
 
+std::string HighlightTypes(std::string_view type, TypeDeclaration const* search_context);
+
 struct HTMLFileWriter : public FileWriter
 {
 	using FileWriter::FileWriter;
@@ -243,9 +245,17 @@ struct DocumentationGenerator
 			{
 				const auto inhlist = decl.GetInheritanceList();
 				if (inhlist.empty())
-					out.WriteLine("<li><b>Inheritance</b>: <pre>{} : {}</pre></li>", decl.Name, Escaped(decl.BaseClass));
+					out.WriteLine("<li><b>Inheritance</b>: <pre>{} : {}</pre></li>", decl.Name, HighlightTypes(decl.BaseClass, &decl));
 				else
-					out.WriteLine("<li><b>Inheritance</b>: <pre>{} : {}</pre></li>", decl.Name, Escaped(join(inhlist, " -> ", [](Class const* klass) { return format("{}", klass->FullType()); })));
+				{
+					auto hierarchy = join(inhlist, " : ", [&decl](Class const* klass) { return HighlightTypes(klass->FullType(), &decl); });
+					if (!inhlist.back()->BaseClass.empty())
+					{
+						hierarchy += " : ";
+						hierarchy += HighlightTypes(inhlist.back()->BaseClass, &decl);
+					}
+					out.WriteLine("<li><b>Inheritance</b>: <pre>{} : {}</pre></li>", decl.Name, hierarchy);
+				}
 			}
 		}
 		else if constexpr (std::same_as<T, Method>)
@@ -292,7 +302,6 @@ struct DocumentationGenerator
 
 		OutputAttributeDescriptors(out, klass);
 
-		/// TODO: Split private and public fields
 		auto documented_fields = klass.Fields | std::views::filter([](auto& field) { return field->Document && field->Access == AccessMode::Public; });
 		if (!documented_fields.empty())
 		{
@@ -301,8 +310,10 @@ struct DocumentationGenerator
 			for (auto& field : documented_fields)
 			{
 				out.StartTag("tr");
-				out.WriteLine("<td class='declnamecol'>{}</td>", field->MakeLink(LinkFlags::all() - LinkFlag::Parent));
-				out.WriteLine("<td class='code'><code class='language-cpp'>{}</code></td>", Escaped(field->InitializingExpression));
+				out.WriteLine("<td class='fieldtype'>{}</td>", HighlightTypes(field->Type, field->ParentType));
+				out.WriteLine("<td class='declnamecol'>{}</td>", field->MakeLink(LinkFlags::all() - LinkFlags{ LinkFlag::Parent, LinkFlag::ReturnType }));
+				if (args.Options.Documentation.ShowFieldInitialValues)
+					out.WriteLine("<td class='code'><code class='language-cpp'>{}</code></td>", Escaped(field->InitializingExpression));
 				out.WriteLine("<td>{}</td>", GetPrettyComments(*field, true));
 				out.EndTag();
 			}
@@ -320,7 +331,8 @@ struct DocumentationGenerator
 			for (const auto& method : documented_methods)
 			{
 				out.StartTag("tr");
-				out.WriteLine("<td class='declnamecol'>{}</td>", method->MakeLink(LinkFlags::all() - LinkFlag::Parent));
+				out.WriteLine("<td class='fieldtype'>{}</td>", HighlightTypes(method->Return.Name, method->ParentType));
+				out.WriteLine("<td class='declnamecol'>{}</td>", method->MakeLink(LinkFlags::all() - LinkFlags{ LinkFlag::Parent, LinkFlag::ReturnType }));
 				out.WriteLine("<td>{}</td>", GetPrettyComments(*method, true));
 				out.EndTag();
 			}
@@ -362,7 +374,10 @@ struct DocumentationGenerator
 			for (auto& field : documented_private_fields)
 			{
 				out.StartTag("tr");
-				out.WriteLine("<td class='declnamecol'>{}</td>", field->MakeLink(LinkFlags::all() - LinkFlag::Parent));
+				out.WriteLine("<td class='fieldtype'>{}</td>", HighlightTypes(field->Type, field->ParentType));
+				out.WriteLine("<td class='declnamecol'>{}</td>", field->MakeLink(LinkFlags::all() - LinkFlags{ LinkFlag::Parent, LinkFlag::ReturnType }));
+				if (args.Options.Documentation.ShowFieldInitialValues)
+					out.WriteLine("<td class='code'><code class='language-cpp'>{}</code></td>", Escaped(field->InitializingExpression));
 				out.WriteLine("<td>{}</td>", GetPrettyComments(*field, true));
 				out.EndTag();
 			}
@@ -401,10 +416,13 @@ struct DocumentationGenerator
 			Escaped((field.InitializingExpression.empty() ? "" : format(" = {}", field.InitializingExpression)))
 		);
 
+		out.WriteLine("{}", GetPrettyComments(field));
+
+		out.WriteLine("<h2>Type</h2>");
+		out.WriteLine("<pre class='membertype'>{}</pre>", HighlightTypes(field.Type, field.ParentType));
+
 		/// TODO: Special treatment for Flags fields
 		/// ? Like what?
-
-		out.WriteLine("{}", GetPrettyComments(field));
 
 		OutputAttributeDescriptors(out, field);
 
@@ -452,7 +470,7 @@ struct DocumentationGenerator
 			for (auto& param : method.ParametersSplit)
 			{
 				auto comments = ghassanpl::map_find(param_comments, param.Name);
-				out.WriteLine("<dt><pre class='paramname'>{}</pre> : <code class='language-cpp'>{} {}</code></dt><dd><md>{}</md></dd>", param.Name, Escaped(param.Type), Escaped(param.Initializer), comments ? *comments : "");
+				out.WriteLine("<dt><pre class='paramname'>{}</pre> : <code class='language-cpp'>{} {}</code></dt><dd><md>{}</md></dd>", param.Name, HighlightTypes(param.Type, method.ParentType), Escaped(param.Initializer), comments ? *comments : "");
 			}
 			out.EndTag();
 		}
@@ -460,13 +478,20 @@ struct DocumentationGenerator
 		if (method.Return.Name != "void")
 		{
 			out.WriteLine("<h2>Return Value</h2>");
-			out.WriteLine("<code class='language-cpp'>{}</code>", Escaped(method.Return.Name));
+			out.WriteLine("<pre class='membertype'>{}</pre>", HighlightTypes(method.Return.Name, method.ParentType));
 			out.WriteLine("{}", GetPrettyComments(method.Return));
 		}
 
 		OutputAttributeDescriptors(out, method);
 
 		OutputArtificialMethods(out, method);
+
+		if (!method.ArtificialBody.empty())
+		{
+			out.WriteLine("<h2>Body</h2>");
+			out.WriteLine("<code class='example language-cpp'>{}</code>", Escaped(method.ArtificialBody));
+
+		}
 
 		OutDeclDesc(out, method, *method.ParentType);
 
@@ -582,13 +607,3 @@ size_t GenerateDocumentation(Artifactory& factory, Options const& options)
 	gen.QueueArtifacts(factory);
 	return factory.Wait();
 }
-
-/*
-bool CreateDocFileArtifact(path const& final_path, Options const& mOptions, DocFile const& doc_file)
-{
-	FileWriter f;
-	f.mOutFile->write(doc_file.Contents.data(), doc_file.Contents.size());
-	f.Close();
-	return true;
-}
-*/

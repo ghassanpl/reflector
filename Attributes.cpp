@@ -1,8 +1,6 @@
 #include "Attributes.h"
 #include "Documentation.h"
 
-Enum const* FindEnum(string_view name);
-
 std::vector<std::string_view> AttributeProperties::FindUnsettable(json const& attrs)
 {
 	std::vector<std::string_view> result;
@@ -234,7 +232,7 @@ const BoolAttributeProperties Attribute::Abstract {
 
 const BoolAttributeProperties Attribute::Singleton {
 	"Singleton",
-	"This record is a singleton. Adds a static function (default name 'SingletonInstance') that returns the single instance of this record",
+	"This record is a singleton. Adds a static function (default name 'SingletonInstance') that returns the single instance of this record. Note that for now, GC-enabled classes cannot be singletons.",
 	Targets::Classes,
 	false
 };

@@ -140,20 +140,6 @@ struct TypedAttributeProperties : public AttributeProperties
 	template <typename U>
 	void Set(U default_value) requires std::same_as<std::remove_cvref_t<U>, T> { this->DefaultValueIfAny = default_value; this->TypedDefaultValue = std::move(default_value); }
 
-	/*
-	template <typename U = T>
-	auto operator()(json const& attrs, U&& default_value) const
-	{
-		const auto it = attrs.find(this->Name);
-		if (it == attrs.end())
-			return std::forward<T>(default_value);
-		if constexpr (std::is_same_v<T, bool>)
-			return it->is_null() ? true : (bool)*it;
-		else
-			return (T)*it;
-	}
-	*/
-
 	T operator()(Declaration const& decl) const
 	{
 		if (const auto found = Find(decl))

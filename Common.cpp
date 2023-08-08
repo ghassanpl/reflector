@@ -12,11 +12,14 @@
 #include <ghassanpl/ranges.h>
 #include <mutex>
 #include <future>
+#include <regex>
 using namespace std::string_literals;
 
 uint64_t ExecutableChangeTime = 0;
 uint64_t InvocationTime = 0;
 std::vector<std::unique_ptr<FileMirror>> Mirrors;
+
+std::string HighlightTypes(std::string_view type, TypeDeclaration const* search_context);
 
 void Declaration::CreateArtificialMethodsAndDocument(Options const& options)
 {
@@ -70,6 +73,32 @@ Enum const* FindEnum(string_view name)
 	return nullptr;
 }
 
+std::vector<Class const*> FindClasses(string_view name)
+{
+	std::vector<Class const*> result;
+	for (auto const& mirror : Mirrors)
+		for (auto const& klass : mirror->Classes)
+			if (klass->Name == name || klass->FullType() == name)
+				result.push_back(klass.get());
+	return result;
+}
+
+std::vector<TypeDeclaration const*> FindTypes(string_view name)
+{
+	std::vector<TypeDeclaration const*> result;
+	for (auto const& mirror : Mirrors)
+	{
+		for (auto const& klass : mirror->Classes)
+			if (klass->Name == name || klass->FullType() == name)
+				result.push_back(klass.get());
+
+		for (auto const& henum : mirror->Enums)
+			if (henum->Name == name || henum->FullType() == name)
+				result.push_back(henum.get());
+	}
+	return result;
+}
+
 Method* Field::AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags)
 {
 	return ParentType->AddArtificialMethod(*this, std::move(function_type), std::move(results), std::move(name), std::move(parameters), std::move(body), std::move(comments), additional_flags);
@@ -89,7 +118,7 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 	if (!Flags.is_set(Reflector::FieldFlags::NoGetter))
 	{
 		using enum Reflector::MethodFlags;
-		auto getter = AddArtificialMethod("Getter", Type + " const &", options.GetterPrefix + CleanName, "", "return this->" + Name + ";", {"Gets " + field_comments},
+		auto getter = AddArtificialMethod("Getter", Type + " const&", options.GetterPrefix + CleanName, "", "return this->" + Name + ";", {"Gets " + field_comments},
 			{Const, Noexcept, NoDiscard});
 		AddDocNote("Getter", "The value of this field is retrieved by the {} method.", getter->MakeLink());
 	}
@@ -97,7 +126,7 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 	if (!Flags.is_set(Reflector::FieldFlags::NoSetter))
 	{
 		auto on_change = Attribute::OnChange(*this);
-		auto setter = AddArtificialMethod("Setter", "void", options.SetterPrefix + CleanName, Type + " const & value", "static_assert(std::is_copy_assignable_v<decltype(this->"+Name+")>, \"err\"); this->" + Name + " = value; " + on_change + ";", {"Sets " + field_comments}, {});
+		auto setter = AddArtificialMethod("Setter", "void", options.SetterPrefix + CleanName, Type + " const& value", "static_assert(std::is_copy_assignable_v<decltype(this->"+Name+")>, \"err\"); this->" + Name + " = value; " + on_change + ";", {"Sets " + field_comments}, {});
 		AddDocNote("Setter", "The value of this field is set by the {} method.", setter->MakeLink());
 		if (!on_change.empty())
 			AddDocNote("On Change", "When this field is changed (via its setter and other such functions), the following code will be executed: `{}`", Escaped(on_change));
@@ -442,7 +471,8 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 	if (Attribute::Singleton(*this))
 	{
 		using enum Reflector::MethodFlags;
-		const auto getter = AddArtificialMethod(*this, "SingletonGetter", format("{}&", this->FullType()), options.SingletonInstanceGetterName, "", "static self_type instance; return instance;",
+		const auto getter = AddArtificialMethod(*this, "SingletonGetter", format("{}&", this->FullType()), options.SingletonInstanceGetterName, "", 
+			"static_assert(!::Reflector::reflectable_class<self_type>, \"Reflectable classes cannot be singletons currently\"); static self_type instance; return instance;",
 			{ "Returns the single instance of this class" }, { Noexcept, Static, NoDiscard });
 		AddDocNote("Singleton", "This class is a singleton. Call {} to get the instance.", getter->MakeLink());
 	}
@@ -790,7 +820,7 @@ std::string ConstructLink(LinkParts const& parts)
 {
 	if (parts.SourceDeclaration.Document)
 	{
-		return std::format("{9}<small class='specifiers'>{0}</small><a href='{1}.html' class='entitylink {2}'><small class='namespace'>{8}</small><small class='parent'>{3}</small>{4}{5}<small class='specifiers'>{6}</small></a> <small class='membertype'>{7}</small>",
+		return std::format("{9}<small class='specifiers'>{0}</small><a href='{1}.html' class='entitylink {2}'><small class='namespace'>{8}</small><small class='parent'>{3}</small>{4}{5}<small class='specifiers'>{6}</small></a><small class='membertype'>{7}</small>",
 			parts.PreSpecifiers, /// 0
 			parts.Href, /// 1
 			join(parts.LinkClasses, " "), /// 2
@@ -798,14 +828,14 @@ std::string ConstructLink(LinkParts const& parts)
 			parts.Name, /// 4
 			Escaped(parts.Parameters), /// 5
 			parts.PostSpecifiers, /// 6
-			Escaped(parts.ReturnType), /// 7
+			parts.ReturnType, /// 7
 			parts.Namespace, /// 8
 			parts.DeclarationType
 		);
 	}
 	else
 	{
-		return std::format("{9}<small class='specifiers'>{0}</small><span class='entitylink {2}'><small class='namespace'>{8}</small><small class='parent'>{3}</small>{4}{5}<small class='specifiers'>{6}</small></span> <small class='membertype'>{7}</small>",
+		return std::format("{9}<small class='specifiers'>{0}</small><span class='entitylink {2}'><small class='namespace'>{8}</small><small class='parent'>{3}</small>{4}{5}<small class='specifiers'>{6}</small></span><small class='membertype'>{7}</small>",
 			parts.PreSpecifiers, /// 0
 			parts.Href, /// 1
 			join(parts.LinkClasses, " "), /// 2
@@ -813,7 +843,7 @@ std::string ConstructLink(LinkParts const& parts)
 			parts.Name, /// 4
 			Escaped(parts.Parameters), /// 5
 			parts.PostSpecifiers, /// 6
-			Escaped(parts.ReturnType), /// 7
+			parts.ReturnType, /// 7
 			parts.Namespace, /// 8
 			parts.DeclarationType
 		);
@@ -836,11 +866,58 @@ std::string TypeDeclaration::MakeLink(LinkFlags flags) const
 	return ConstructLink(parts);
 }
 
+extern Options const* global_options;
+
+std::string HighlightTypes(std::string_view type_, TypeDeclaration const* search_context)
+{	
+	static const std::regex matcher{ R"(\w+)" };
+	static const std::regex std_remover{ R"(\bstd::)" };
+	static const std::set<std::string, std::less<>> keywords_to_highlight{ "void", "bool", "char", "wchar_t", "char32_t", "char8_t",
+		"char16_t", "unsigned", "signed", "long", "short", "int", "float", "double", "auto",
+		"const",  };
+	static const std::set<std::string, std::less<>> types_to_highlight{ "size_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t", "int8_t", "int16_t", "int32_t", "int64_t",
+		"intptr_t", "uintptr_t", "pair", "tuple", "optional", "variant", "map", "vector", "set", "string", "json", "path", "Reflectable"};
+
+	/// TODO: Add the unqualified name of the json type given in options
+	
+	std::string result;
+	
+	std::string clean_type = global_options->Documentation.RemoveStdNamespace
+		? std::regex_replace(std::string{ type_ }, std_remover, "")
+		: std::string{ type_ };
+
+	auto words_begin = std::sregex_iterator(clean_type.begin(), clean_type.end(), matcher);
+	auto words_end = std::sregex_iterator{};
+	size_t end_of_last = 0;
+
+	for (auto&& i = words_begin; i != words_end; ++i)
+	{
+		result += Escaped(i->prefix().str());
+
+		auto potential_type = i->str();
+
+		if (auto word_type = TypeDeclaration::FindTypeByPossiblyQualifiedName(potential_type, search_context))
+			potential_type = word_type->MakeLink();
+		else if (keywords_to_highlight.contains(potential_type))
+			potential_type = std::format(R"(<span class="hljs-keyword">{}</span>)", potential_type);
+		else if (types_to_highlight.contains(potential_type))
+			potential_type = std::format(R"(<span class="hljs-type">{}</span>)", potential_type);
+		
+		result += potential_type;
+
+		end_of_last = i->position() + i->length();
+	}
+
+	result += clean_type.substr(end_of_last);
+
+	return result;
+}
+
 std::string Field::MakeLink(LinkFlags flags) const
 {
 	LinkParts parts{ *this, flags };
 	if (flags.contain(LinkFlag::Parent)) parts.Parent = ParentType->Name + ".";
-	if (flags.contain(LinkFlag::ReturnType)) parts.ReturnType = Type;
+	if (flags.contain(LinkFlag::ReturnType)) parts.ReturnType = HighlightTypes(Type, ParentType);
 	return ConstructLink(parts);
 }
 
@@ -851,8 +928,13 @@ std::string Method::MakeLink(LinkFlags flags) const
 	if (flags.contain(LinkFlag::Parent)) parts.Parent = ParentType->Name + "::";
 	if (flags.contain(LinkFlag::SignatureSpecifiers)) parts.PostSpecifiers = FormatPostFlags(Flags, { Final, Noexcept });
 	if (flags.contain(LinkFlag::Specifiers)) parts.PreSpecifiers = FormatPreFlags(Flags, { Inline, NoDiscard });
-	if (flags.contain(LinkFlag::ReturnType) && Return.Name != "void") parts.ReturnType = "-> " + Return.Name;
-	if (flags.contain(LinkFlag::Parameters)) parts.Parameters = std::format("({})", join(ParametersTypesOnly));
+	if (flags.contain(LinkFlag::ReturnType) && Return.Name != "void") parts.ReturnType = " -> " + HighlightTypes(Return.Name, ParentType);
+
+	std::vector<std::string> par_types;
+	for (auto& param : ParametersSplit)
+		par_types.push_back(HighlightTypes(param.Type, ParentType));
+
+	if (flags.contain(LinkFlag::Parameters)) parts.Parameters = std::format("({})", join(par_types));
 	return ConstructLink(parts);
 }
 
@@ -860,7 +942,7 @@ std::string Property::MakeLink(LinkFlags flags) const
 {
 	LinkParts parts{ *this, flags };
 	if (flags.contain(LinkFlag::Parent)) parts.Parent = ParentType->Name + ".";
-	if (flags.contain(LinkFlag::ReturnType)) parts.ReturnType = Type;
+	if (flags.contain(LinkFlag::ReturnType)) parts.ReturnType = HighlightTypes(Type, ParentType);
 	return ConstructLink(parts);
 }
 

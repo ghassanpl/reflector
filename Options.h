@@ -78,7 +78,23 @@ struct DocumentationOptions
 	RField();
 	path TargetDirectory = "Documentation";
 
-	/// TODO: Types in signatures to replace, e.g "ImageResolvable" -> "Resolvable<Image>", or smth
+	/// Whether to show the initial (construct-time) values of class fields in the class page
+	RField();
+	bool ShowFieldInitialValues = true;
+
+	/// TODO: Show headers of tables listing members
+	RField();
+	bool TableHeaders = false;
+
+	/// Remove "std::" prefix from types
+	RField();
+	bool RemoveStdNamespace = true;
+
+	/// TODO: Special formatting for certain types, e.g "string" -> "&lt;b>string&lt;/b>"
+	RField();
+	std::map<std::string, std::string> AdditionalTypeFormatting{};
+
+	/// TODO: Types in signatures to replace, e.g "ImageResolvable" -> "Resolvable&lt;Image>", or smth
 	RField();
 	std::map<std::string, std::string> TypeAliases {};
 
@@ -111,6 +127,12 @@ struct ArtifactOptions
 
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
 struct NameOptions
+{
+	RBody();
+};
+
+RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
+struct ScriptBindingOptions
 {
 	RBody();
 };

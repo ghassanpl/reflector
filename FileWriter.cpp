@@ -102,16 +102,12 @@ bool Artifactory::Write(path const& target_path, std::string contents) const
 			namespace fs = std::filesystem;
 
 			if (!fs::exists(target_path))
-			{
-				//std::cout << std::format("[WRITING BECAUSE] {} doesn't exit\n", target_path.string());
 				return true;
-			}
+
 			const auto target_file_size = fs::file_size(target_path);
 			if (target_file_size != contents.size())
-			{
-				//std::cout << std::format("[WRITING BECAUSE] {} has {} bytes while we want to write {}\n", target_path.string(), target_file_size, contents.size());
 				return true;
-			}
+
 			if (target_file_size == 0)
 				return false;
 

@@ -79,10 +79,15 @@ static constexpr const char* AMStrings[] = { "Unspecified", "Public", "Private",
 uint64_t GenerateUID(std::filesystem::path const& file_path, size_t declaration_line);
 
 struct FileMirror;
+struct TypeDeclaration;
 struct Class;
 struct Method;
 struct Enum;
 struct Enumerator;
+
+Enum const* FindEnum(string_view name);
+std::vector<Class const*> FindClasses(string_view name);
+std::vector<TypeDeclaration const*> FindTypes(string_view name);
 
 enum class DeclarationType
 {
@@ -219,6 +224,24 @@ struct TypeDeclaration : public Declaration
 		AddDocNote("No Discard", "The compiler will warn you if you discard a function return value of this type.");
 	}
 
+	static TypeDeclaration const* FindTypeByPossiblyQualifiedName(std::string_view type_name, TypeDeclaration const* search_context)
+	{
+		if (auto types = FindTypes(type_name); !types.empty())
+		{
+			if (types.size() == 1)
+				return types[0];
+
+			/// TODO: Use search_context to locate single candidate
+			/// ALgo:
+			///		auto path = split(search_context->Namespace, "::");
+			///		while (!path.empty()) {
+			///			if (auto klass = FindClassByFullName(join(path, "::") + "::" + class_name)) return klass;
+			///			path = path.parent_path();
+			///		}
+		}
+		return nullptr;
+	}
+
 	virtual std::string MakeLink(LinkFlags flags = {}) const override;
 };
 
@@ -273,8 +296,6 @@ struct Field : public MemberDeclaration<Class>
 	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Field; }
 };
 
-//using MethodParameter = Reflector::MethodReflectionData::Parameter;
-
 struct MethodParameter : SimpleDeclaration
 {
 	std::string Type;
@@ -287,7 +308,6 @@ struct Method : public MemberDeclaration<Class>
 {
 	using MemberDeclaration<Class>::MemberDeclaration;
 
-	//std::string ReturnType;
 	ghassanpl::enum_flags<Reflector::MethodFlags> Flags;
 
 	void SetParameters(std::string params);
@@ -395,16 +415,30 @@ struct Class : public TypeDeclaration
 
 	static Class const* FindClassByPossiblyQualifiedName(std::string_view class_name, Class const* search_context)
 	{
+		/// TODO: This needs to be better, as it won't find a semi-qualified class, e.g. `B::C` won't find class '::A::B::C`
+		if (auto klasses = FindClasses(class_name); !klasses.empty())
+		{
+			if (klasses.size() == 1)
+				return klasses[0];
+			
+			/// TODO: Use search_context to locate single candidate
+			/// ALgo:
+			///		auto path = split(search_context->Namespace, "::");
+			///		while (!path.empty()) {
+			///			if (auto klass = FindClassByFullName(join(path, "::") + "::" + class_name)) return klass;
+			///			path = path.parent_path();
+			///		}
+		}
 		return nullptr;
 	}
 
 	std::vector<Class const*> GetInheritanceList() const
 	{
 		std::vector<Class const*> result;
-		const auto current = this;
-		while (auto parent = FindClassByPossiblyQualifiedName(current->BaseClass, current))
+		auto current = this;
+		while (current = FindClassByPossiblyQualifiedName(current->BaseClass, current))
 		{
-			result.push_back(parent);
+			result.push_back(current);
 		}
 		return result;
 	}

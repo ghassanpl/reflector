@@ -89,6 +89,14 @@
     "min-width": "max-content",
     "padding-right": "1em"
   },
+  ".fieldtype": {
+    "width": "0;",
+    "min-width": "max-content",
+    "padding-right": "1em",
+    "font-family": "Consolas, Courier, monospace",
+    "font-size": "80%",
+    "color": "gray"
+  },
   ".classflag": {
     "padding-left": "1em"
   },
@@ -103,6 +111,9 @@
   ".membertype": {
     "color": "gray",
     "font-family": "Consolas, Courier, monospace"
+  },
+  ".membertype a": {
+    "color": "rgb(47, 112, 161) !important"
   },
   "pre": {
     "display": "inline",

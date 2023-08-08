@@ -70,7 +70,6 @@ namespace Reflector
 
 	struct Heap
 	{
-		//static std::map<std::string, Reflectable*, std::less<>> Roots;
 		static std::map<std::string, Reflectable*, std::less<>> const& Roots();
 		static bool SetRoot(std::string_view key, Reflectable* r);
 		static bool RemoveRoot(std::string_view key);
@@ -154,9 +153,6 @@ namespace Reflector
 		}
 		static void Delete(Reflectable* ptr);
 
-		//static void RootDeref(Reflectable* r);
-		//static void RootRef(Reflectable* r);
-
 		template <typename T>
 		friend struct GCRootPointer;
 	};
@@ -167,121 +163,6 @@ namespace Reflector
 		return Heap::New<T>();
 	}
 
-	/*
-	template <typename T>
-	struct GCRootPointer
-	{
-		static_assert(reflectable_class<T>);
-
-		explicit(false) GCRootPointer() noexcept = default;
-		explicit(false) GCRootPointer(T* ptr) noexcept
-			: mPointer(ptr)
-		{
-			Heap::RootRef(ptr);
-		}
-		GCRootPointer(GCRootPointer const& other) noexcept : mPointer(other.mPointer) { Heap::RootRef(mPointer); }
-		GCRootPointer(GCRootPointer&& other) noexcept : mPointer(std::exchange(other.mPointer, nullptr)) { }
-		GCRootPointer& operator=(GCRootPointer const& other) noexcept
-		{
-			if (&other != this)
-			{
-				Heap::RootDeref(mPointer);
-				mPointer = other.mPointer;
-				Heap::RootRef(mPointer);
-			};
-			return *this;
-		}
-		GCRootPointer& operator=(GCRootPointer&& other) noexcept
-		{
-			if (&other != this)
-				mPointer = std::exchange(other.mPointer, nullptr);
-			return *this;
-		}
-		~GCRootPointer() noexcept
-		{
-			Heap::RootDeref(mPointer);
-		}
-
-		explicit operator bool() const noexcept { return !!mPointer; }
-		explicit(false) operator T*() const noexcept { return mPointer; }
-		[[nodiscard]] T* operator->() const noexcept { return mPointer; }
-		[[nodiscard]] T* get() const noexcept { return mPointer; }
-
-		auto operator<=>(GCRootPointer const&) const noexcept = default;
-		auto operator<=>(T* ptr) const noexcept { return mPointer <=> ptr; }
-		auto operator<=>(std::nullptr_t) const noexcept { return mPointer <=> nullptr; }
-
-	private:
-
-		T* mPointer = nullptr;
-	};
-	*/
-
-#if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)
-
-	/*
-	template <typename T>
-	void to_json(REFLECTOR_JSON_TYPE& j, GCRootPointer<T> const& heap)
-	{
-		j = heap.get();
-	}
-
-	template <typename T>
-	void from_json(REFLECTOR_JSON_TYPE const& j, GCRootPointer<T>& heap)
-	{
-		heap = GCRootPointer<T>{ (T*)j };
-	}
-	*/
-
-		/*
-		static GCHeapLoader& ResolveHeapLoader(intptr_t heap_id)
-		{
-			if (heap_id == 0)
-				throw std::invalid_argument("heap_id");
-
-			auto& result = mLoadingHeaps[heap_id];
-			if (result.mHeapID == 0)
-				result.mHeapID = heap_id;
-			return result;
-		}
-
-		std::map<intptr_t, std::pair<void*, std::string_view>> Objects;
-
-		Reflectable* ResolveObject(std::string_view obj_type, intptr_t obj_id)
-		{
-			if (auto it = Objects.find(obj_id); it != Objects.end())
-				return (Reflectable*)it->second.first;
-
-			auto klass_data = FindClassByFullType(obj_type);
-			if (!klass_data || !klass_data->HasConstructors())
-				throw std::runtime_error("Error resolving GC heap: type '" + std::string{ obj_type } + "' is not a GC-enabled class");
-
-			Reflectable* result = mExistingHeap ? mExistingHeap->Alloc(klass_data) : (Reflectable*)klass_data->Alloc();
-			Objects[obj_id] = { result, obj_type };
-			return result;
-		}
-
-		void ResolveHeap(REFLECTOR_JSON_TYPE const& j, GCHeap& heap)
-		{
-			if (mExistingHeap)
-				throw std::runtime_error(std::string{ "Sanity error: trying to resolve same GC heap twice, id: " } + std::to_string(mHeapID));
-
-			mExistingHeap = &heap;
-
-		}
-
-	private:
-
-		static inline std::map<intptr_t, GCHeapLoader> mLoadingHeaps;
-		GCHeap* mExistingHeap = nullptr;
-		intptr_t mHeapID = 0;
-		*/
-
-	//void to_json(REFLECTOR_JSON_TYPE& j, Heap const& heap);
-
-	//void from_json(REFLECTOR_JSON_TYPE const& j, Heap& heap);
-
-#endif
 }
 
 #if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)
@@ -309,8 +190,6 @@ struct adl_serializer<SERIALIZABLE>
 			const intptr_t obj_id = j[0];
 			const std::string_view obj_type = j[1];
 			Heap::ResolveHeapObject(p, obj_type, obj_id);
-			//GCHeapLoader& heap_loader = GCHeapLoader::ResolveHeapLoader(heap_id);
-			//p = (SERIALIZABLE)heap_loader.ResolveObject(obj_type, obj_id);
 		}
 	}
 };

@@ -1,9 +1,18 @@
+- make classes deriving from Reflectable able to be Singletons
+
+- ability to run reflected program in "docmode", that is, running special Reflector-generated methods to generate its own documentation pages based on its own criteria
+
 - make sure we're ensuring field `CleanName`s are unique
 
 - see if we can't change this:
 		RClass(Abstract, CreateIsChilds=[Door,Decoration,Item,Enemy,Hero,Creature]);
 into
 		[[RClass(Abstract, CreateIsChilds=[Door,Decoration,Item,Enemy,Hero,Creature])]] 
+	- we could, but:
+		- RBody(); would have to stay the same
+		- REnum(); would probably have to stay (though we could definitely use a magic_enum-style method reflection system)
+		- this would require users to disable warnings on unrecognized attributes
+	- maybe as an option?
 
 - we should unify and simplify error reporting
 
@@ -13,27 +22,21 @@ into
 
 - since we're using `header_utils` anyway, might as well use Assuming
 
-- support '{' on enum primary declaration line (`enum blah {`)
-
 - check if we can use __COUNTER__ instead of __LINE__ in RBody() macros (will make it so that intellisense only fails when order of classes is changed, not the line their body is at)
-
-- support C++ attributes (nodiscard, noreturn, deprecated)
 
 - add Resolvable?
 
-- ability to clone objects?
-
-- ability to have garbage-collection for classes deriving from Reflectable
-	- we would need to mark containers and other such fields
+- ability to deep-clone objects?
 
 - RConstructor() ?
-- RUsing(); - for commenting `using X = ...;` declarations, so that generated documentation is better (probably other things too)
+- RAlias()/RUsing(); - for commenting `using X = ...;` declarations, so that generated documentation is better (probably other things too)
 - RConstant(); - for constexprs
 - ROperator();
 - RNamespace() ?
 - RTest() ? - for marking static methods as tests
 - RVersion() ? - or should we get that information from, in order: git tags, git commit, datetime
 - RContext() ?
+- RDoc();
 
 - check if we can't do something like:
 

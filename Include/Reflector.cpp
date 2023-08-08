@@ -355,55 +355,6 @@ namespace Reflector
 		});
 	}
 
-	/*
-	void Heap::RootRef(Reflectable* r)
-	{
-		if (r && std::atomic_ref{ r->mRootCount }++ == 0)
-			mRootSet.insert(r);
-	}
-
-	void Heap::RootDeref(Reflectable* r)
-	{
-		if (r && --std::atomic_ref{ r->mRootCount } == 0)
-			mRootSet.erase(r);
-	}
-	*/
-
-#if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)
-
-	/*
-	void to_json(REFLECTOR_JSON_TYPE& j, GCHeap const& heap)
-	{
-		using json = REFLECTOR_JSON_TYPE;
-		j = json::object();
-		j["ID"] = (intptr_t)&heap;
-		auto& roots = j["RootSet"] = json::array();
-		auto& objects = j["Objects"] = json::array();
-
-		for (auto obj : heap.mExtantObjects)
-		{
-			auto& j = objects.emplace_back();
-			j["$id"] = (intptr_t)obj;
-			j["$type"] = obj->GetReflectionData().FullType;
-			obj->JSONSaveFields(j);
-		}
-		for (auto obj : heap.mRootSet)
-			roots.push_back((intptr_t)obj);
-	}
-
-
-	void from_json(REFLECTOR_JSON_TYPE const& j, GCHeap& heap)
-	{
-		const intptr_t heap_id = j.at("ID");
-
-		heap.mID = heap_id;
-		GCHeapLoader& heap_loader = GCHeapLoader::ResolveHeapLoader(heap_id);
-		heap_loader.ResolveHeap(j, heap);
-	}
-	*/
-
-#endif
-
 #endif
 
 }

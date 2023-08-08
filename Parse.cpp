@@ -288,8 +288,8 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 			(void)consume(rest, ",");
 			rest = TrimWhitespace(rest);
 
-			if (rest.starts_with("///"))
-				comments.push_back((std::string)rest);
+			if (consume(rest, "///"))
+				comments.push_back((std::string)trimmed_whitespace_left(rest));
 			else if (!rest.empty())
 				throw std::runtime_error("Enumerators must be the only thing on their line (except comments)");
 
@@ -589,11 +589,16 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 		else break;
 	}
 
+	if (next_line.starts_with('~'))
+		throw std::runtime_error(std::format("Destructor reflection is not supported"));
+
 	auto pre_typestr = ParseType(next_line);
 	auto pre_type = (std::string)TrimWhitespace(string_view{ pre_typestr });
 	next_line = TrimWhitespace(next_line);
 
 	method.Name = ParseIdentifier(next_line);
+	if (method.Name == "operator")
+		throw std::runtime_error(std::format("Operator method reflection is not supported yet"));
 
 	ParseCppAttributes(next_line, result->Attributes); /// Unfortunately, C++ attributes on functions can also be after the name: `void q [[ noreturn ]] (int i);`
 
@@ -752,6 +757,8 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 	{
 		auto current_line = TrimWhitespace(string_view{ lines[line_num - 1] });
 		const auto next_line = TrimWhitespace(string_view{ lines[line_num] });
+
+		/// TODO: RAlias(); for `using`s
 
 		try
 		{

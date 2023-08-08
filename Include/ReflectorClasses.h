@@ -345,7 +345,6 @@ namespace Reflector
 		virtual ClassReflectionData const& GetReflectionData() const;
 		static ClassReflectionData const& StaticGetReflectionData();
 
-		//Reflectable() noexcept = default;
 		explicit Reflectable(::Reflector::ClassReflectionData const& klass) noexcept : mClass(&klass) {}
 
 		template <typename T> bool Is() const { return dynamic_cast<T const*>(this) != nullptr; }
