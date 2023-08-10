@@ -27,7 +27,7 @@ namespace std { /// NOTE: Undefined behavior, technically
 using std::string_view;
 using nlohmann::json;
 
-#include "Include/ReflectorClasses.h"
+#include "../Include/ReflectorClasses.h"
 using Reflector::ClassFlags;
 using Reflector::EnumeratorFlags;
 using Reflector::EnumFlags;

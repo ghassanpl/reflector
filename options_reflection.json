@@ -2,7 +2,7 @@
 	"ArtifactPath": "./Reflection/",
 	"CreateArtifacts": false,
 	"MacroPrefix": "REFL",
-	"Files": ".",
+	"Files": "Source/",
 
 	"Quiet": true,
 	"Force": false,

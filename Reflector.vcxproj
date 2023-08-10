@@ -227,28 +227,29 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Attributes.cpp" />
-    <ClCompile Include="DB.cpp" />
-    <ClCompile Include="Documentation.cpp" />
-    <ClCompile Include="FileWriter.cpp" />
     <ClCompile Include="Include\Reflector.cpp" />
-    <ClCompile Include="main.cpp" />
-    <ClCompile Include="Options.cpp" />
-    <ClCompile Include="Parse.cpp" />
-    <ClCompile Include="Common.cpp" />
-    <ClCompile Include="ReflectionDataBuilding.cpp" />
+    <ClCompile Include="Source\Attributes.cpp" />
+    <ClCompile Include="Source\Common.cpp" />
+    <ClCompile Include="Source\DB.cpp" />
+    <ClCompile Include="Source\Documentation.cpp" />
+    <ClCompile Include="Source\FileWriter.cpp" />
+    <ClCompile Include="Source\main.cpp" />
+    <ClCompile Include="Source\Options.cpp" />
+    <ClCompile Include="Source\Parse.cpp" />
+    <ClCompile Include="Source\ReflectionDataBuilding.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Attributes.h" />
-    <ClInclude Include="Documentation.h" />
-    <ClInclude Include="FileWriter.h" />
     <ClInclude Include="Include\ReflectorClasses.h" />
     <ClInclude Include="Include\ReflectorGC.h" />
     <ClInclude Include="Include\ReflectorUtils.h" />
-    <ClInclude Include="Options.h" />
-    <ClInclude Include="Parse.h" />
-    <ClInclude Include="ReflectionDataBuilding.h" />
-    <ClInclude Include="Common.h" />
+    <ClInclude Include="Source\Attributes.h" />
+    <ClInclude Include="Source\Common.h" />
+    <ClInclude Include="Source\Documentation.h" />
+    <ClInclude Include="Source\DummyReflector.h" />
+    <ClInclude Include="Source\FileWriter.h" />
+    <ClInclude Include="Source\Options.h" />
+    <ClInclude Include="Source\Parse.h" />
+    <ClInclude Include="Source\ReflectionDataBuilding.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="AttributeIdeas.md" />
