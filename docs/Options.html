@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang='en'>
+	<head>
+		<title>Options Class - Documentation</title>
+		<link rel="stylesheet" href="style.css" />
+		<link rel="stylesheet" href="https://microsoft.github.io/vscode-codicons/dist/codicon.css" />
+		<script src="https://cdn.jsdelivr.net/gh/MarketingPipeline/Markdown-Tag/markdown-tag.js"></script>
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/vs2015.min.css"><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+		
+	</head>
+	<body>
+		<div class='breadcrumbs' id='breadcrumbs'>
+		<a href='Types.html'>Types</a> / <i class="codicon codicon-symbol-class"></i><small class='specifiers'></small><a href='Options.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>Options<small class='specifiers'></small></a><small class='membertype'></small>
+		</div>
+		<h1><pre class='entityname class'>Options</pre> Class</h1>
+		<h2>Description</h2>
+		
+		<h2>Fields</h2>
+		<table class='decllist'>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">json</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.Files.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>Files<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'></code></td>
+				<td><md><span class='docnote'><b>Required</b></span>
+A filename or list of filenames (or directories) to scan for reflectable entities</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">set</span>&lt;<span class="hljs-type">string</span>, less<>></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.ExtensionsToScan.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>ExtensionsToScan<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>{ ".h", ".hpp" }</code></td>
+				<td><md>List of extensions for files to scan for reflectable entities</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">path</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.ArtifactPath.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>ArtifactPath<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"Reflection/"</code></td>
+				<td><md>Path to the directory where the general artifact files will be created (relative to the directory with options file)</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.MirrorExtension.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>MirrorExtension<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>".mirror"</code></td>
+				<td><md>The extension for generated mirror files (`bla.h` => `bla.h.mirror`)</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.Recursive.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>Recursive<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>false</code></td>
+				<td><md>Whether to recursively search the provided directories for reflectable files</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.Quiet.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>Quiet<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>false</code></td>
+				<td><md>If true, will not print out filenames of created files and artifacts</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.Force.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>Force<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>false</code></td>
+				<td><md>Force recreation of all mirror files and artifacts, regardless of their timestamps and content</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.Verbose.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>Verbose<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>false</code></td>
+				<td><md>Print out additional information</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.CreateDatabase.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>CreateDatabase<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>false</code></td>
+				<td><md>Whether or not to create the `ReflectDatabase.json` database file with reflection data.</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.GenerateAccessorsForPublicFields.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>GenerateAccessorsForPublicFields<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>true</code></td>
+				<td><md>Whether to create Set* and Get* methods for public fields.</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.AddGCFunctionality.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>AddGCFunctionality<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>false</code></td>
+				<td><md>Whether to add support for garbage-collected heaps for reflected classes.</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.ForwardDeclare.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>ForwardDeclare<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>true</code></td>
+				<td><md>Whether to output forward declarations of reflected classes</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.DebuggingComments.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>DebuggingComments<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>true</code></td>
+				<td><md>Whether to create additional comments in the generated files (files that are not meant to be viewed), for ease of debugging</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.DefaultNamespace.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>DefaultNamespace<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>{}</code></td>
+				<td><md>The default namespace for all reflected types.
+TODO: Can be modified by the file-level `RNamespace(...);` annotation, or by the entity-level `Namespace` attribute</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><small class='specifiers'></small><a href='DocumentationOptions.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>DocumentationOptions<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.Documentation.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>Documentation<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>{}</code></td>
+				<td><md>Documentation options</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><small class='specifiers'></small><a href='JSONOptions.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>JSONOptions<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.JSON.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>JSON<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>{}</code></td>
+				<td><md>JSON options</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.AnnotationPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>AnnotationPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"R"</code></td>
+				<td><md>Prefix for all the annotation macros, e.g. X => XClass, XBody, XField, XMethod, etc</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.MacroPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>MacroPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"REFLECT"</code></td>
+				<td><md>Prefix for all the generated special macros, like *REFLECT*\_VISIT\_Class\_METHODS</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.EnumAnnotationName.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>EnumAnnotationName<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'></code></td>
+				<td><md>Name of enum annotation macro. If not set, will be `AnnotationPrefix + "Enum"`.</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.EnumeratorAnnotationName.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>EnumeratorAnnotationName<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'></code></td>
+				<td><md>Name of enumerator annotation macro. If not set, will be `AnnotationPrefix + "Enumerator"`.</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.ClassAnnotationName.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>ClassAnnotationName<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'></code></td>
+				<td><md>Name of class annotation macro. If not set, will be `AnnotationPrefix + "Class"`.</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.FieldAnnotationName.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>FieldAnnotationName<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'></code></td>
+				<td><md>Name of field annotation macro. If not set, will be `AnnotationPrefix + "Field"`.</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.MethodAnnotationName.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>MethodAnnotationName<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'></code></td>
+				<td><md>Name of method annotation macro. If not set, will be `AnnotationPrefix + "Method"`.</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.BodyAnnotationName.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>BodyAnnotationName<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'></code></td>
+				<td><md>Name of class body macro. If not set, will be `AnnotationPrefix + "Body"`.</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.GetterPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>GetterPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"Get"</code></td>
+				<td></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.SetterPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>SetterPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"Set"</code></td>
+				<td><md>Both for regular setters as well as flag setters</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.IsPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>IsPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"Is"</code></td>
+				<td></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.IsNotPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>IsNotPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"IsNot"</code></td>
+				<td></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.SetNotPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>SetNotPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"SetNot"</code></td>
+				<td></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.UnsetPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>UnsetPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"Unset"</code></td>
+				<td></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.TogglePrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>TogglePrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"Toggle"</code></td>
+				<td></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.ProxyMethodPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>ProxyMethodPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"_proxy_"</code></td>
+				<td></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.SingletonInstanceGetterName.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>SingletonInstanceGetterName<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"SingletonInstance"</code></td>
+				<td></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.ProxyClassSuffix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>ProxyClassSuffix<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"_Proxy"</code></td>
+				<td></td>
+			</tr>
+		</table>
+		<h2>Details</h2>
+		<ul class='desclist'>
+			<li><b>Declaration</b>: <a href='file:///Q:\Code\Native\Reflector\Reflector\Options.h#155' class='srclink'>Options.h at line 155</a></li>
+			<li><b>Flags</b>: <a href='Reflector.FieldFlags.html#Struct'>Struct</a>, <a href='Reflector.FieldFlags.html#DeclaredStruct'>DeclaredStruct</a>, <a href='Reflector.FieldFlags.html#NoConstructors'>NoConstructors</a></li>
+			<li><b>Attributes</b>: <code class='language-json'>{"DefaultFieldAttributes":{"Getter":false,"Setter":false}}</code></li>
+		</ul>
+		<script>document.addEventListener('DOMContentLoaded', (event) => {
+	let lang = hljs.getLanguage('cpp');
+	lang.keywords.keyword = lang.keywords.keyword.concat(lang.keywords.type);
+	lang.keywords.type = lang.keywords._type_hints;
+	lang.keywords._type_hints = [];
+	document.querySelectorAll('code').forEach((el) => {
+		hljs.highlightElement(el);
+	});
+});</script>
+	</body>
+</html>

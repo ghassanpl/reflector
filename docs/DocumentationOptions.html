@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang='en'>
+	<head>
+		<title>DocumentationOptions Class - Documentation</title>
+		<link rel="stylesheet" href="style.css" />
+		<link rel="stylesheet" href="https://microsoft.github.io/vscode-codicons/dist/codicon.css" />
+		<script src="https://cdn.jsdelivr.net/gh/MarketingPipeline/Markdown-Tag/markdown-tag.js"></script>
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/vs2015.min.css"><script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
+		
+	</head>
+	<body>
+		<div class='breadcrumbs' id='breadcrumbs'>
+		<a href='Types.html'>Types</a> / <i class="codicon codicon-symbol-class"></i><small class='specifiers'></small><a href='DocumentationOptions.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>DocumentationOptions<small class='specifiers'></small></a><small class='membertype'></small>
+		</div>
+		<h1><pre class='entityname class'>DocumentationOptions</pre> Class</h1>
+		<h2>Description</h2>
+		
+		<h2>Fields</h2>
+		<table class='decllist'>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='DocumentationOptions.Generate.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>Generate<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>true</code></td>
+				<td><md>Whether or not to generate documentation</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='DocumentationOptions.PageTitleSuffix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>PageTitleSuffix<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>" - Documentation"</code></td>
+				<td><md>Will be added to the end of page titles</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">json</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='DocumentationOptions.AdditionalStyles.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>AdditionalStyles<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>json::object()</code></td>
+				<td><md>Will be used in addition to and instead of the default styles</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='DocumentationOptions.AdditionalHeadTags.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>AdditionalHeadTags<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>{}</code></td>
+				<td><md>Will be added directly to the `<head>` tag of each page</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='DocumentationOptions.Language.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>Language<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"en"</code></td>
+				<td><md>language tag (e.g. "en") to add to the `<html>` tag to define the language of the page</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">path</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='DocumentationOptions.TargetDirectory.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>TargetDirectory<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"Documentation"</code></td>
+				<td><md>The directory to put documentation into</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='DocumentationOptions.ShowFieldInitialValues.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>ShowFieldInitialValues<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>true</code></td>
+				<td><md>Whether to show the initial (construct-time) values of class fields in the class page</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='DocumentationOptions.RemoveStdNamespace.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>RemoveStdNamespace<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>true</code></td>
+				<td><md>Remove "std::" prefix from types</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='DocumentationOptions.HideUnimplemented.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>HideUnimplemented<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>true</code></td>
+				<td><md>Do not generate documentation for entities marked with the `Unimplemented` attribute</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">set</span>&lt;<span class="hljs-type">string</span>, less<>></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='DocumentationOptions.IgnoreDocNotes.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>IgnoreDocNotes<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>{}</code></td>
+				<td><md>List all the doc note headers (like "On Change" or "Not Editable") that should not be output for any entities</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">set</span>&lt;<span class="hljs-type">string</span>, less<>></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='DocumentationOptions.InlineDocNotes.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>InlineDocNotes<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>{}</code></td>
+				<td><md>List all the doc note headers (like "On Change" or "Not Editable") that should be output in documentation for member table items</md></td>
+			</tr>
+		</table>
+		<h2>Details</h2>
+		<ul class='desclist'>
+			<li><b>Declaration</b>: <a href='file:///Q:\Code\Native\Reflector\Reflector\Options.h#53' class='srclink'>Options.h at line 53</a></li>
+			<li><b>Flags</b>: <a href='Reflector.FieldFlags.html#Struct'>Struct</a>, <a href='Reflector.FieldFlags.html#DeclaredStruct'>DeclaredStruct</a>, <a href='Reflector.FieldFlags.html#NoConstructors'>NoConstructors</a></li>
+			<li><b>Attributes</b>: <code class='language-json'>{"DefaultFieldAttributes":{"Getter":false,"Setter":false}}</code></li>
+		</ul>
+		<script>document.addEventListener('DOMContentLoaded', (event) => {
+	let lang = hljs.getLanguage('cpp');
+	lang.keywords.keyword = lang.keywords.keyword.concat(lang.keywords.type);
+	lang.keywords.type = lang.keywords._type_hints;
+	lang.keywords._type_hints = [];
+	document.querySelectorAll('code').forEach((el) => {
+		hljs.highlightElement(el);
+	});
+});</script>
+	</body>
+</html>
