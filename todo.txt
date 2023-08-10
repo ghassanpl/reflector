@@ -1,11 +1,5 @@
-- properly document the contents of Reflector*.h files
-- write down a schema for the ReflectDatabase.json file
-
-- make classes deriving from Reflectable able to be Singletons
-
-- ability to run reflected program in "docmode", that is, running special Reflector-generated methods to generate its own documentation pages based on its own criteria
-
-- make sure we're ensuring field `CleanName`s are unique
+- ability to run reflected program in "docmode", that is, running special Reflector-generated methods to generate its own 
+documentation pages based on its own criteria
 
 - see if we can't change this:
 		RClass(Abstract, CreateIsChilds=[Door,Decoration,Item,Enemy,Hero,Creature]);
@@ -16,18 +10,6 @@ into
 		- REnum(); would probably have to stay (though we could definitely use a magic_enum-style method reflection system)
 		- this would require users to disable warnings on unrecognized attributes
 	- maybe as an option?
-
-- we should unify and simplify error reporting
-
-- use icons everywhere instead of 'method' and 'field', etc
-
-- we COULD, if we're still using RMethod macros, add [[nodiscard]] by default to all methods
-
-- since we're using `header_utils` anyway, might as well use Assuming
-
-- check if we can use __COUNTER__ instead of __LINE__ in RBody() macros (will make it so that intellisense only fails when order of classes is changed, not the line their body is at)
-
-- actuall make Resolvable usable
 
 - ability to deep-clone objects?
 
@@ -51,4 +33,4 @@ that turns into
 
 REFL_VISITOR(..., ..., CompileTimeFieldData<..., MaxAttribute{5}>{});
 
-and adds that MaxAttribute to a `std::vector<std::any> CustomAttributes;` that's in the runtime class reflection data
+and adds that MaxAttribute to a `std::vector<json> CustomAttributes;` that's in the runtime class reflection data

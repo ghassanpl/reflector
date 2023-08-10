@@ -11,6 +11,8 @@ StringAttribute ScriptAccess{ "ScriptAccess", "Whether or not to hook up the gen
 
 Look at https://benui.ca/unreal/ufunction/ and others for ideas
 
+* [any?] **Category="Name"**
+* [field] **Serialize=Custom** - calls a custom function to (de)serialize the field, instead of using the default json->get_to call
 * [record] **GenerateResetFunctions** - will generate a Reset*FieldName* for each field in the class (see below), unless it has the Reset = false attribute
 * [field] **Reset/Resettable** - will generate a Reset[FieldName] function that sets the field value to its initial value); having any of these in a class will create a Reset() function that resets every field
 * [static field] **Config** - like Unreal's config, but, y'know, for statics
@@ -24,7 +26,9 @@ Look at https://benui.ca/unreal/ufunction/ and others for ideas
 		Or better yet, RField(ExposeMethods={GetSpeed=GetAnimationSpeed, ...}) Animation mAnimation;
 * [record/field] **CustomEditor**=funcname
 * [field] **Min/Max/Step** - how to handle?
-		ForceLimits - will clamp the input value in the setter
+		* **NotEmpty** - for string/container fields
+		* **ForceConstraints** - will clamp the input value in the setter
+		* How would this work with validation/serialization?
 * [any] **Plural/Singular** - whether to create Is or Are prefixes and such;   
 	*NOTE: Give example or where this could be useful*
 * [record] **DefaultMethodAttributes** = {}
@@ -36,8 +40,9 @@ Look at https://benui.ca/unreal/ufunction/ and others for ideas
 ### Pre/Post/Validation
 * [record/field] **OnAfterLoad**=funcname, **OnBeforeSave**=funcname
 * [field] **Validator**=methodname - will generate a ValidateFields(callback) function for the class (customizable)
-	`methodname` must be a valid method in the class?
-	how to handle this? Should we also generate a Validate[FieldName] function? What's the callback for?
+	* `methodname` must be a valid method in the class?
+	* how to handle this? Should we also generate a Validate[FieldName] function? What's the callback for?
+	* I guess we should call this after serialization (of entire struct or per field?)
 
 ### Container Accessors
 

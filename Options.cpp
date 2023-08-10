@@ -39,6 +39,8 @@ Options::Options(path exe_path, path const& options_file_path)
 	OPTION(JSON.Use, true);
 	OPTION(CreateDatabase, true);
 	Documentation.InlineDocNotes = {"Required"};
+	Documentation.TargetDirectory = "../docs/";;
+	Documentation.ClearTargetDirectory = true;
 #endif
 
 	auto EnsureAbsoluteToOptions = [options_file_path = mOptionsFilePath] (std::filesystem::path p) {

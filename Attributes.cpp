@@ -136,7 +136,7 @@ const BoolAttributeProperties Attribute::Load {
 	true
 };
 const BoolAttributeProperties Attribute::Document {
-	"Document",
+	"Document;Doc",
 	"Whether or not to create a documentation entry for this entity",
 	Targets::Any,
 	true
@@ -265,17 +265,17 @@ const BoolAttributeProperties Attribute::CreateProxy {
 	true
 };
 
-const BoolAttributeProperties Attribute::Unimplemented{
+const BoolAttributeProperties Attribute::Unimplemented {
 	"Unimplemented",
 	"The functionality this entity represents is not implemented; mostly useful for documentation, but can generate some warnings",
 	Targets::Any,
-	true
+	false
 };
 
 constexpr auto EnumerationsCat = "Enumerations"_ac;
 
 const BoolAttributeProperties Attribute::List {
-	"List",
+	"List;Sequence",
 	"Whether or not to generate GetNext() and GetPrev() functions that return the next/prev enumerator in sequence, wrapping around",
 	Targets::Enums,
 	false,

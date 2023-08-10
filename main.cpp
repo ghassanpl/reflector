@@ -53,7 +53,7 @@ int main(int argc, const char* argv[])
 
 					auto ext = file.extension().string();
 					std::ranges::transform(ext, ext.begin(), ::tolower);
-					if (!std::filesystem::is_directory(file) && std::ranges::find(options.ExtensionsToScan, ext) != options.ExtensionsToScan.end())
+					if (!std::filesystem::is_directory(file) && options.ExtensionsToScan.contains(ext))
 					{
 						final_files.push_back(file);
 					}

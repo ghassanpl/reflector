@@ -160,13 +160,13 @@ struct Options
 	Options() = default;
 	Options(path exe_path, path const& options_file_path);
 
-	/// A filename or list of filenames (or directories) to scan for reflectable types
+	/// A filename or list of filenames (or directories) to scan for reflectable entities
 	RField(Required);
 	json Files;
 
-	/// List of extensions for files to scan for reflectable types
+	/// List of extensions for files to scan for reflectable entities
 	RField();
-	std::vector<std::string> ExtensionsToScan = { ".h", ".hpp" };
+	std::set<std::string, std::less<>> ExtensionsToScan = { ".h", ".hpp" };
 
 	/// TODO: File/dir exclusions
 
@@ -200,12 +200,12 @@ struct Options
 
 	/// Will add `Opposite` attributes to every flag enumerator with the given values (e.g. if you set this to `{"Alive": "Dead"}`, any flag enumerator called Alive will get an opposite called `Dead`)
 	RField(Unimplemented);
-	std::map<std::string, std::string> DefaultFlagOpposites;
+	std::map<std::string, std::string, std::less<>> DefaultFlagOpposites;
 
 	/// For later
-	std::map<std::string, json> DefaultClassAttributes;
-	std::map<std::string, json> DefaultFieldAttributes;
-	std::map<std::string, json> DefaultMethodAttributes;
+	std::map<std::string, json, std::less<>> DefaultClassAttributes;
+	std::map<std::string, json, std::less<>> DefaultFieldAttributes;
+	std::map<std::string, json, std::less<>> DefaultMethodAttributes;
 
 	/// Whether or not to create the `ReflectDatabase.json` database file with reflection data.
 	RField();
