@@ -478,7 +478,7 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 	if (field.Access != AccessMode::Public && field.Access != AccessMode::Unspecified)
 	{
 		field.Flags += FieldFlags::DeclaredPrivate;
-		field.Document = false; /// Default
+		field.ForceDocument = false; /// Default
 	}
 	field.Attributes = klass.DefaultFieldAttributes;
 	field.Attributes.update(ParseAttributeList(line), true);

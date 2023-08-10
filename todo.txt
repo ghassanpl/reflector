@@ -1,3 +1,6 @@
+- properly document the contents of Reflector*.h files
+- write down a schema for the ReflectDatabase.json file
+
 - make classes deriving from Reflectable able to be Singletons
 
 - ability to run reflected program in "docmode", that is, running special Reflector-generated methods to generate its own documentation pages based on its own criteria
@@ -24,7 +27,7 @@ into
 
 - check if we can use __COUNTER__ instead of __LINE__ in RBody() macros (will make it so that intellisense only fails when order of classes is changed, not the line their body is at)
 
-- add Resolvable?
+- actuall make Resolvable usable
 
 - ability to deep-clone objects?
 

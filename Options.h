@@ -14,13 +14,16 @@ inline constexpr bool BootstrapBuild = true;
 
 /// NOTE: Changing this file requires a bootstrap rebuild!
 
-/// TODO: We probably should drop support for anything except nlohmann, or create our own interface to handle json values
+/// These are options for JSON serialization and reflection data representation.
+/// 
+/// Note that, even though you can specify the header path, type, and parse function for a json type,
+/// the only JSON library really supported is nlohmann-json.
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
 struct JSONOptions
 {
 	RBody();
 
-	/// Whether or not to use JSON C++ types to represent attribute reflection data (instead of just a stringified version)
+	/// Whether or not to use JSON C++ types to represent attribute reflection data (instead of just a stringified version).
 	RField();
 	bool Use = true;
 
@@ -66,15 +69,15 @@ struct DocumentationOptions
 	RField();
 	json AdditionalStyles = json::object();
 	
-	/// Will be added directly to the <head> tag of each page
+	/// Will be added directly to the `<head>` tag of each page
 	RField();
 	std::string AdditionalHeadTags {};
 
-	/// language tag (e.g. "en") to add to the <html> tag to define the language of the page
+	/// language tag (e.g. "en") to add to the `<html>` tag to define the language of the page
 	RField();
 	std::string Language = "en";
 
-	/// The directory to put documentation into, (relative to options.json file)?
+	/// The directory to put documentation into
 	RField();
 	path TargetDirectory = "Documentation";
 
@@ -82,56 +85,68 @@ struct DocumentationOptions
 	RField();
 	bool ShowFieldInitialValues = true;
 
-	/// TODO: Show headers of tables listing members
-	RField();
+	/// Show headers of tables listing members
+	RField(Unimplemented);
 	bool TableHeaders = false;
 
 	/// Remove "std::" prefix from types
 	RField();
 	bool RemoveStdNamespace = true;
 
-	/// TODO: Special formatting for certain types, e.g "string" -> "&lt;b>string&lt;/b>"
+	/// Do not generate documentation for entities marked with the `Unimplemented` attribute
 	RField();
+	bool HideUnimplemented = true;
+
+	/// If true, every time documentation is built, the target directory will be cleared
+	RField(Unimplemented);
+	bool ClearTargetDirectory = false;
+
+	/// Special formatting for certain types, e.g `string` -> `&lt;b>string&lt;/b>`
+	RField(Unimplemented);
 	std::map<std::string, std::string> AdditionalTypeFormatting{};
 
-	/// TODO: Types in signatures to replace, e.g "ImageResolvable" -> "Resolvable&lt;Image>", or smth
-	RField();
+	/// Types in signatures to replace, e.g `ImageResolvable` -> `Resolvable&lt;Image>`, or smth
+	RField(Unimplemented);
 	std::map<std::string, std::string> TypeAliases {};
 
-	/// TODO: Enables syntax highlighting of additional types
-	RField();
+	/// Enables syntax highlighting of additional types
+	RField(Unimplemented);
 	std::vector<std::string> AdditionalTypesToHighlight {};
 
-	/// TODO: If true, will generate a .html for each reflected header, with syntax highlighting and line anchors, so we can easily reference them
-	RField();
+	/// If true, will generate a `.html` for each reflected header, with syntax highlighting and line anchors, so we can easily reference them
+	RField(Unimplemented);
 	bool GenerateSyntaxHighlightedSourceFiles = false;
 
-	/// TODO: Will generate a warning on execution for each reflected entity that isn't documented but has `Document` attribute set to true (the default)
-	RField();
+	/// Will generate a warning on execution for each reflected entity that isn't documented but has `Document` attribute set to true (the default)
+	RField(Unimplemented);
 	bool WarnOnUndocumentedEntites = false;
 
-	/// TODO: If a method has comments (like \param or <param>) that describe its parameters, validates that the names are the same as the actual method parameters
-	RField();
+	/// If a method has comments (like `\param` or `&lt;param>`) that describe its parameters, validates that the names are the same as the actual method parameters
+	RField(Unimplemented);
 	bool ValidateMethodArgumentComments = false;
-
-	/// TODO: List all the doc note headers (like "On Change" or "Not Editable") that should not be output for any entities
+	
+	/// List all the doc note headers (like "On Change" or "Not Editable") that should not be output for any entities
 	RField();
-	std::vector<std::string> IgnoreDocNotes {};
+	std::set<std::string, std::less<>> IgnoreDocNotes{};
+
+	/// List all the doc note headers (like "On Change" or "Not Editable") that should be output in documentation for member table items
+	RField();
+	std::set<std::string, std::less<>> InlineDocNotes{};
 };
 
-RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
+RClass(DefaultFieldAttributes = { Setter = false, Getter = false }, Unimplemented);
 struct ArtifactOptions
 {
 	RBody();
 };
 
-RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
+RClass(DefaultFieldAttributes = { Setter = false, Getter = false }, Unimplemented);
 struct NameOptions
 {
 	RBody();
 };
 
-RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
+RClass(DefaultFieldAttributes = { Setter = false, Getter = false }, Unimplemented);
 struct ScriptBindingOptions
 {
 	RBody();
@@ -145,7 +160,7 @@ struct Options
 	Options() = default;
 	Options(path exe_path, path const& options_file_path);
 
-	/// **Required** A filename or list of filenames (or directories) to scan for reflectable types
+	/// A filename or list of filenames (or directories) to scan for reflectable types
 	RField(Required);
 	json Files;
 
@@ -179,13 +194,12 @@ struct Options
 	RField();
 	bool Verbose = false;
 
-	/// TODO: Whether to warn when a reflected attribute is not recognized by the program.
-	/// This will have to wait until we have a full reflected list of attributes.
-	RField();
+	/// Whether to warn when a reflected attribute is not recognized by the program.
+	RField(Unimplemented);
 	bool WarnOnUnknownAttributes = false;
 
-	/// TODO: Will add `Opposite` attributes to every flag enumerator with the given values (e.g. if you set this to {'Alive': 'Dead'}, any flag enumerator called Alive will get an opposite called 'Dead')
-	RField();
+	/// Will add `Opposite` attributes to every flag enumerator with the given values (e.g. if you set this to `{"Alive": "Dead"}`, any flag enumerator called Alive will get an opposite called `Dead`)
+	RField(Unimplemented);
 	std::map<std::string, std::string> DefaultFlagOpposites;
 
 	/// For later
@@ -205,7 +219,7 @@ struct Options
 
 	/// Whether to add support for garbage-collected heaps for reflected classes.
 	RField();
-	bool AddGCFunctionality = true;
+	bool AddGCFunctionality = false;
 
 	/// Whether to output forward declarations of reflected classes
 	RField();
@@ -220,9 +234,9 @@ struct Options
 	RField();
 	std::string DefaultNamespace = {};
 
-	/// TODO: If true, will keep the history of all reflected entities (timestamps of when they were added/changed/removed),
+	/// If true, will keep the history of all reflected entities (timestamps of when they were added/changed/removed),
 	/// in an artifact file. If this is true, the generated documentation will provide the information as well.
-	RField();
+	RField(Unimplemented);
 	bool KeepEntityHistory = false;
 
 	/// Documentation options
@@ -267,8 +281,8 @@ struct Options
 	RField();
 	std::string BodyAnnotationName;
 
-	/// TODO: Name of namespace annotation macro. If not set, will be `AnnotationPrefix + "Namespace"`.
-	RField();
+	/// Name of namespace annotation macro. If not set, will be `AnnotationPrefix + "Namespace"`.
+	RField(Unimplemented);
 	std::string NamespaceAnnotationName;
 
 	RField();

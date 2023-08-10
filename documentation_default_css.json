@@ -25,6 +25,10 @@
     "padding": "0 0.5em",
     "width": "fit-content"
   },
+  "div.docnote": {
+    "padding": "0 0.5em",
+    "width": "fit-content"
+  },
   "a.deprecated": {
     "text-decoration": "line-through"
   },

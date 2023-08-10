@@ -105,12 +105,12 @@ struct DocumentationGenerator
 		{
 			for (const auto& klass : mirror->Classes)
 			{
-				if (klass->Document)
+				if (klass->Document())
 					classes.push_back(klass.get());
 			}
 			for (const auto& henum : mirror->Enums)
 			{
-				if (henum->Document)
+				if (henum->Document())
 					enums.push_back(henum.get());
 			}
 		}
@@ -139,22 +139,35 @@ struct DocumentationGenerator
 
 	/// TODO: Get comment lines starting with '@' (like `@param`) and turn them into nice properties
 
-	std::string GetPrettyComments(SimpleDeclaration const& decl, bool first_paragraph_only = false) const
+	std::string GetPrettyComments(SimpleDeclaration const& decl, bool for_inline_list = false) const
 	{
-		std::string result;
-		/// Add deprecation warning if applicable
-		if (decl.Deprecation)
+		std::vector<std::string> comment_lines;
+
+		if (for_inline_list)
 		{
-			result += "<div class='deprecated'>";
-			result += format("<md>**Deprecated**{}{}</md>", decl.Deprecation?": ":"", Escaped(decl.Deprecation.value()));
-			result += "</div>";
+			std::string doc_notes_str;
+			/// Add in-list docnotes
+			for (auto& note : decl.DocNotes)
+			{
+				if (
+					(note.ShowInMemberList && !mOptions.Documentation.IgnoreDocNotes.contains(note.Header))
+					|| mOptions.Documentation.InlineDocNotes.contains(note.Header)
+					)
+				{
+					doc_notes_str += "<span class='docnote'>";
+					//result += format("<md>{}**{}**</md>", Icon(note.Icon), note.Header);
+					doc_notes_str += format("{}<b>{}</b>", Icon(note.Icon), note.Header);
+					doc_notes_str += "</span>";
+				}
+			}
+			if (!doc_notes_str.empty())
+				comment_lines.push_back(move(doc_notes_str));
 		}
 
-		std::vector<std::string> comment_lines;
 		/// Add comments from entity comments (first paragraph only, if requested)
 		if (!decl.Comments.empty())
 		{
-			if (first_paragraph_only)
+			if (for_inline_list)
 			{
 				auto empty_comment_line = std::ranges::find_if(decl.Comments, [](auto& cmntline) { return trimmed_whitespace(cmntline).empty(); });
 				comment_lines.insert(comment_lines.end(), decl.Comments.begin(), empty_comment_line);
@@ -167,8 +180,8 @@ struct DocumentationGenerator
 		}
 
 		if (!comment_lines.empty())
-			result += format("<md>{}</md>", join(comment_lines, "\n"));
-		return result;
+			return format("<md>{}</md>", join(comment_lines, "\n"));
+		return {};
 	}
 
 	bool CreateCSSFile(ArtifactArgs const& args) const
@@ -279,16 +292,22 @@ struct DocumentationGenerator
 
 	static void OutputAttributeDescriptors(HTMLFileWriter& out, Declaration const& decl)
 	{
-		if (decl.DocNotes.empty())
+		std::string note_str;
+
+		for (auto& [name, desc, _, icon] : decl.DocNotes)
+		{
+			if (out.mOptions.Documentation.IgnoreDocNotes.contains(name))
+				continue;
+
+			note_str += std::format("<h3>{}{}</h3><md>{}</md>", Icon(icon), name, desc);
+		}
+
+		if (note_str.empty())
 			return;
 
 		/// TODO: Maybe make an option that determines whether we create a <details> or just a simple header
 		out.WriteLine("<h2>Notes</h2>");
-		for (auto& [name, desc] : decl.DocNotes)
-		{
-			out.WriteLine("<h3>{}</h3>", name);
-			out.WriteLine("<md>{}</md>", desc);
-		}
+		out.WriteLine("{}", note_str);
 	}
 
 	bool CreateClassFile(ArtifactArgs const& args, Class const& klass) const
@@ -302,7 +321,7 @@ struct DocumentationGenerator
 
 		OutputAttributeDescriptors(out, klass);
 
-		auto documented_fields = klass.Fields | std::views::filter([](auto& field) { return field->Document && field->Access == AccessMode::Public; });
+		auto documented_fields = klass.Fields | std::views::filter([](auto& field) { return field->Document() && field->Access == AccessMode::Public; });
 		if (!documented_fields.empty())
 		{
 			out.WriteLine("<h2>Fields</h2>");
@@ -321,7 +340,7 @@ struct DocumentationGenerator
 		}
 
 		auto documented_methods = klass.Methods | std::views::filter([](auto& method) { 
-			return method->Document && 
+			return method->Document() &&
 				!method->Flags.contain(MethodFlags::ForFlag); /// Don't list flag methods by default
 		});
 		if (!documented_methods.empty())
@@ -366,7 +385,7 @@ struct DocumentationGenerator
 			out.EndBlock("</table>");
 		}
 
-		auto documented_private_fields = klass.Fields | std::views::filter([](auto& field) { return field->Document && field->Access != AccessMode::Public; });
+		auto documented_private_fields = klass.Fields | std::views::filter([](auto& field) { return field->Document() && field->Access != AccessMode::Public; });
 		if (!documented_private_fields.empty())
 		{
 			out.WriteLine("<h2>Private Fields</h2>");
@@ -392,7 +411,7 @@ struct DocumentationGenerator
 
 	void OutputArtificialMethods(HTMLFileWriter& out, Declaration const& decl) const
 	{
-		auto documented_artificial_methods = decl.AssociatedArtificialMethods | std::views::filter([](auto& method) { return method.second->Document; });
+		auto documented_artificial_methods = decl.AssociatedArtificialMethods | std::views::filter([](auto& method) { return method.second->Document(); });
 		if (!documented_artificial_methods.empty())
 		{
 			out.WriteLine("<h2>See Also</h2>");
@@ -517,7 +536,7 @@ struct DocumentationGenerator
 			for (auto& enumerator : henum.Enumerators)
 			{
 				out.StartTag("tr");
-				out.WriteLine("<td class='enumnamecol'>{}</td>", enumerator->Document ? enumerator->MakeLink() : enumerator->Name);
+				out.WriteLine("<td class='enumnamecol'>{}</td>", enumerator->Document() ? enumerator->MakeLink() : enumerator->Name);
 				out.WriteLine("<td class='enumvalcol{}'>= {}</td>", (enum_is_trivial?" trivial":""), enumerator->Value);
 				out.WriteLine("<td>{}</td>", GetPrettyComments(*enumerator, true));
 				out.EndTag();
@@ -571,7 +590,7 @@ struct DocumentationGenerator
 
 			for (auto& field : klass->Fields)
 			{
-				if (!field->Document)
+				if (!field->Document())
 					continue;
 
 				factory.QueueArtifact(mOptions.ArtifactPath / mOptions.Documentation.TargetDirectory / FilenameFor(*field), std::bind_front(&DocumentationGenerator::CreateFieldFile, this), std::ref(*field)); /// 
@@ -579,7 +598,7 @@ struct DocumentationGenerator
 
 			for (auto& method : klass->Methods)
 			{
-				if (!method->Document)
+				if (!method->Document())
 					continue;
 
 				factory.QueueArtifact(mOptions.ArtifactPath / mOptions.Documentation.TargetDirectory / FilenameFor(*method), std::bind_front(&DocumentationGenerator::CreateMethodFile, this), std::ref(*method)); /// 
@@ -592,7 +611,7 @@ struct DocumentationGenerator
 			
 			for (auto& enumerator : henum->Enumerators)
 			{
-				if (!enumerator->Document)
+				if (!enumerator->Document())
 					continue;
 
 				factory.QueueArtifact(mOptions.ArtifactPath / mOptions.Documentation.TargetDirectory / FilenameFor(*enumerator), std::bind_front(&DocumentationGenerator::CreateEnumeratorFile, this), std::ref(*enumerator)); /// 

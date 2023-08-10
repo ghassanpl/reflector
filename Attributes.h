@@ -209,6 +209,8 @@ struct Attribute
 	static const AttributeProperties DefaultEnumeratorAttributes;
 
 	static const BoolAttributeProperties CreateProxy;
+	
+	static const BoolAttributeProperties Unimplemented;
 
 	static const BoolAttributeProperties List;
 	static const StringAttributeProperties Opposite;

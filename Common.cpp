@@ -19,6 +19,8 @@ uint64_t ExecutableChangeTime = 0;
 uint64_t InvocationTime = 0;
 std::vector<std::unique_ptr<FileMirror>> Mirrors;
 
+extern Options const* global_options;
+
 std::string HighlightTypes(std::string_view type, TypeDeclaration const* search_context);
 
 void Declaration::CreateArtificialMethodsAndDocument(Options const& options)
@@ -27,10 +29,15 @@ void Declaration::CreateArtificialMethodsAndDocument(Options const& options)
 	{
 		if (attr.is_boolean() && attr == false)
 			return;
-		this->Deprecation = attr.is_string() ? std::string{attr} : std::string{};
+		
+		Deprecation = attr.is_string() ? std::string{attr} : std::string{};
+		EntityFlags.set(Reflector::EntityFlags::Deprecated);
 	}
 
+	EntityFlags.set_to(Attribute::Unimplemented.GetOr(*this, false), Reflector::EntityFlags::Unimplemented);
 	Attribute::DocumentMembers.TryGet(*this, DocumentMembers);
+	if (bool document_set = false; Attribute::Document.TryGet(*this, document_set))
+		ForceDocument = document_set;
 
 	if (auto& attr = Attribute::NoDiscard.TryGet(*this); !attr.is_null())
 	{
@@ -38,6 +45,19 @@ void Declaration::CreateArtificialMethodsAndDocument(Options const& options)
 			return;
 
 		AddNoDiscard(attr.is_string() ? std::string{attr} : std::string{});
+	}
+
+	if (EntityFlags.is_set(Reflector::EntityFlags::Deprecated))
+	{
+		if (Deprecation)
+			AddWarningDocNote("Deprecated", Deprecation.value());
+		else
+			AddWarningDocNote("Deprecated", "This {} is deprecated; no reason was given", string_ops::ascii::tolower(magic_enum::enum_name(this->DeclarationType())));
+	}
+
+	if (EntityFlags.is_set(Reflector::EntityFlags::Unimplemented))
+	{
+		AddWarningDocNote("Unimplemented", "This {}'s functionality is unimplemented", string_ops::ascii::tolower(magic_enum::enum_name(this->DeclarationType()))).Icon = "circle-slash";
 	}
 
 	/// TODO: We could do a preliminary pass on Comments here and create a vector<string, vector<string>> that holds lines for each section.
@@ -97,6 +117,16 @@ std::vector<TypeDeclaration const*> FindTypes(string_view name)
 				result.push_back(henum.get());
 	}
 	return result;
+}
+
+void to_json(json& j, DocNote const& p)
+{
+	j = {
+		{ "Header", p.Header },
+		{ "Contents", p.Contents }
+	};
+	if (p.ShowInMemberList) j["ShowInMemberList"] = p.ShowInMemberList;
+	if (!p.Icon.empty()) j["Icon"] = p.Icon;
 }
 
 Method* Field::AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags)
@@ -246,11 +276,11 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 }
 
 template <typename T>
-void SetFlags(enum_flags<T> Flags, json& result)
+void SetFlags(enum_flags<T> Flags, json& result, std::string_view field_name = "Flags")
 {
 	if (!Flags.empty())
 	{
-		auto& flag_array = result["Flags"] = json::array();
+		auto& flag_array = result[field_name] = json::array();
 		Flags.for_each([&](auto v) {
 			flag_array.push_back(std::format("{}", magic_enum::enum_name(v)));
 		});
@@ -380,7 +410,7 @@ void Method::CreateArtificialMethodsAndDocument(Options const& options)
 			proxy_method = AddArtificialMethod("Proxy", Return.Name, options.ProxyMethodPrefix + Name, GetParameters(), std::format("throw std::runtime_error{{\"invalid abstract call to function {}::{}\"}};", ParentType->FullType(), Name), {"Proxy function for " + MakeLink() }, flags);
 		else
 			proxy_method = AddArtificialMethod("Proxy", Return.Name, options.ProxyMethodPrefix + Name, GetParameters(), "return self_type::" + Name + "(" + ParametersNamesOnly + ");", { "Proxy function for " + MakeLink() }, flags);
-		proxy_method->Document = false;
+		proxy_method->ForceDocument = false;
 	}
 
 	if (Flags.is_set(NoReturn)) AddDocNote("Does Not Return", "This function does not return.");
@@ -755,14 +785,23 @@ void SimpleDeclaration::ForEachCommentDirective(std::string_view directive_name,
 	}
 }
 
+bool SimpleDeclaration::Document() const
+{
+	bool default_document = true;
+	if (global_options->Documentation.HideUnimplemented && Unimplemented())
+		default_document = false;
+	return ForceDocument.value_or(default_document);
+}
+
 json SimpleDeclaration::ToJSON() const
 {
 	json result = json::object();
 	result["Name"] = Name;
 	if (!Comments.empty()) result["Comments"] = Comments;
-	if (Document != true) result["Document"] = Document;
+	if (Document() != true) result["Document"] = false;
 	if (Deprecation) result["Deprecation"] = Deprecation->empty() ? json{true} : json{ *Deprecation };
 	if (!DocNotes.empty()) result["DocNotes"] = DocNotes;
+	SetFlags(EntityFlags, result, "EntityFlags");
 	return result;
 }
 
@@ -774,20 +813,27 @@ json MethodParameter::ToJSON() const
 	return result;
 }
 
+std::string Icon(std::string_view icon)
+{
+	if (icon.empty())
+		return {};
+	return format(R"(<i class="codicon codicon-{}"></i>)", icon);
+}
+
 std::string IconFor(DeclarationType type)
 {
 	static constexpr std::array<std::string_view, magic_enum::enum_count<DeclarationType>()> icons = {
-		"field",
-		"method",
-		"property",
-		"class",
-		"enum",
-		"enum-member",
-		"namespace",
-		"parameter",
-		"parameter",
+		"symbol-field",
+		"symbol-method",
+		"symbol-property",
+		"symbol-class",
+		"symbol-enum",
+		"symbol-enum-member",
+		"symbol-namespace",
+		"symbol-parameter",
+		"symbol-parameter",
 	};
-	return format(R"(<i class="codicon codicon-symbol-{}"></i>)", icons[(int)type]);
+	return Icon(icons[(int)type]);
 }
 
 struct LinkParts
@@ -818,7 +864,7 @@ struct LinkParts
 
 std::string ConstructLink(LinkParts const& parts)
 {
-	if (parts.SourceDeclaration.Document)
+	if (parts.SourceDeclaration.Document())
 	{
 		return std::format("{9}<small class='specifiers'>{0}</small><a href='{1}.html' class='entitylink {2}'><small class='namespace'>{8}</small><small class='parent'>{3}</small>{4}{5}<small class='specifiers'>{6}</small></a><small class='membertype'>{7}</small>",
 			parts.PreSpecifiers, /// 0
@@ -865,8 +911,6 @@ std::string TypeDeclaration::MakeLink(LinkFlags flags) const
 	if (flags.contain(LinkFlag::Namespace) && !parts.Namespace.empty()) parts.Namespace = Namespace + "::";
 	return ConstructLink(parts);
 }
-
-extern Options const* global_options;
 
 std::string HighlightTypes(std::string_view type_, TypeDeclaration const* search_context)
 {	
@@ -949,5 +993,13 @@ std::string Property::MakeLink(LinkFlags flags) const
 void BaseMemberDeclaration::CreateArtificialMethodsAndDocument(Options const& options)
 {
 	Declaration::CreateArtificialMethodsAndDocument(options);
-	Document = Attribute::Document.GetOr(*this, ParentDecl()->DocumentMembers);
+	//Document = Attribute::Document.GetOr(*this, ParentDecl()->DocumentMembers);
+}
+
+bool BaseMemberDeclaration::Document() const
+{
+	bool default_document = ParentDecl()->DocumentMembers;
+	if (global_options->Documentation.HideUnimplemented && Unimplemented())
+		default_document = false;
+	return ForceDocument.value_or(default_document);
 }

@@ -1,12 +1,13 @@
 # reflector
 
-> **NOTE**: This is still a work in progress. Right now the tool mostly works, but is imperfect, generates imperfect code, and has bugs. Use at your own risk.
+> **NOTE**: This is still a work in progress. Right now the tool mostly works, but is imperfect, 
+generates imperfect code, and has bugs. Use at your own risk.
 
 > Pull requests welcomed and encouraged and begged for!
 
 ## What is it?
 
-Reflector is a C++20 tool similar to the Unreal Header Tool. It will scan the headers in you codebase for types/methods/fields annotated with a [special reflection syntax](https://github.com/ghassanpl/reflector/wiki/Usage#code-requirements). It will then create files containing reflection information about those entities. The main type of file it will create is the [`*.mirror`](https://github.com/ghassanpl/reflector/wiki/Artifacts#mirror) file, which you are meant to include in the files Reflector is scanning. This will inject reflection information straight into your files, allowing for compile-time reflection of these entities.
+Reflector is a C++20 tool similar to the Unreal Header Tool. It will scan the headers in your codebase for types/methods/fields annotated with a [special reflection syntax](https://github.com/ghassanpl/reflector/wiki/Usage#code-requirements). It will then create files containing reflection information about those entities. The main type of file it will create is the [`*.mirror`](https://github.com/ghassanpl/reflector/wiki/Artifacts#mirror) file, which you are meant to include in the files Reflector is scanning. This will inject reflection information straight into your files, allowing for compile-time reflection of these entities.
 
 ```c++
 #include "Component.h.mirror"
@@ -16,15 +17,15 @@ class Component : public Reflector::Reflectable
 {
 	RBody();
 
-	RField(ReadOnly, Required, Setter = false);
+	RField(Required, Setter = false, Editor = false);
 	std::string Name;
 
-	RMethod();
-	void SetName(std::string_view name) { Name = name; }
+	RMethod(ScriptPrivate);
+	void SetName(std::string_view name) { if (VerifyName(name)) Name = name; }
 	
 protected:
 
-	RField(ParentPointer = true);
+	RField();
 	class Object* mParentObject = nullptr;
 };
 
@@ -49,6 +50,12 @@ See [Usage in the wiki](https://github.com/ghassanpl/reflector/wiki/Usage).
 See the [example in the wiki](https://github.com/ghassanpl/reflector/wiki/Example).
 
 ## Dependencies
+
+### Projects Using Reflector
+* C+\+20 (C++17 support could be added if requested)
+* optional [nlohmann/json](https://github.com/nlohmann/json) if you want out-of-the-box JSON serialization support
+
+### The Reflector Tool Itself
 
 * C++20
 * [nlohmann/json](https://github.com/nlohmann/json)

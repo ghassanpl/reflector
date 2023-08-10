@@ -68,6 +68,7 @@ namespace Reflector
 		}
 	}
 
+	/// This class is NOT thread-safe.
 	struct Heap
 	{
 		static std::map<std::string, Reflectable*, std::less<>> const& Roots();

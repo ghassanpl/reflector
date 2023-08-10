@@ -30,7 +30,7 @@ Options::Options(path exe_path, path const& options_file_path)
 #else
 	/// Bootstrap mode getters
 	Files = mOptionsFile["Files"];
-#define OPTION(name, default_value) name = mOptionsFile.value(#name, default_value);
+#define OPTION(name, default_value) name = mOptionsFile.value(#name, default_value)
 	OPTION(ArtifactPath, "./Reflection/");
 	OPTION(MacroPrefix, "REFL");
 	OPTION(Files, ".");
@@ -38,6 +38,7 @@ Options::Options(path exe_path, path const& options_file_path)
 	OPTION(Force, false);
 	OPTION(JSON.Use, true);
 	OPTION(CreateDatabase, true);
+	Documentation.InlineDocNotes = {"Required"};
 #endif
 
 	auto EnsureAbsoluteToOptions = [options_file_path = mOptionsFilePath] (std::filesystem::path p) {

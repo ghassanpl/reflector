@@ -112,6 +112,16 @@ enum class DeclarationType
 /// TODO: How much of the data in these classes should we output into the reflection system (*ReflectionData classes, etc)?
 /// In particular: Should we output doc note and comments?
 
+struct DocNote
+{
+	std::string Header;
+	std::string Contents;
+	bool ShowInMemberList = false;
+	std::string Icon = "";
+};
+
+void to_json(json& j, DocNote const& p);
+
 struct SimpleDeclaration
 {
 	std::string Name;
@@ -124,18 +134,35 @@ struct SimpleDeclaration
 		return Comments | std::ranges::views::filter([](std::string_view s) { return !trimmed_whitespace_left(s).starts_with('@'); });
 	}
 
-	bool Document = true;
+	std::optional<bool> ForceDocument;
 	std::optional<std::string> Deprecation;
 
-	std::vector<std::pair<std::string, std::string>> DocNotes;
+	virtual bool Document() const;
+		
+	std::vector<DocNote> DocNotes;
+
+	enum_flags<Reflector::EntityFlags> EntityFlags;
+
+	bool Unimplemented() const { return EntityFlags.is_set(Reflector::EntityFlags::Unimplemented); }
 
 	template <typename... ARGS>
-	void AddDocNote(std::string header, std::string_view str, ARGS&& ... args)
+	DocNote& AddDocNote(std::string header, std::string_view str, ARGS&& ... args)
 	{
-		DocNotes.emplace_back(std::move(header), std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...)));
+		return DocNotes.emplace_back(std::move(header), std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...)));
+	}
+
+	template <typename... ARGS>
+	DocNote& AddWarningDocNote(std::string header, std::string_view str, ARGS&& ... args)
+	{
+		auto& note = DocNotes.emplace_back(std::move(header), std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...)));
+		note.ShowInMemberList = true;
+		note.Icon = "warning";
+		return note;
 	}
 
 	json ToJSON() const;
+
+	virtual ~SimpleDeclaration() noexcept = default;
 };
 
 enum class LinkFlag
@@ -172,8 +199,6 @@ struct Declaration : public SimpleDeclaration
 	}
 
 	virtual std::string MakeLink(LinkFlags flags = {}) const = 0;
-
-	virtual ~Declaration() noexcept = default;
 
 	virtual DeclarationType DeclarationType() const = 0;
 
@@ -249,6 +274,8 @@ struct BaseMemberDeclaration : Declaration
 {
 	virtual Declaration* ParentDecl() const = 0;
 
+	virtual bool Document() const override;
+
 	void CreateArtificialMethodsAndDocument(Options const& options);
 };
 
@@ -257,10 +284,7 @@ struct MemberDeclaration : public BaseMemberDeclaration
 {
 	PARENT_TYPE* ParentType{};
 
-	MemberDeclaration(PARENT_TYPE* parent) : ParentType(parent)
-	{
-		this->Document = ParentType->DocumentMembers;
-	}
+	MemberDeclaration(PARENT_TYPE* parent) : ParentType(parent) {}
 
 	virtual Declaration* ParentDecl() const override { return ParentType; }
 
@@ -528,6 +552,7 @@ struct FileMirror
 std::string FormatPreFlags(enum_flags<Reflector::FieldFlags> flags, enum_flags<Reflector::FieldFlags> except = {});
 std::string FormatPreFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except = {});
 std::string FormatPostFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except = {});
+std::string Icon(std::string_view icon);
 std::string IconFor(DeclarationType type);
 
 extern uint64_t ExecutableChangeTime;

@@ -139,12 +139,20 @@ namespace Reflector
 	};
 
 	/// TODO: We definitely should have CompileTimeClassData and a ForEachClass() function (same for enums)
+	
+	enum class EntityFlags
+	{
+		Unimplemented,
+		Deprecated,
+		MaxEntityFlags = 16,
+	};
+	inline constexpr int MaxEntityFlags = (int)EntityFlags::MaxEntityFlags;
 
 	enum class ClassFlags
 	{
-		Struct,         /// TODO: Should we docnote this?
-		DeclaredStruct, /// TODO: Should we docnote this?
-		NoConstructors, /// TODO: Should we docnote this?
+		Struct = MaxEntityFlags, /// TODO: Should we docnote this?
+		DeclaredStruct,          /// TODO: Should we docnote this?
+		NoConstructors,          /// TODO: Should we docnote this?
 		HasProxy
 	};
 
@@ -211,17 +219,17 @@ namespace Reflector
 
 	enum class EnumFlags
 	{
-		Dummy
+		Dummy = MaxEntityFlags
 	};
 
 	enum class EnumeratorFlags
 	{
-		Dummy
+		Dummy = MaxEntityFlags
 	};
 
 	enum class FieldFlags
 	{
-		NoSetter,
+		NoSetter = MaxEntityFlags,
 		NoGetter,
 		NoEdit,
 		NoScript,
@@ -263,7 +271,7 @@ namespace Reflector
 
 	enum class MethodFlags
 	{
-		Explicit,
+		Explicit = MaxEntityFlags,
 		Inline,
 		Virtual,
 		Static,

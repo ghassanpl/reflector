@@ -265,6 +265,13 @@ const BoolAttributeProperties Attribute::CreateProxy {
 	true
 };
 
+const BoolAttributeProperties Attribute::Unimplemented{
+	"Unimplemented",
+	"The functionality this entity represents is not implemented; mostly useful for documentation, but can generate some warnings",
+	Targets::Any,
+	true
+};
+
 constexpr auto EnumerationsCat = "Enumerations"_ac;
 
 const BoolAttributeProperties Attribute::List {
