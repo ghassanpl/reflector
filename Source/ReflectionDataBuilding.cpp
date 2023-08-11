@@ -325,7 +325,7 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 	}
 
 	if (klass.Flags.is_set(ClassFlags::HasProxy))
-		output.WriteLine("template <typename PROXY_OBJ> using proxy_class = {0}{1}<{0}, PROXY_OBJ>;", klass.FullType(), options.ProxyClassSuffix);
+		output.WriteLine("template <typename PROXY_OBJ> using proxy_class = {0}{1}<{0}, PROXY_OBJ>;", klass.FullType(), options.Names.ProxyClassSuffix);
 	
 	/// Flags
 	/// TODO: Should these be exposed as well as a virtual method? I don't think so, these are in ClassReflectionData, right? (CHECK)
@@ -401,7 +401,7 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 	output.WriteLine("#undef {}_GENERATED_CLASS_{}", options.MacroPrefix, klass.DeclarationLine);
 	if (klass.Flags.is_set(ClassFlags::HasProxy))
 	{
-		output.StartDefine("#define {}_GENERATED_CLASS_{} template <typename T, typename PROXY_OBJ> struct {}{} : T {{", options.MacroPrefix, klass.DeclarationLine, klass.Name, options.ProxyClassSuffix);
+		output.StartDefine("#define {}_GENERATED_CLASS_{} template <typename T, typename PROXY_OBJ> struct {}{} : T {{", options.MacroPrefix, klass.DeclarationLine, klass.Name, options.Names.ProxyClassSuffix);
 		output.CurrentIndent++;
 		output.WriteLine("mutable PROXY_OBJ ReflectionProxyObject;");
 		for (auto& func : klass.Methods)

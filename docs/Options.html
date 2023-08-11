@@ -116,6 +116,12 @@ TODO: Can be modified by the file-level `RNamespace(...);` annotation, or by the
 				<td><md>JSON options</md></td>
 			</tr>
 			<tr>
+				<td class='fieldtype'><small class='specifiers'></small><a href='NameOptions.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>NameOptions<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.Names.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>Names<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>{}</code></td>
+				<td><md>Options regarding names, both in your source code as well as generated ones</md></td>
+			</tr>
+			<tr>
 				<td class='fieldtype'><span class="hljs-type">string</span></td>
 				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.AnnotationPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>AnnotationPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
 				<td class='code'><code class='language-cpp'>"R"</code></td>
@@ -163,70 +169,10 @@ TODO: Can be modified by the file-level `RNamespace(...);` annotation, or by the
 				<td class='code'><code class='language-cpp'></code></td>
 				<td><md>Name of class body macro. If not set, will be `AnnotationPrefix + "Body"`.</md></td>
 			</tr>
-			<tr>
-				<td class='fieldtype'><span class="hljs-type">string</span></td>
-				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.GetterPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>GetterPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
-				<td class='code'><code class='language-cpp'>"Get"</code></td>
-				<td></td>
-			</tr>
-			<tr>
-				<td class='fieldtype'><span class="hljs-type">string</span></td>
-				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.SetterPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>SetterPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
-				<td class='code'><code class='language-cpp'>"Set"</code></td>
-				<td><md>Both for regular setters as well as flag setters</md></td>
-			</tr>
-			<tr>
-				<td class='fieldtype'><span class="hljs-type">string</span></td>
-				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.IsPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>IsPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
-				<td class='code'><code class='language-cpp'>"Is"</code></td>
-				<td></td>
-			</tr>
-			<tr>
-				<td class='fieldtype'><span class="hljs-type">string</span></td>
-				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.IsNotPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>IsNotPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
-				<td class='code'><code class='language-cpp'>"IsNot"</code></td>
-				<td></td>
-			</tr>
-			<tr>
-				<td class='fieldtype'><span class="hljs-type">string</span></td>
-				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.SetNotPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>SetNotPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
-				<td class='code'><code class='language-cpp'>"SetNot"</code></td>
-				<td></td>
-			</tr>
-			<tr>
-				<td class='fieldtype'><span class="hljs-type">string</span></td>
-				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.UnsetPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>UnsetPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
-				<td class='code'><code class='language-cpp'>"Unset"</code></td>
-				<td></td>
-			</tr>
-			<tr>
-				<td class='fieldtype'><span class="hljs-type">string</span></td>
-				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.TogglePrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>TogglePrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
-				<td class='code'><code class='language-cpp'>"Toggle"</code></td>
-				<td></td>
-			</tr>
-			<tr>
-				<td class='fieldtype'><span class="hljs-type">string</span></td>
-				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.ProxyMethodPrefix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>ProxyMethodPrefix<small class='specifiers'></small></a><small class='membertype'></small></td>
-				<td class='code'><code class='language-cpp'>"_proxy_"</code></td>
-				<td></td>
-			</tr>
-			<tr>
-				<td class='fieldtype'><span class="hljs-type">string</span></td>
-				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.SingletonInstanceGetterName.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>SingletonInstanceGetterName<small class='specifiers'></small></a><small class='membertype'></small></td>
-				<td class='code'><code class='language-cpp'>"SingletonInstance"</code></td>
-				<td></td>
-			</tr>
-			<tr>
-				<td class='fieldtype'><span class="hljs-type">string</span></td>
-				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.ProxyClassSuffix.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>ProxyClassSuffix<small class='specifiers'></small></a><small class='membertype'></small></td>
-				<td class='code'><code class='language-cpp'>"_Proxy"</code></td>
-				<td></td>
-			</tr>
 		</table>
 		<h2>Details</h2>
 		<ul class='desclist'>
-			<li><b>Declaration</b>: <a href='file:///Q:\Code\Native\Reflector\Reflector\Source\Options.h#155' class='srclink'>Options.h at line 155</a></li>
+			<li><b>Declaration</b>: <a href='file:///Q:\Code\Native\Reflector\Reflector\Source\Options.h#202' class='srclink'>Options.h at line 202</a></li>
 			<li><b>Flags</b>: <a href='Reflector.FieldFlags.html#Struct'>Struct</a>, <a href='Reflector.FieldFlags.html#DeclaredStruct'>DeclaredStruct</a>, <a href='Reflector.FieldFlags.html#NoConstructors'>NoConstructors</a></li>
 			<li><b>Attributes</b>: <code class='language-json'>{"DefaultFieldAttributes":{"Getter":false,"Setter":false}}</code></li>
 		</ul>

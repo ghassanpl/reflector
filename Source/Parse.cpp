@@ -158,9 +158,12 @@ std::string ParseType(string_view& str)
 
 std::string ParseExpression(string_view& str)
 {
+	trim_whitespace_left(str);
+
 	int brackets = 0;
 	int tris = 0;
 	int parens = 0;
+	int braces = 0;
 	auto p = str.begin();
 	for (; p != str.end(); ++p)
 	{
@@ -170,11 +173,13 @@ std::string ParseExpression(string_view& str)
 		case ']': if (brackets > 0) { brackets--; continue; } else break;
 		case '(': parens++; continue;
 		case ')': if (parens > 0) { parens--; continue; } else break;
+		case '{': braces++; continue;
+		case '}': if (braces > 0) { braces--; continue; } else break;
 		case '<': tris++; continue;
 		case '>': tris--; continue;
 		}
 
-		if ((*p == ',' || *p == ')') && parens == 0 && tris == 0 && brackets == 0)
+		if ((*p == ',' || *p == ')' || *p == ';') && parens == 0 && tris == 0 && brackets == 0 && braces == 0)
 			break;
 	}
 
@@ -403,9 +408,7 @@ ParsedFieldDecl ParseFieldDecl(string_view line)
 
 	ParseCppAttributes(line, result.Attributes);
 
-	/// TODO: Parse C++ [[attributes]]
-
-	/// thread_local? extern? inline?
+	/// TODO: thread_local? extern? inline?
 
 	while (true)
 	{
@@ -427,31 +430,29 @@ ParsedFieldDecl ParseFieldDecl(string_view line)
 
 	const string_view eq = "=";
 	const string_view open_brace = "{";
-	const string_view colon = ";";
 	string_view type_and_name;
 	const auto eq_start = std::ranges::find_first_of(line, eq);
 	const auto brace_start = std::ranges::find_first_of(line, open_brace);
-	const auto colon_start = std::ranges::find_first_of(line, colon);
-
-	if (colon_start != line.end() && !TrimWhitespace(string_ops::make_sv(colon_start + 1, line.end())).empty())
-	{
-		throw std::exception{ "Field must be only thing on line" };
-	}
-
+	
 	if (eq_start != line.end())
 	{
 		type_and_name = TrimWhitespace(string_ops::make_sv(line.begin(), eq_start));
-		result.Initializer = TrimWhitespace(string_ops::make_sv(eq_start + 1, colon_start));
+		line = string_ops::make_sv(eq_start + 1, line.end());
+		result.Initializer = ParseExpression(line);
 	}
 	else if (brace_start != line.end())
 	{
 		type_and_name = TrimWhitespace(string_ops::make_sv(line.begin(), brace_start));
-		result.Initializer = TrimWhitespace(string_ops::make_sv(brace_start, colon_start));
+		line = string_ops::make_sv(brace_start, line.end());
+		result.Initializer = ParseExpression(line);
 	}
 	else
 	{
-		type_and_name = TrimWhitespace(make_sv(line.begin(), colon_start));
+		trim_whitespace_left(line);
+		type_and_name = consume_until(line, ';');
 	}
+
+	line = Expect(line, ";");
 
 	if (type_and_name.empty())
 	{

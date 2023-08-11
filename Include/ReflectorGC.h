@@ -5,6 +5,7 @@
 #include "ReflectorUtils.h"
 #include <unordered_set>
 #include <ranges>
+#include <variant>
 
 namespace Reflector
 {
@@ -41,6 +42,8 @@ namespace Reflector
 	void GCMark(std::tuple<ELS...> const& val) { std::apply([](auto const& ...x) { (GCMark(x), ...); }, val); }
 	template <typename F, typename S>
 	void GCMark(std::pair<F, S> const& val) { GCMark(val.first); GCMark(val.second); }
+	template <typename... TYPES>
+	void GCMark(std::variant<TYPES...> const& val) { std::visit([](auto const& v) { GCMark(v); }, val); }
 
 	template <typename T>
 	requires (has_mark_func<std::remove_cvref_t<T>>)

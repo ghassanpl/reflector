@@ -182,7 +182,7 @@
       <SubSystem>Console</SubSystem>
     </Link>
     <PreBuildEvent>
-      <Command>del $(ProjectDir)\Options.h.mirror</Command>
+      <Command>del $(ProjectDir)\Source\Options.h.mirror</Command>
     </PreBuildEvent>
     <PostBuildEvent>
       <Command>

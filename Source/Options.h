@@ -140,10 +140,57 @@ struct ArtifactOptions
 	RBody();
 };
 
-RClass(DefaultFieldAttributes = { Setter = false, Getter = false }, Unimplemented);
+/// Options regarding names, both in your source code as well as generated ones.
+///
+/// Use the options in this object to maintain style parity between your code and the generated code
+RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
 struct NameOptions
 {
 	RBody();
+
+	/// Regex that specifies how multi_part EntityNames are split into multiple words, for example
+	/// for editor displays.
+	RField(Unimplemented);
+	std::string NamePartRegex;
+
+	/// Regex that specifies how private field names should be converted to display names.
+	///
+	/// For example, if you use mPascalCase or m_snake_case prefixes to annotate private fields,
+	/// this regex will help the system get the display names for those fields (for artificial methods etc). 
+	RField(Unimplemented);
+	std::string PrivateFieldRegex = "m([A-Z]\\w+)";
+	
+	RField();
+	std::string GetterPrefix = "Get";
+
+	/// Both for regular setters as well as flag setters
+	RField();
+	std::string SetterPrefix = "Set";
+
+	RField();
+	std::string IsPrefix = "Is"; /// TODO: Document this
+
+	RField();
+	std::string IsNotPrefix = "IsNot";
+
+	RField();
+	std::string SetNotPrefix = "SetNot";
+
+	RField();
+	std::string UnsetPrefix = "Unset";
+
+	RField();
+	std::string TogglePrefix = "Toggle";
+
+	RField();
+	std::string ProxyMethodPrefix = "_proxy_";
+
+	RField();
+	std::string SingletonInstanceGetterName = "SingletonInstance";
+
+	RField();
+	std::string ProxyClassSuffix = "_Proxy";
+
 };
 
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false }, Unimplemented);
@@ -247,6 +294,10 @@ struct Options
 	RField();
 	JSONOptions JSON = {};
 
+	/// Options regarding names, both in your source code as well as generated ones
+	RField();
+	NameOptions Names = {};
+
 	/// TODO: Move affixes and macro names to a different struct
 
 	/// Prefix for all the annotation macros, e.g. X => XClass, XBody, XField, XMethod, etc
@@ -284,37 +335,6 @@ struct Options
 	/// Name of namespace annotation macro. If not set, will be `AnnotationPrefix + "Namespace"`.
 	RField(Unimplemented);
 	std::string NamespaceAnnotationName;
-
-	RField();
-	std::string GetterPrefix = "Get";
-
-	/// Both for regular setters as well as flag setters
-	RField();
-	std::string SetterPrefix = "Set";
-
-	RField();
-	std::string IsPrefix = "Is";
-
-	RField();
-	std::string IsNotPrefix = "IsNot";
-
-	RField();
-	std::string SetNotPrefix = "SetNot";
-
-	RField();
-	std::string UnsetPrefix = "Unset";
-
-	RField();
-	std::string TogglePrefix = "Toggle";
-
-	RField();
-	std::string ProxyMethodPrefix = "_proxy_";
-
-	RField();
-	std::string SingletonInstanceGetterName = "SingletonInstance";
-
-	RField();
-	std::string ProxyClassSuffix = "_Proxy";
 
 	auto const& GetExePath() const { return mExePath; }
 	auto const& GetOptionsFilePath() const { return mOptionsFilePath; }

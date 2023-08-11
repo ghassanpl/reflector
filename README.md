@@ -7,7 +7,7 @@ generates imperfect code, and has bugs. Use at your own risk.
 
 ## What is it?
 
-Reflector is a C++20 tool similar to the Unreal Header Tool. It will scan the headers in your codebase for types/methods/fields annotated with a [special reflection syntax](https://github.com/ghassanpl/reflector/wiki/Usage#code-requirements). It will then create files containing reflection information about those entities. The main type of file it will create is the [`*.mirror`](https://github.com/ghassanpl/reflector/wiki/Artifacts#mirror) file, which you are meant to include in the files Reflector is scanning. This will inject reflection information straight into your files, allowing for compile-time reflection of these entities.
+Reflector is a C++20 tool similar to the Unreal Header Tool. It will scan the headers in your codebase for types/methods/fields annotated with a [special reflection syntax](https://github.com/ghassanpl/reflector/wiki/Annotations). It will then create files containing reflection information about those entities. The main type of file it will create is the [`*.mirror`](https://github.com/ghassanpl/reflector/wiki/Artifacts#mirror) file, which you are meant to include in the files Reflector is scanning. This will inject reflection information straight into your files, allowing for compile-time reflection of these entities.
 
 ```c++
 #include "Component.h.mirror"

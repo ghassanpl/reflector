@@ -1,36 +1,18 @@
 - ability to run reflected program in "docmode", that is, running special Reflector-generated methods to generate its own 
 documentation pages based on its own criteria
+	- usecase?
 
-- see if we can't change this:
-		RClass(Abstract, CreateIsChilds=[Door,Decoration,Item,Enemy,Hero,Creature]);
-into
-		[[RClass(Abstract, CreateIsChilds=[Door,Decoration,Item,Enemy,Hero,Creature])]] 
-	- we could, but:
-		- RBody(); would have to stay the same
-		- REnum(); would probably have to stay (though we could definitely use a magic_enum-style method reflection system)
-		- this would require users to disable warnings on unrecognized attributes
-	- maybe as an option?
 
-- ability to deep-clone objects?
-
-- RConstructor() ?
-- RAlias()/RUsing(); - for commenting `using X = ...;` declarations, so that generated documentation is better (probably other things too)
-- RConstant(); - for constexprs
-- ROperator();
-- RNamespace() ?
-- RTest() ? - for marking static methods as tests
-- RVersion() ? - or should we get that information from, in order: git tags, git commit, datetime
-- RContext() ?
-- RDoc();
-
-- check if we can't do something like:
-
-struct MaxAttribute { int Value; };
-...
-RField(CustomAttributes = { Max = 5 })
-
-that turns into
-
-REFL_VISITOR(..., ..., CompileTimeFieldData<..., MaxAttribute{5}>{});
-
-and adds that MaxAttribute to a `std::vector<json> CustomAttributes;` that's in the runtime class reflection data
+* Storing file timestamps in sqlite database instead of in mirror file
+* Artificial methods for vector/list/map-like types, with the ability to make them readonly
+* Better customization
+* Option overrides as a command-line argument
+* Support for base types for Enums
+* Support for Non-integer enumerators for Enums
+* Extensibility via scripting or plugins
+* Library form
+* Split into three parts: the parser, the builder, and the CLI tool
+  * The parser will parse headers and output a JSON file (or, in library form, C++ structures)
+  * The builder (based on a plugin architecture) will take the parsed data and actually output mirror files, and potentially other files (e.g. documentation)
+  * The CLI tool will use the above to do what `reflector` does now
+* Add options to disable the generation of `ReflectionData` objects, and to create `constexpr` functions instead
