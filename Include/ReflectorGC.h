@@ -26,7 +26,7 @@ namespace Reflector
 
 	template <typename T, typename PT = std::remove_cvref_t<T>>
 	requires (!has_mark_func<PT>
-		&& !reflectable_class<std::remove_pointer_t<PT>>
+		&& !derives_from_reflectable<std::remove_pointer_t<PT>>
 		&& !std::is_pointer_v<PT>
 		&& !std::ranges::range<T>
 	)
@@ -80,7 +80,7 @@ namespace Reflector
 		static Reflectable* GetRoot(std::string_view key);
 		static void ClearRoots();
 
-		template <reflectable_class T>
+		template <derives_from_reflectable T>
 		static T* GetRoot(std::string_view key)
 		{
 			const auto ptr = GetRoot(key);
@@ -92,19 +92,19 @@ namespace Reflector
 		template <typename T>
 		static auto ObjectsOfType()
 		{
-			static_assert(reflectable_class<T>, "Only reflectable classes can be iterated on");
+			static_assert(derives_from_reflectable<T>, "Only reflectable classes can be iterated on");
 
-			return Objects() | std::views::filter([](auto* ptr) { return ptr->Is<T>(); }) | std::views::transform([](auto* ptr) { return (T*)ptr; });
+			return Objects() | std::views::filter([](auto* ptr) { return ptr->template Is<T>(); }) | std::views::transform([](auto* ptr) { return (T*)ptr; });
 		}
 
-		//static Reflectable* New(ClassReflectionData const* type);
+		//static Reflectable* New(Class const* type);
 
 		template <typename T, typename... ARGS>
 		static T* New(ARGS&&... args)
 		{
-			static_assert(reflectable_class<T>, "Only reflectable classes can be New()ed");
+			static_assert(derives_from_reflectable<T>, "Only reflectable classes can be New()ed");
 
-			return (T*)Add(new (Alloc<T>()) T(T::StaticGetReflectionData(), std::forward<ARGS>(args)...));
+			return (T*)Add(new (Alloc<T>()) T(std::forward<ARGS>(args)...));
 		}
 
 		template <typename T>
@@ -128,7 +128,7 @@ namespace Reflector
 		static void GCMark(auto) noexcept {}
 
 #if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)
-		template <reflectable_class T>
+		template <derives_from_reflectable T>
 		static void ResolveHeapObject(T*& p, std::string_view obj_type, intptr_t obj_id)
 		{
 			Reflectable const* r = p;
@@ -142,15 +142,15 @@ namespace Reflector
 
 	private:
 
-		static void ResolveHeapObject(ClassReflectionData const* type, Reflectable const*& p, std::string_view obj_type, intptr_t obj_id);
+		static void ResolveHeapObject(Class const* type, Reflectable const*& p, std::string_view obj_type, intptr_t obj_id);
 
 		static void Clear();
 
 		static Reflectable* Add(Reflectable* obj);
 		static void Mark();
 		static void Sweep();
-		static Reflectable* Alloc(ClassReflectionData const* klass_data);
-		template <reflectable_class T, typename... ARGS>
+		static Reflectable* Alloc(Class const* klass_data);
+		template <derives_from_reflectable T, typename... ARGS>
 		static T* Alloc()
 		{
 			return (T*)Alloc(&T::StaticGetReflectionData());
@@ -164,7 +164,7 @@ namespace Reflector
 	template <reflected_class T, typename... ARGS>
 	T* New(ARGS&&... args)
 	{
-		if constexpr (reflectable_class<T>)
+		if constexpr (derives_from_reflectable<T>)
 			return ::Reflector::Heap::New<T>(std::forward<ARGS>(args)...);
 		else
 			return nullptr;
@@ -181,7 +181,7 @@ namespace Reflector
 #if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)
 NLOHMANN_JSON_NAMESPACE_BEGIN
 template <typename SERIALIZABLE>
-requires std::is_pointer_v<SERIALIZABLE> && ::Reflector::reflectable_class<std::remove_pointer_t<SERIALIZABLE>>
+requires std::is_pointer_v<SERIALIZABLE> && ::Reflector::derives_from_reflectable<std::remove_pointer_t<SERIALIZABLE>>
 struct adl_serializer<SERIALIZABLE>
 {
 	using Heap = ::Reflector::Heap;

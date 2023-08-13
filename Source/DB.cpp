@@ -5,8 +5,8 @@
 #include "../Include/ReflectorClasses.h"
 namespace Reflector
 {
-	ClassReflectionData const* Classes[] = { nullptr };
-	EnumReflectionData const* Enums[] = { nullptr };
+	Class const* Classes[] = { nullptr };
+	Enum const* Enums[] = { nullptr };
 }
 
 #endif

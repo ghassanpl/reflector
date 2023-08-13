@@ -7,24 +7,32 @@ generates imperfect code, and has bugs. Use at your own risk.
 
 ## What is it?
 
-Reflector is a C++20 tool similar to the Unreal Header Tool. It will scan the headers in your codebase for types/methods/fields annotated with a [special reflection syntax](https://github.com/ghassanpl/reflector/wiki/Annotations). It will then create files containing reflection information about those entities. The main type of file it will create is the [`*.mirror`](https://github.com/ghassanpl/reflector/wiki/Artifacts#mirror) file, which you are meant to include in the files Reflector is scanning. This will inject reflection information straight into your files, allowing for compile-time reflection of these entities.
+Reflector is a C++20 reflection generation tool similar to the Unreal Header Tool. It will scan the headers in your codebase for types/methods/fields annotated with a [special reflection syntax](https://github.com/ghassanpl/reflector/wiki/Annotations), and create files containing reflection information about those entities. The main type of file it will create is the [`*.mirror`](https://github.com/ghassanpl/reflector/wiki/Artifacts#mirror) file, which you are meant to include in the files Reflector is scanning. This will inject reflection information straight into your files, allowing for compile-time reflection of these entities.
 
 ```c++
 #include "Component.h.mirror"
 
-RClass();
+RClass(); /// Annotation will cause the class below to be reflected
 class Component : public Reflector::Reflectable
 {
-	RBody();
+	RBody(); /// Required in every reflected class
 
-	RField(Required, Setter = false, Editor = false);
-	std::string Name;
+	RField(Required, Setter = false, Editor = false); /// Annotation will cause Name to be reflected
+	std::string Name; 
 
-	RMethod(ScriptPrivate);
+	/// ^ The Name field will be required when deserializing, will not be settable
+	/// from scripts, and will not be editable in the editor.
+
+	/// These comment lines will be included in the auto-generated documentation
+	/// for SetName. The `ScriptPrivate` attribute means that this function will
+	/// not be callable from script. 
+	RMethod(ScriptPrivate); /// Annotation will cause SetName to be reflected
 	void SetName(std::string_view name) { if (VerifyName(name)) Name = name; }
 	
 protected:
 
+	/// This field will be reflected, and a public GetParentObject function will 
+	/// be generated for it.
 	RField();
 	class Object* mParentObject = nullptr;
 };
@@ -59,7 +67,6 @@ See the [example in the wiki](https://github.com/ghassanpl/reflector/wiki/Exampl
 
 * C++20
 * [nlohmann/json](https://github.com/nlohmann/json)
-* [xxhash](https://github.com/Cyan4973/xxHash) (for now, easily removable thanks to `header_utils`)
 * [magic_enum](https://github.com/Neargye/magic_enum)
 * [tl::expected](https://github.com/TartanLlama/expected) - or `std::expected` if it's available to your compiler
 * my personal [header_utils](https://github.com/ghassanpl/header_utils) library

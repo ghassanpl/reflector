@@ -567,8 +567,6 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 
 std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_view next_line, size_t line_num, AccessMode mode, std::vector<std::string> comments, Options const& options)
 {
-	auto line_copy = line;
-	auto next_line_copy = next_line;
 	auto result = std::make_unique<Method>(&klass);
 	Method& method = *result;
 	line.remove_prefix(options.MethodAnnotationName.size());

@@ -502,7 +502,7 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 	{
 		using enum Reflector::MethodFlags;
 		const auto getter = AddArtificialMethod(*this, "SingletonGetter", format("{}&", this->FullType()), options.Names.SingletonInstanceGetterName, "",
-			"static_assert(!::Reflector::reflectable_class<self_type>, \"Reflectable classes cannot be singletons currently\"); static self_type instance; return instance;",
+			"static_assert(!::Reflector::derives_from_reflectable<self_type>, \"Reflectable classes cannot be singletons currently\"); static self_type instance; return instance;",
 			{ "Returns the single instance of this class" }, { Noexcept, Static, NoDiscard });
 		AddDocNote("Singleton", "This class is a singleton. Call {} to get the instance.", getter->MakeLink());
 	}

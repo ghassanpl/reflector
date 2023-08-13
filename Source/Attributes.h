@@ -5,7 +5,7 @@
 
 struct AttributeProperties;
 
-using AttributeValidatorFunc = std::function<std::expected<void, std::string>(json const&, Declaration const&)>;
+using AttributeValidatorFunc = std::function<tl::expected<void, std::string>(json const&, Declaration const&)>;
 extern AttributeValidatorFunc IsString;
 extern AttributeValidatorFunc NotEmptyString;
 
@@ -36,7 +36,7 @@ struct AttributeProperties
 	enum_flags<AttributePropertyFlags> Flags{};
 
 	static std::vector<std::string_view> FindUnsettable(json const& attrs);
-	static inline std::vector<AttributeProperties const*> AllAttributes;
+	static std::vector<AttributeProperties const*> AllAttributes;
 
 	template <typename... ARGS>
 	AttributeProperties(std::string name, std::string desc, enum_flags<DeclarationType> targets, json default_value = nullptr, ARGS&&... args) noexcept
@@ -50,7 +50,7 @@ struct AttributeProperties
 		(this->Set(std::forward<ARGS>(args)), ...);
 	}
 
-	std::expected<void, std::string> Validate(json const& attr_value, Declaration const& decl) const;
+	tl::expected<void, std::string> Validate(json const& attr_value, Declaration const& decl) const;
 
 	void Set(AttributeValidatorFunc validator) { this->Validator = std::move(validator); }
 	void Set(enum_flags<AttributePropertyFlags> flags) { this->Flags += flags; }

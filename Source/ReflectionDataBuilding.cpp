@@ -87,6 +87,7 @@ bool CreateReflectorDatabaseArtifact(ArtifactArgs args)
 	
 	database_file.WriteLine("#include <iostream>");
 	database_file.WriteLine("#include \"Reflector.h\"");
+	database_file.WriteLine("#include \"ReflectorUtils.h\"");
 
 	database_file.WriteLine("#include \"Includes.reflect.h\"");
 
@@ -100,7 +101,7 @@ bool CreateReflectorDatabaseArtifact(ArtifactArgs args)
 	}
 
 	database_file.StartBlock("namespace Reflector {{");
-	database_file.StartBlock("::Reflector::ClassReflectionData const* Classes[] = {{");
+	database_file.StartBlock("::Reflector::Class const* Classes[] = {{");
 	for (const auto& mirror : GetMirrors())
 	{
 		for (auto& klass : mirror->Classes)
@@ -110,7 +111,7 @@ bool CreateReflectorDatabaseArtifact(ArtifactArgs args)
 	}
 	database_file.WriteLine("nullptr");
 	database_file.EndBlock("}};");
-	database_file.StartBlock("::Reflector::EnumReflectionData const* Enums[] = {{");
+	database_file.StartBlock("::Reflector::Enum const* Enums[] = {{");
 	for (const auto& mirror : GetMirrors())
 	{
 		for (auto& henum : mirror->Enums)
@@ -212,7 +213,7 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 		WriteForwardDeclaration(klass);
 	}
 	/// TODO: Make the name of this function configurable?
-	output.WriteLine("::Reflector::ClassReflectionData const& StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
+	output.WriteLine("::Reflector::Class const& StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
 
 	/// ///////////////////////////////////// ///
 	/// Visitor macros
@@ -304,6 +305,8 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 	{
 		output.WriteLine("using parent_type = {};", klass.BaseClass);
 		output.WriteLine("using parent_type::parent_type;");
+
+		output.WriteLine("[[no_unique_address]] ::Reflector::NUA _nua_for_{} = [](auto* me) {{ me->SetClass(&self_type::StaticGetReflectionData()); return 0; }}(this);", klass.FullName());
 	}
 	else
 	{
@@ -328,7 +331,7 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 		output.WriteLine("template <typename PROXY_OBJ> using proxy_class = {0}{1}<{0}, PROXY_OBJ>;", klass.FullType(), options.Names.ProxyClassSuffix);
 	
 	/// Flags
-	/// TODO: Should these be exposed as well as a virtual method? I don't think so, these are in ClassReflectionData, right? (CHECK)
+	/// TODO: Should these be exposed as well as a virtual method? I don't think so, these are in Class, right? (CHECK)
 	output.WriteLine("static constexpr unsigned long long StaticClassFlags() {{ return {}; }}", klass.Flags.bits);
 
 	/// Other body lines
@@ -339,11 +342,11 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 	/// Reflection Data Method
 	/// ///////////////////////////////////// ///
 
-	output.WriteLine("static ::Reflector::ClassReflectionData const& StaticGetReflectionData() {{ return StaticGetReflectionData_For_{}(); }}", klass.GeneratedUniqueName());
+	output.WriteLine("static ::Reflector::Class const& StaticGetReflectionData() {{ return StaticGetReflectionData_For_{}(); }}", klass.GeneratedUniqueName());
 
 	if (!klass.BaseClass.empty())
 	{
-		output.WriteLine("virtual ::Reflector::ClassReflectionData const& GetReflectionData() const {{ return StaticGetReflectionData(); }}");
+		output.WriteLine("virtual ::Reflector::Class const& GetReflectionData() const {{ return StaticGetReflectionData(); }}");
 	}
 
 	/// ///////////////////////////////////// ///
@@ -441,9 +444,9 @@ bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 	WriteForwardDeclaration(henum);
 
 	/// TODO: Make the name of this function configurable
-	output.WriteLine("extern ::Reflector::EnumReflectionData const& StaticGetReflectionData_For_{}();", henum.GeneratedUniqueName());
+	output.WriteLine("extern ::Reflector::Enum const& StaticGetReflectionData_For_{}();", henum.GeneratedUniqueName());
 	output.StartBlock("namespace Reflector {{");
-	output.WriteLine("template <> inline ::Reflector::EnumReflectionData const& GetEnumReflectionData<{}>() {{ return StaticGetReflectionData_For_{}(); }}", henum.FullType(), henum.GeneratedUniqueName());
+	output.WriteLine("template <> inline ::Reflector::Enum const& GetEnumReflectionData<{}>() {{ return StaticGetReflectionData_For_{}(); }}", henum.FullType(), henum.GeneratedUniqueName());
 	output.WriteLine("template <> constexpr bool IsReflectedEnum<{}>() {{ return true; }}", henum.FullType());
 	output.EndBlock("}}");
 
@@ -687,8 +690,8 @@ void OutputContext::WriteForwardDeclaration(const Enum& henum)
 
 void OutputContext::BuildStaticReflectionData(const Enum& henum)
 {
-	output.StartBlock("::Reflector::EnumReflectionData const& StaticGetReflectionData_For_{}() {{", henum.GeneratedUniqueName());
-	output.StartBlock("static const ::Reflector::EnumReflectionData _data = {{");
+	output.StartBlock("::Reflector::Enum const& StaticGetReflectionData_For_{}() {{", henum.GeneratedUniqueName());
+	output.StartBlock("static const ::Reflector::Enum _data = {{");
 
 	output.WriteLine(".Name = \"{}\",", henum.Name);
 	output.WriteLine(".FullType = \"{}\",", henum.FullType());
@@ -712,7 +715,7 @@ void OutputContext::BuildStaticReflectionData(const Enum& henum)
 
 void OutputContext::BuildStaticReflectionData(const Class& klass)
 {
-	output.WriteLine("static_assert(!::Reflector::reflectable_class<{0}> || ::Reflector::reflectable_class<{0}::parent_type>, \"Base class of {0} ({1}) must also be reflectable (marked with RClass+RBody)\");", klass.FullType(), klass.BaseClass);
+	output.WriteLine("static_assert(!::Reflector::derives_from_reflectable<{0}> || ::Reflector::derives_from_reflectable<{0}::parent_type>, \"Base class of {0} ({1}) must also be reflectable (marked with RClass+RBody)\");", klass.FullType(), klass.BaseClass);
 
 	if (options.AddGCFunctionality)
 	{
@@ -729,8 +732,6 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 		/// TODO: call this->BeforeSerialize(src_object);, etc
 
 		output.WriteLine();
-		output.WriteLine("auto const& _class_reflect_data = ::StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
-		size_t i = 0;
 		for (auto& field : klass.Fields)
 		{
 			if (field->Flags.contain(FieldFlags::NoLoad))
@@ -760,8 +761,6 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 			output.EndBlock("}}");
 
 			output.WriteLine();
-
-			++i;
 		}
 		output.EndBlock("}}");
 
@@ -769,8 +768,7 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 		output.StartBlock("void {}::JSONSaveFields({}& dest_object) const {{", klass.FullType(), options.JSON.Type);
 		if (!klass.BaseClass.empty())
 			output.WriteLine("{}::parent_type::JSONSaveFields(dest_object);", klass.FullType());
-		output.WriteLine("auto const& _class_reflect_data = ::StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
-		i = 0;
+
 		for (auto& field : klass.Fields)
 		{
 			if (field->Flags.contain(FieldFlags::NoSave))
@@ -792,14 +790,12 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 				output.EndBlock("}} while (false);");
 
 			output.WriteLine();
-
-			++i;
 		}
 		output.EndBlock("}}");
 	}
 
-	output.StartBlock("::Reflector::ClassReflectionData const& StaticGetReflectionData_For_{}() {{", klass.GeneratedUniqueName());
-	output.StartBlock("static const ::Reflector::ClassReflectionData _data = {{");
+	output.StartBlock("::Reflector::Class const& StaticGetReflectionData_For_{}() {{", klass.GeneratedUniqueName());
+	output.StartBlock("static const ::Reflector::Class _data = {{");
 	output.WriteLine(".Name = \"{}\",", klass.Name);
 	output.WriteLine(".FullType = \"{}\",", klass.FullType());
 
@@ -846,7 +842,7 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 	output.StartBlock(".Methods = {{");
 	for (auto& method : klass.Methods)
 	{
-		output.StartBlock("::Reflector::MethodReflectionData {{");
+		output.StartBlock("::Reflector::Method {{");
 		output.WriteLine(".Name = \"{}\",", method->Name);
 		output.WriteLine(".ReturnType= \"{}\",", method->Return.Name);
 		if (!method->GetParameters().empty())

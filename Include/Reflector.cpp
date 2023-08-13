@@ -30,18 +30,18 @@ namespace Reflector
 #endif
 	}
 
-	void* ClassReflectionData::Alloc() const
+	void* Class::Alloc() const
 	{
 		return AlignedAlloc(Alignment, Size);
 	}
 
-	void ClassReflectionData::Delete(void* obj) const
+	void Class::Delete(void* obj) const
 	{
 		Destructor(obj);
 		AlignedFree(obj);
 	}
 
-	void* ClassReflectionData::NewDefault(void* at) const
+	void* Class::NewDefault(void* at) const
 	{
 		if (at && DefaultConstructor)
 		{
@@ -51,31 +51,31 @@ namespace Reflector
 		return nullptr;
 	}
 
-	auto ClassReflectionData::FindField(std::string_view name) const -> FieldReflectionData const*
+	auto Class::FindField(std::string_view name) const -> Field const*
 	{
 		for (auto& field : Fields)
 			if (field.Name == name) return &field;
 		return nullptr;
 	}
 
-	auto ClassReflectionData::FindFirstMethod(std::string_view name) const -> MethodReflectionData const*
+	auto Class::FindFirstMethod(std::string_view name) const -> Method const*
 	{
 		for (auto& method : Methods)
 			if (method.Name == name) return &method;
 		return nullptr;
 	}
 
-	auto ClassReflectionData::FindAllMethods(std::string_view name) const -> std::vector<MethodReflectionData const*>
+	auto Class::FindAllMethods(std::string_view name) const -> std::vector<Method const*>
 	{
-		std::vector<MethodReflectionData const*> result;
+		std::vector<Method const*> result;
 		for (auto& method : Methods)
 			if (method.Name == name) result.push_back(&method);
 		return result;
 	}
 
-	ClassReflectionData const& Reflectable::StaticGetReflectionData()
+	Class const& Reflectable::StaticGetReflectionData()
 	{
-		static const ClassReflectionData data = {
+		static const Class data = {
 			.Name = "Reflectable",
 			.FullType = "Reflector::Reflectable",
 			.BaseClassName = "",
@@ -91,7 +91,7 @@ namespace Reflector
 		return data;
 	}
 
-	ClassReflectionData const& Reflectable::GetReflectionData() const
+	Class const& Reflectable::GetReflectionData() const
 	{
 		return StaticGetReflectionData();
 	}
@@ -100,10 +100,10 @@ namespace Reflector
 
 	std::unordered_set<Reflectable*> mExtantObjects;
 	/// TODO: Force RootSet items to always be in Objects, as serializing depends on it
-	std::unordered_map<ClassReflectionData const*, std::vector<Reflectable*>> mFreeLists;
+	std::unordered_map<Class const*, std::vector<Reflectable*>> mFreeLists;
 	size_t mAllocatedBytes = 0;
 	size_t mFreeListBytes = 0;
-	std::unordered_map<intptr_t, std::pair<Reflectable*, ClassReflectionData const*>> mLoadingMapping;
+	std::unordered_map<intptr_t, std::pair<Reflectable*, Class const*>> mLoadingMapping;
 	bool mLoadingHeap = false;
 
 	std::map<std::string, Reflectable*, std::less<>> mRoots;
@@ -150,7 +150,7 @@ namespace Reflector
 	}
 
 	/*
-	Reflectable* Heap::New(ClassReflectionData const* type)
+	Reflectable* Heap::New(Class const* type)
 	{
 		Reflectable* result = Alloc(type);
 		type->DefaultConstructor(result);
@@ -184,7 +184,7 @@ namespace Reflector
 		mAllocatedBytes = 0;
 	}
 
-	Reflectable* Heap::Alloc(ClassReflectionData const* klass_data)
+	Reflectable* Heap::Alloc(Class const* klass_data)
 	{
 		void* result = nullptr;
 
@@ -282,7 +282,7 @@ namespace Reflector
 	}
 
 
-	void Heap::ResolveHeapObject(ClassReflectionData const* base_type, Reflectable const*& p, std::string_view obj_type, intptr_t obj_id)
+	void Heap::ResolveHeapObject(Class const* base_type, Reflectable const*& p, std::string_view obj_type, intptr_t obj_id)
 	{
 		const auto actual_type = FindClassByFullType(obj_type);
 		assert(actual_type);

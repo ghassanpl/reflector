@@ -10,14 +10,13 @@
 #include <vector>
 #if defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L && __has_include(<expected>)
 #include <expected>
-using std::expected;
-using std::unexpected;
+namespace tl
+{
+	using std::expected;
+	using std::unexpected;
+}
 #else
 #include <tl/expected.hpp>
-namespace std { /// NOTE: Undefined behavior, technically
-	using tl::expected;
-	using tl::unexpected;
-}
 #endif
 #include <nlohmann/json.hpp>
 #include <ghassanpl/enum_flags.h>
@@ -388,7 +387,7 @@ struct Property : MemberDeclaration<Class>
 
 	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Property; }
 
-	virtual std::string MakeLink(LinkFlags flags = {}) const;
+	virtual std::string MakeLink(LinkFlags flags = {}) const override;
 };
 
 struct Class : public TypeDeclaration
@@ -460,7 +459,7 @@ struct Class : public TypeDeclaration
 	{
 		std::vector<Class const*> result;
 		auto current = this;
-		while (current = FindClassByPossiblyQualifiedName(current->BaseClass, current))
+		while ((current = FindClassByPossiblyQualifiedName(current->BaseClass, current)))
 		{
 			result.push_back(current);
 		}

@@ -3,9 +3,9 @@
 
 #include <fstream>
 #include <sstream>
-#include <xxhash.h>
 #include <ghassanpl/mmap.h>
 #include <ghassanpl/mmap_impl.h>
+#include <ghassanpl/hashes.h>
 
 void FileWriter::WriteLine()
 {
@@ -24,8 +24,8 @@ bool FileWriter::FilesAreDifferent(path const& f1, path const& f2)
 	const auto f1map = ghassanpl::make_mmap_source<char>(f1);
 	const auto f2map = ghassanpl::make_mmap_source<char>(f2);
 
-	const auto h1 = XXH64(f1map.data(), f1map.size(), 0);
-	const auto h2 = XXH64(f2map.data(), f2map.size(), 0);
+	const auto h1 = ghassanpl::fnv(f1map);
+	const auto h2 = ghassanpl::fnv(f2map);
 	return h1 != h2;
 }
 
@@ -121,8 +121,8 @@ bool Artifactory::Write(path const& target_path, std::string contents) const
 
 			return true;
 			/*/
-			const auto h1 = XXH64(contents.data(), contents.size(), 0);
-			const auto h2 = XXH64(target_file_map.data(), target_file_map.size(), 0);
+			const auto h1 = ghassanpl::fnv(contents);
+			const auto h2 = ghassanpl::fnv(target_file_map);
 			return h1 != h2;
 			//*/
 		}();

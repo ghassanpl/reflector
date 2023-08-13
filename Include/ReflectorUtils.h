@@ -19,8 +19,8 @@ namespace Reflector
 		static_assert(reflected_class<REFLECTABLE_TYPE> || reflected_enum<REFLECTABLE_TYPE>, "Type must be marked as reflectable");
 	}
 
-	extern ClassReflectionData const* Classes[];
-	extern EnumReflectionData const* Enums[];
+	extern Class const* Classes[];
+	extern Enum const* Enums[];
 
 	template <typename FUNC>
 	void ForEachClass(FUNC&& func)
@@ -29,7 +29,7 @@ namespace Reflector
 			func(*klass);
 	}
 
-	inline ClassReflectionData const* FindClassByFullType(std::string_view class_name)
+	inline Class const* FindClassByFullType(std::string_view class_name)
 	{
 		for (auto klass = Classes; *klass; ++klass)
 		{
@@ -51,7 +51,7 @@ namespace Reflector
 
 	
 	template<typename T>
-	auto ClassReflectionData::FindFirstFieldByType() const -> FieldReflectionData const*
+	auto Class::FindFirstFieldByType() const -> Field const*
 	{
 		for (auto& field : Fields)
 			if (field.FieldTypeIndex == typeid(T)) return &field;
@@ -59,14 +59,14 @@ namespace Reflector
 	}
 
 	template <typename FUNC>
-	void ClassReflectionData::ForAllMethodsWithName(std::string_view name, FUNC&& func) const
+	void Class::ForAllMethodsWithName(std::string_view name, FUNC&& func) const
 	{
 		for (auto& method : Methods)
 			if (method.Name == name) func(method);
 	}
 
 	template <typename... ARGS>
-	auto ClassReflectionData::FindMethod(std::string_view name, std::type_identity<std::tuple<ARGS...>>) const -> MethodReflectionData const*
+	auto Class::FindMethod(std::string_view name, std::type_identity<std::tuple<ARGS...>>) const -> Method const*
 	{
 		static const std::vector<std::type_index> parameter_ids = { std::type_index{typeid(ARGS)}... };
 		for (auto& method : Methods)

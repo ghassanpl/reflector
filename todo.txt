@@ -16,3 +16,12 @@ documentation pages based on its own criteria
   * The builder (based on a plugin architecture) will take the parsed data and actually output mirror files, and potentially other files (e.g. documentation)
   * The CLI tool will use the above to do what `reflector` does now
 * Add options to disable the generation of `ReflectionData` objects, and to create `constexpr` functions instead
+
+
+    0x0000000100000000 - Supports editor undo/redo. (RF_Transactional)
+    0x0000000400000000 - Can be referenced by external files. (RF_Public)
+    0x0000400000000000 - Cannot be saved to disk. (RF_Transient)
+    0x0010000000000000 - Don't load object on the game client. (RF_NotForClient)
+    0x0020000000000000 - Don't load object on the game server. (RF_NotForServer)
+    0x0040000000000000 - Don't load object in the editor. (RF_NotForEdit)
+    0x0008000000000000 - Keep object around for editing even if unreferenced. (RF_Standalone) 

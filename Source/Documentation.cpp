@@ -161,7 +161,7 @@ struct DocumentationGenerator
 				}
 			}
 			if (!doc_notes_str.empty())
-				comment_lines.push_back(move(doc_notes_str));
+				comment_lines.push_back(std::move(doc_notes_str));
 		}
 
 		/// Add comments from entity comments (first paragraph only, if requested)
