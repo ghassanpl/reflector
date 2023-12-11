@@ -231,6 +231,9 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Ideas\DI.cpp" />
+    <ClCompile Include="Ideas\ECS.cpp" />
+    <ClCompile Include="Ideas\Hierarchies.cpp" />
     <ClCompile Include="Ideas\RandomIdeas.cpp" />
     <ClCompile Include="Ideas\RPC.cpp" />
     <ClCompile Include="Ideas\States.cpp" />

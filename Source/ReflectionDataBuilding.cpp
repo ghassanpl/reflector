@@ -170,7 +170,9 @@ bool CreateIncludeListArtifact(ArtifactArgs args)
 	for (const auto& mirror : GetMirrors())
 	{
 		/// TODO: Make these relative
-		out.WriteLine("#include \"{}\"", mirror->SourceFilePath.string());
+		auto relative = mirror->SourceFilePath.lexically_relative(args.TargetPath.parent_path());
+		//out.WriteLine("#include \"{}\"", mirror->SourceFilePath.string());
+		out.WriteLine("#include \"{}\"", relative.string());
 	}
 	return true;
 }
@@ -247,8 +249,8 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 		
 		const auto method_pointer = std::format("({})&{}::{}", method->GetSignature(klass), klass_full_type, method->Name);
 		const auto parameter_tuple = std::format("::std::tuple<{}>", method->ParametersTypesOnly);
-		const auto compile_time_method_data = std::format("::Reflector::CompileTimeMethodData<{0}, {1}, {2}, {3}, {4}, decltype({5}), {5}>", 
-			method->Return.Name, parameter_tuple, klass_full_type, method->Flags.bits, BuildCompileTimeLiteral(method->Name), method_pointer
+		const auto compile_time_method_data = std::format("::Reflector::CompileTimeMethodData<{0}, {1}, {2}, {3}, {4}, decltype({5}), {5}, ::Reflector::AccessMode::{6}>", 
+			method->Return.Name, parameter_tuple, klass_full_type, method->Flags.bits, BuildCompileTimeLiteral(method->Name), method_pointer, magic_enum::enum_name(method->Access)
 		);
 
 		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", method->Name) : std::string{};
@@ -306,7 +308,7 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 		output.WriteLine("using parent_type = {};", klass.BaseClass);
 		output.WriteLine("using parent_type::parent_type;");
 
-		output.WriteLine("[[no_unique_address]] ::Reflector::NUA _nua_for_{} = [](auto* me) {{ me->SetClass(&self_type::StaticGetReflectionData()); return 0; }}(this);", klass.FullName());
+		//output.WriteLine("[[no_unique_address]] ::Reflector::NUA _nua_for_{} = [](auto* me) {{ me->SetClass(&self_type::StaticGetReflectionData()); return 0; }}(this);", klass.FullName());
 	}
 	else
 	{
@@ -353,10 +355,18 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 	/// Visitor methods
 	/// ///////////////////////////////////// ///
 
-	output.WriteLine("template <typename VISITOR> static void ForEachMethod(VISITOR&& visitor) {{ {}_VISIT_{}_METHODS(visitor); }}", options.MacroPrefix, klass.FullName());
-	output.WriteLine("template <typename VISITOR> static void ForEachField(VISITOR&& visitor) {{ {}_VISIT_{}_FIELDS(visitor); }}", options.MacroPrefix, klass.FullName());
-	output.WriteLine("template <typename VISITOR> static void ForEachProperty(VISITOR&& visitor) {{ {}_VISIT_{}_PROPERTIES(visitor); }}", options.MacroPrefix, klass.FullName());
-
+	if (klass.BaseClass.empty())
+	{
+		output.WriteLine("template <typename VISITOR> static void ForEachMethod(VISITOR&& visitor) {{ {}_VISIT_{}_METHODS(visitor); }}", options.MacroPrefix, klass.FullName());
+		output.WriteLine("template <typename VISITOR> static void ForEachField(VISITOR&& visitor) {{ {}_VISIT_{}_FIELDS(visitor); }}", options.MacroPrefix, klass.FullName());
+		output.WriteLine("template <typename VISITOR> static void ForEachProperty(VISITOR&& visitor) {{ {}_VISIT_{}_PROPERTIES(visitor); }}", options.MacroPrefix, klass.FullName());
+	}
+	else
+	{
+		output.WriteLine("template <typename VISITOR> static void ForEachMethod(VISITOR&& visitor) {{ parent_type::ForEachMethod(visitor); {}_VISIT_{}_METHODS(visitor); }}", options.MacroPrefix, klass.FullName());
+		output.WriteLine("template <typename VISITOR> static void ForEachField(VISITOR&& visitor) {{ parent_type::ForEachField(visitor); {}_VISIT_{}_FIELDS(visitor); }}", options.MacroPrefix, klass.FullName());
+		output.WriteLine("template <typename VISITOR> static void ForEachProperty(VISITOR&& visitor) {{ parent_type::ForEachProperty(visitor); {}_VISIT_{}_PROPERTIES(visitor); }}", options.MacroPrefix, klass.FullName());
+	}
 	if (options.AddGCFunctionality)
 	{
 		/// - Mark
@@ -691,6 +701,7 @@ void OutputContext::WriteForwardDeclaration(const Enum& henum)
 void OutputContext::BuildStaticReflectionData(const Enum& henum)
 {
 	output.StartBlock("::Reflector::Enum const& StaticGetReflectionData_For_{}() {{", henum.GeneratedUniqueName());
+	output.WriteLine("using namespace {};", henum.Namespace);
 	output.StartBlock("static const ::Reflector::Enum _data = {{");
 
 	output.WriteLine(".Name = \"{}\",", henum.Name);
@@ -710,7 +721,7 @@ void OutputContext::BuildStaticReflectionData(const Enum& henum)
 	output.EndBlock("}}; return _data;");
 	output.EndBlock("}}");
 
-	output.WriteLine("std::ostream& operator<<(std::ostream& strm, {} v) {{ strm << GetEnumeratorName(v); return strm; }}", henum.Name);
+	output.WriteLine("std::ostream& operator<<(std::ostream& strm, {} v) {{ strm << GetEnumeratorName(v); return strm; }}", henum.FullType());
 }
 
 void OutputContext::BuildStaticReflectionData(const Class& klass)
@@ -789,12 +800,15 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 			if (check_for_init_value)
 				output.EndBlock("}} while (false);");
 
-			output.WriteLine();
+			//output.WriteLine();
 		}
+		if (!klass.BaseClass.empty())
+			output.WriteLine("dest_object[\"{}\"] = \"{}\";", options.JSON.ObjectTypeFieldName, klass.FullType());
 		output.EndBlock("}}");
 	}
 
 	output.StartBlock("::Reflector::Class const& StaticGetReflectionData_For_{}() {{", klass.GeneratedUniqueName());
+	output.WriteLine("using namespace {};", klass.Namespace);
 	output.StartBlock("static const ::Reflector::Class _data = {{");
 	output.WriteLine(".Name = \"{}\",", klass.Name);
 	output.WriteLine(".FullType = \"{}\",", klass.FullType());
@@ -822,6 +836,7 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 	{
 		output.StartBlock("{{");
 		output.WriteLine(".Name = \"{}\",", field->Name);
+		output.WriteLine(".DisplayName = \"{}\",", field->DisplayName);
 		output.WriteLine(".FieldType = \"{}\",", field->Type);
 		if (!field->InitializingExpression.empty())
 			output.WriteLine(".Initializer = {},", EscapeString(field->InitializingExpression));

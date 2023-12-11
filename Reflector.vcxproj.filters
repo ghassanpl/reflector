@@ -60,6 +60,15 @@
     <ClCompile Include="Ideas\RPC.cpp">
       <Filter>Source Files\Ideas</Filter>
     </ClCompile>
+    <ClCompile Include="Ideas\ECS.cpp">
+      <Filter>Source Files\Ideas</Filter>
+    </ClCompile>
+    <ClCompile Include="Ideas\DI.cpp">
+      <Filter>Source Files\Ideas</Filter>
+    </ClCompile>
+    <ClCompile Include="Ideas\Hierarchies.cpp">
+      <Filter>Source Files\Ideas</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Include\ReflectorClasses.h">

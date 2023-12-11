@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang='en'>
 	<head>
-		<title>Options::GenerateAccessorsForPublicFields Field - Documentation</title>
+		<title>JSONOptions::ObjectTypeFieldName Field - Documentation</title>
 		<link rel="stylesheet" href="style.css" />
 		<link rel="stylesheet" href="https://microsoft.github.io/vscode-codicons/dist/codicon.css" />
 		<script src="https://cdn.jsdelivr.net/gh/MarketingPipeline/Markdown-Tag/markdown-tag.js"></script>
@@ -10,16 +10,17 @@
 	</head>
 	<body>
 		<div class='breadcrumbs' id='breadcrumbs'>
-		<a href='Types.html'>Types</a> / <i class="codicon codicon-symbol-class"></i><small class='specifiers'></small><a href='Options.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>Options<small class='specifiers'></small></a><small class='membertype'></small> / <i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.GenerateAccessorsForPublicFields.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>GenerateAccessorsForPublicFields<small class='specifiers'></small></a><small class='membertype'></small>
+		<a href='Types.html'>Types</a> / <i class="codicon codicon-symbol-class"></i><small class='specifiers'></small><a href='JSONOptions.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>JSONOptions<small class='specifiers'></small></a><small class='membertype'></small> / <i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='JSONOptions.ObjectTypeFieldName.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>ObjectTypeFieldName<small class='specifiers'></small></a><small class='membertype'></small>
 		</div>
-		<h1><pre class='entityname field'>Options::GenerateAccessorsForPublicFields</pre> Field</h1>
-		<code class='example language-cpp'>bool GenerateAccessorsForPublicFields = true;</code>
-		<md>Whether to create Set* and Get* methods for public fields.</md>
+		<h1><pre class='entityname field'>JSONOptions::ObjectTypeFieldName</pre> Field</h1>
+		<code class='example language-cpp'>std::string ObjectTypeFieldName = "$type";</code>
+		<md>The name of the field that holds the type name of the object stored
+when storing a polymorphic object</md>
 		<h2>Type</h2>
-		<pre class='membertype'><span class="hljs-keyword">bool</span></pre>
+		<pre class='membertype'><span class="hljs-type">string</span></pre>
 		<h2>Details</h2>
 		<ul class='desclist'>
-			<li><b>Declaration</b>: <a href='file:///Q:\Code\Native\Reflector\Reflector\Source\Options.h#267' class='srclink'>Options.h at line 267</a></li>
+			<li><b>Declaration</b>: <a href='file:///Q:\Code\Native\Reflector\Reflector\Source\Options.h#54' class='srclink'>Options.h at line 54</a></li>
 			<li><b>Flags</b>: <a href='Reflector.FieldFlags.html#NoSetter'>NoSetter</a>, <a href='Reflector.FieldFlags.html#NoGetter'>NoGetter</a></li>
 			<li><b>Attributes</b>: <code class='language-json'>{"Getter":false,"Setter":false}</code></li>
 		</ul>

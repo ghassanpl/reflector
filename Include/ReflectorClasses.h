@@ -26,6 +26,8 @@ namespace Reflector
 	struct Field;
 	struct Method;
 
+	enum class AccessMode { Unspecified, Public, Private, Protected };
+
 	template<size_t N>
 	struct CompileTimeLiteral
 	{
@@ -47,6 +49,9 @@ namespace Reflector
 
 		template <typename FLAG_TYPE>
 		static constexpr bool HasFlag(FLAG_TYPE flag_value) noexcept { return (Flags & (1ULL << uint64_t(flag_value))) != 0; }
+
+		template <typename TYPE>
+		static constexpr bool IsType() noexcept { return std::is_same_v<TYPE, FIELD_TYPE>; }
 	};
 	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER>
 	struct CompileTimeFieldData : CompileTimePropertyData<FIELD_TYPE, PARENT_TYPE, FLAGS, NAME_CTL>
@@ -90,7 +95,7 @@ namespace Reflector
 		static auto VoidSetter(void* obj, void const* value) -> void { (obj->*Pointer) = reinterpret_cast<FIELD_TYPE const*>(value); };
 	};
 
-	template <typename RETURN_TYPE, typename PARAMETER_TUPLE_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER>
+	template <typename RETURN_TYPE, typename PARAMETER_TUPLE_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER, AccessMode ACCESS_MODE>
 	struct CompileTimeMethodData
 	{
 		static constexpr uint64_t Flags = FLAGS;
@@ -105,6 +110,7 @@ namespace Reflector
 		using ParameterType = std::tuple_element_t<INDEX, PARAMETER_TUPLE_TYPE>;
 		using PointerType = PTR_TYPE;
 		static constexpr PointerType Pointer = POINTER;
+		static constexpr AccessMode Access = ACCESS_MODE;
 
 		template <typename... GIVEN_ARG_TYPES>
 		static constexpr bool CanTake()
@@ -253,6 +259,7 @@ namespace Reflector
 	struct Field
 	{
 		std::string_view Name = "";
+		std::string_view DisplayName = "";
 		std::string_view FieldType = "";
 		std::string_view Initializer = "";
 		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
@@ -360,6 +367,11 @@ namespace Reflector
 
 		virtual Class const& GetReflectionData() const;
 		static Class const& StaticGetReflectionData();
+		Class const* GetRuntimeClass() const { return mClass_; }
+
+		template <typename VISITOR> static void ForEachMethod(VISITOR&& visitor) { }
+		template <typename VISITOR> static void ForEachField(VISITOR&& visitor) { }
+		template <typename VISITOR> static void ForEachProperty(VISITOR&& visitor) { }
 
 		template <typename T> bool Is() const { return dynamic_cast<T const*>(this) != nullptr; }
 		template <typename T> T const* As() const { return dynamic_cast<T const*>(this); }
@@ -400,7 +412,6 @@ namespace Reflector
 			std::cout<<std::format("Setting class of object to {}\n", klass->Name);
 			mClass_ = klass;
 		}
-		Class const* GetRuntimeClass() const { return mClass_; }
 		
 #if defined(REFLECTOR_USES_GC) && REFLECTOR_USES_GC
 

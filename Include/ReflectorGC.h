@@ -104,7 +104,10 @@ namespace Reflector
 		{
 			static_assert(derives_from_reflectable<T>, "Only reflectable classes can be New()ed");
 
-			return (T*)Add(new (Alloc<T>()) T(std::forward<ARGS>(args)...));
+			if constexpr (sizeof...(ARGS) > 0)
+				return (T*)Add(new (Alloc<T>()) T(std::forward<ARGS>(args)...));
+			else
+				return (T*)Add(new (Alloc<T>()) T);
 		}
 
 		template <typename T>

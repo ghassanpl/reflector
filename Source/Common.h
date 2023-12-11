@@ -70,7 +70,7 @@ void Print(std::string_view fmt, ARGS&&... args)
 std::string EscapeJSON(json const& json);
 std::string EscapeString(std::string_view str);
 
-enum class AccessMode { Unspecified, Public, Private, Protected };
+using Reflector::AccessMode;
 std::string FormatAccess(AccessMode mode);
 
 static constexpr const char* AMStrings[] = { "Unspecified", "Public", "Private", "Protected" };

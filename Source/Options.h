@@ -48,6 +48,11 @@ struct JSONOptions
 	/// Toggles generation of JSON serialization methods for reflected classes
 	RField();
 	bool GenerateSerializationMethods = true;
+
+	/// The name of the field that holds the type name of the object stored
+	/// when storing a polymorphic object
+	RField();
+	std::string ObjectTypeFieldName = "$type";
 };
 
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
@@ -261,6 +266,10 @@ struct Options
 	/// Whether to create Set* and Get* methods for public fields.
 	RField();
 	bool GenerateAccessorsForPublicFields = true;
+
+	/// Whether to create property entries for public fields.
+	RField();
+	bool GeneratePropertiesForPublicFields = false;
 
 	//bool GenerateLuaFunctionBindings = false; /// Maybe instead of Lua function bindings, since this options is loaded from a JSON, we can have a nice JSON structure that defines how to create scripting bindings?
 

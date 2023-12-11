@@ -186,20 +186,21 @@ namespace Reflector
 
 	Reflectable* Heap::Alloc(Class const* klass_data)
 	{
-		void* result = nullptr;
+		void* result_alloc = nullptr;
 
 		if (auto listit = mFreeLists.find(klass_data); listit != mFreeLists.end() && !listit->second.empty())
 		{
-			result = listit->second.back();
+			result_alloc = listit->second.back();
 			listit->second.pop_back();
 		}
 		else
 		{
-			result = klass_data->Alloc();
+			result_alloc = klass_data->Alloc();
 		}
 
-		::memset(result, 0, klass_data->Size);
-		return new (result) Reflectable(*klass_data, (1ULL << int(Reflectable::Flags::OnHeap)));
+		::memset(result_alloc, 0, klass_data->Size);
+		Reflectable* result = new (result_alloc) Reflectable(*klass_data, (1ULL << int(Reflectable::Flags::OnHeap)));
+		return result;
 	}
 
 #if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)

@@ -144,6 +144,15 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 		std::format("the value of the `{}` private field of this object", DisplayName) :
 		std::format("the value of the {} field of this object", MakeLink());
 
+	Property* property_for_field = nullptr;
+	if (
+		(Flags.is_set(Reflector::FieldFlags::DeclaredPrivate) || options.GeneratePropertiesForPublicFields)
+		&& !Flags.contains_all_of(FieldFlags::NoGetter, FieldFlags::NoSetter))
+	{
+		property_for_field = &ParentType->EnsureProperty(CleanName);
+		if (property_for_field->Type.empty()) property_for_field->Type = Type;
+	}
+
 	/// Getters and Setters
 	if (!Flags.is_set(Reflector::FieldFlags::NoGetter))
 	{
@@ -151,15 +160,23 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 		auto getter = AddArtificialMethod("Getter", Type + " const&", options.Names.GetterPrefix + CleanName, "", "return this->" + Name + ";", {"Gets " + field_comments},
 			{Const, Noexcept, NoDiscard});
 		AddDocNote("Getter", "The value of this field is retrieved by the {} method.", getter->MakeLink());
+
+		if (property_for_field)
+			property_for_field->Getter = getter;
 	}
 
 	if (!Flags.is_set(Reflector::FieldFlags::NoSetter))
 	{
 		auto on_change = Attribute::OnChange(*this);
-		auto setter = AddArtificialMethod("Setter", "void", options.Names.SetterPrefix + CleanName, Type + " const& value", "static_assert(std::is_copy_assignable_v<decltype(this->"+Name+")>, \"err\"); this->" + Name + " = value; " + on_change + ";", {"Sets " + field_comments}, {});
+		auto setter = AddArtificialMethod("Setter", "void", options.Names.SetterPrefix + CleanName, Type + " const& value", 
+			"static_assert(std::is_copy_assignable_v<decltype(this->"+Name+")>, \"err\"); this->" + Name + " = value; " + on_change + ";", 
+			{"Sets " + field_comments}, {});
 		AddDocNote("Setter", "The value of this field is set by the {} method.", setter->MakeLink());
 		if (!on_change.empty())
 			AddDocNote("On Change", "When this field is changed (via its setter and other such functions), the following code will be executed: `{}`", Escaped(on_change));
+
+		if (property_for_field)
+			property_for_field->Setter = setter;
 	}
 
 	if (Flags.is_set(Reflector::FieldFlags::NoEdit)) AddDocNote("Not Editable", "This field is not be editable in the editor.");
@@ -204,65 +221,77 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 		{
 			this->Parent()->ClassDeclaredFlags.emplace_back(enumerator->Name, this, enumerator.get());
 
-			AddArtificialMethod(format("FlagGetter.{}.{}", henum->FullName(), enumerator->Name), "bool", options.Names.IsPrefix + enumerator->Name, "", std::format("return (this->{} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator->Value),
+			AddArtificialMethod(format("FlagGetter.{}.{}", henum->FullName(), enumerator->Name), "bool", options.Names.IsPrefix + enumerator->Name, "", 
+				std::format("return (this->{} & {}{{{}}}) != 0;", Name, Type, 1ULL << enumerator->Value),
 				{ "Checks whether the " + enumerator->MakeLink() + " flag is set in " + MakeLink()}, enum_getter_flags);
 
 			if (auto opposite = Attribute::Opposite.SafeGet(*enumerator))
 			{
-				AddArtificialMethod(format("FlagOppositeGetter.{}.{}", henum->FullName(), enumerator->Name), "bool", options.Names.IsPrefix + *opposite, "", std::format("return (this->{} & {}{{{}}}) == 0;", Name, Type, 1ULL << enumerator->Value),
+				AddArtificialMethod(format("FlagOppositeGetter.{}.{}", henum->FullName(), enumerator->Name), "bool", options.Names.IsPrefix + *opposite, "", 
+					std::format("return (this->{} & {}{{{}}}) == 0;", Name, Type, 1ULL << enumerator->Value),
 					{ "Checks whether the " + enumerator->MakeLink()  + " flag is NOT set in " + MakeLink()}, enum_getter_flags);
 			}
 			else if (flag_nots)
 			{
-				AddArtificialMethod(format("FlagOppositeGetter.{}.{}", henum->FullName(), enumerator->Name), "bool", options.Names.IsNotPrefix + enumerator->Name, "", std::format("return (this->{} & {}{{{}}}) == 0;", Name, Type, 1ULL << enumerator->Value),
+				AddArtificialMethod(format("FlagOppositeGetter.{}.{}", henum->FullName(), enumerator->Name), "bool", options.Names.IsNotPrefix + enumerator->Name, "", 
+					std::format("return (this->{} & {}{{{}}}) == 0;", Name, Type, 1ULL << enumerator->Value),
 					{ "Checks whether the " + enumerator->MakeLink() + " flag is set in " + MakeLink()}, enum_getter_flags);
 			}
 		}
 
 		/// Setters
 		{
+			auto on_change = Attribute::OnChange(*this);
+
 			auto setter_access = do_setters ? AccessMode::Public : AccessMode::Protected;
 			for (auto& enumerator : henum->Enumerators)
 			{
-				AddArtificialMethod(format("FlagSetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.SetterPrefix + enumerator->Name, "", std::format("this->{} |= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
+				AddArtificialMethod(format("FlagSetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.SetterPrefix + enumerator->Name, "", 
+					std::format("this->{} |= {}{{{}}}; {};", Name, Type, 1ULL << enumerator->Value, on_change),
 					{ "Sets the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 				AddArtificialMethod(format("FlagSetterTo.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.SetterPrefix + enumerator->Name, "bool val",
-					std::format("val ? (this->{0} |= {1}{{{2}}}) : (this->{0} &= ~{1}{{{2}}});", Name, Type, 1ULL << enumerator->Value),
+					std::format("val ? (this->{0} |= {1}{{{2}}}) : (this->{0} &= ~{1}{{{2}}}); {3};", Name, Type, 1ULL << enumerator->Value, on_change),
 					{ "Sets or unsets the " + enumerator->MakeLink() + " flag in " + MakeLink() + " depending on the given value" }, enum_setter_flags)->Access = setter_access;
 
 				if (auto opposite = Attribute::Opposite.SafeGet(*enumerator))
 				{
-					AddArtificialMethod(format("FlagOppositeSetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.SetterPrefix + *opposite, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator->Value),
+					AddArtificialMethod(format("FlagOppositeSetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.SetterPrefix + *opposite, "", 
+						std::format("this->{} &= ~{}{{{}}}; {};", Name, Type, 1ULL << enumerator->Value, on_change),
 						{ "Clears the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 
 				}
 				else if (flag_nots)
 				{
-					AddArtificialMethod(format("FlagOppositeSetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.SetNotPrefix + enumerator->Name, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator->Value),
+					AddArtificialMethod(format("FlagOppositeSetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.SetNotPrefix + enumerator->Name, "", 
+						std::format("this->{} &= ~{}{{{}}}; {};", Name, Type, 1ULL << enumerator->Value, on_change),
 						{ "Clears the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 				}
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
-				AddArtificialMethod(format("FlagUnsetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.UnsetPrefix + enumerator->Name, "", std::format("this->{} &= ~{}{{{}}};", Name, Type, 1ULL << enumerator->Value),
+				AddArtificialMethod(format("FlagUnsetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.UnsetPrefix + enumerator->Name, "", 
+					std::format("this->{} &= ~{}{{{}}}; {};", Name, Type, 1ULL << enumerator->Value, on_change),
 					{ "Clears the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 
 
 				if (auto opposite = Attribute::Opposite.SafeGet(*enumerator))
 				{
-					AddArtificialMethod(format("FlagOppositeUnsetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.UnsetPrefix + *opposite, "", std::format("this->{} |= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
+					AddArtificialMethod(format("FlagOppositeUnsetter.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.UnsetPrefix + *opposite, "", 
+						std::format("this->{} |= {}{{{}}}; {};", Name, Type, 1ULL << enumerator->Value, on_change),
 						{ "Sets the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 
 				}
 			}
 			for (auto& enumerator : henum->Enumerators)
 			{
-				AddArtificialMethod(format("FlagToggler.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.TogglePrefix + enumerator->Name, "", std::format("this->{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
+				AddArtificialMethod(format("FlagToggler.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.TogglePrefix + enumerator->Name, "", 
+					std::format("this->{} ^= {}{{{}}}; {};", Name, Type, 1ULL << enumerator->Value, on_change),
 					{ "Toggles the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 
 				if (auto opposite = Attribute::Opposite.SafeGet(*enumerator))
 				{
-					AddArtificialMethod(format("FlagOppositeToggler.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.TogglePrefix + *opposite, "", std::format("this->{} ^= {}{{{}}};", Name, Type, 1ULL << enumerator->Value),
+					AddArtificialMethod(format("FlagOppositeToggler.{}.{}", henum->FullName(), enumerator->Name), "void", options.Names.TogglePrefix + *opposite, "", 
+						std::format("this->{} ^= {}{{{}}}; {};", Name, Type, 1ULL << enumerator->Value, on_change),
 						{ "Toggles the " + enumerator->MakeLink() + " flag in " + MakeLink() }, enum_setter_flags)->Access = setter_access;
 				}
 			}
