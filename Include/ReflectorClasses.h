@@ -163,7 +163,8 @@ namespace Reflector
 		Struct = MaxEntityFlags, /// TODO: Should we docnote this?
 		DeclaredStruct,          /// TODO: Should we docnote this?
 		NoConstructors,          /// TODO: Should we docnote this?
-		HasProxy
+		HasProxy,
+		NotSerializable,
 	};
 
 	void* AlignedAlloc(size_t alignment, size_t size);
@@ -221,10 +222,12 @@ namespace Reflector
 		}
 		*/
 
-		bool IsStruct() const { return (Flags & (1ULL << uint64_t(ClassFlags::Struct))) != 0; }
-		bool WasDeclaredStruct() const { return (Flags & (1ULL << uint64_t(ClassFlags::DeclaredStruct))) != 0; }
-		bool HasConstructors() const { return (Flags & (1ULL << uint64_t(ClassFlags::NoConstructors))) == 0; }
-		bool HasProxy() const { return (Flags & (1ULL << uint64_t(ClassFlags::HasProxy))) != 0; }
+		constexpr bool IsStruct() const { return (Flags & (1ULL << uint64_t(ClassFlags::Struct))) != 0; }
+		constexpr bool WasDeclaredStruct() const { return (Flags & (1ULL << uint64_t(ClassFlags::DeclaredStruct))) != 0; }
+		constexpr bool HasConstructors() const { return (Flags & (1ULL << uint64_t(ClassFlags::NoConstructors))) == 0; }
+		constexpr bool HasProxy() const { return (Flags & (1ULL << uint64_t(ClassFlags::HasProxy))) != 0; }
+		constexpr bool NotSerializable() const { return (Flags & (1ULL << uint64_t(ClassFlags::NotSerializable))) != 0; }
+		constexpr bool IsSerializable() const { return (Flags & (1ULL << uint64_t(ClassFlags::NotSerializable))) == 0; }
 	};
 
 	enum class EnumFlags
@@ -254,6 +257,8 @@ namespace Reflector
 		Static,
 		Mutable,
 		DeclaredPrivate,
+
+		BraceInitialized,
 	};
 
 	struct Field
@@ -390,7 +395,7 @@ namespace Reflector
 
 		}
 
-		virtual ~Reflectable() = default;
+		virtual ~Reflectable() noexcept = default;
 
 		constexpr auto operator<=>(Reflectable const&) const noexcept = default;
 

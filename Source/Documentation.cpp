@@ -68,7 +68,7 @@ struct HTMLFileWriter : public FileWriter
 	void StartTag(std::string tag_name, std::string_view fmt, ARGS&&... args)
 	{
 		TagStack.push_back(tag_name);
-		StartBlock("<{} {}>", tag_name, std::vformat(fmt, std::make_format_args(std::forward<ARGS>(args)...)));
+		StartBlock("<{} {}>", tag_name, std::vformat(fmt, std::make_format_args(args...)));
 	}
 
 	void StartTag(std::string tag_name)
@@ -96,7 +96,7 @@ struct DocumentationGenerator
 		: mOptions(options)
 	{
 		/// Load and create styles
-		const json default_styles = ghassanpl::formats::json::load_file(mOptions.GetExePath().parent_path() / "documentation_default_css.json");
+		const json default_styles = ghassanpl::formats::json::try_load_file(mOptions.GetExePath().parent_path() / "documentation_default_css.json");
 		styles = default_styles;
 		styles.update(mOptions.Documentation.AdditionalStyles, true);
 

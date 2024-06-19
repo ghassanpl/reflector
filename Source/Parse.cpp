@@ -41,7 +41,7 @@ std::string EscapeString(std::string_view string)
 
 uint64_t GenerateUID(std::filesystem::path const& file_path, size_t declaration_line)
 {
-	return ghassanpl::hash(file_path.string(), declaration_line);
+	return ghassanpl::hash64(file_path.string(), declaration_line);
 }
 
 bool SwallowOptional(string_view& str, string_view swallow)
@@ -91,7 +91,7 @@ void ParseCppAttributes(std::string_view& line, json& target_attrs)
 		if (consume(line, "("))
 		{
 			trim_whitespace_left(line);
-			entry = ghassanpl::formats::wilson::consume_word_or_string(line);
+			entry = ghassanpl::formats::wilson::consume_word_or_string(line).value_or("");
 			trim_whitespace_left(line);
 			std::ignore = consume(line, ")");
 			trim_whitespace_left(line);
@@ -195,7 +195,7 @@ json ParseAttributeList(string_view line)
 	line = TrimWhitespace(line);
 	if (line.empty())
 		return json::object();
-	auto result = ghassanpl::formats::wilson::consume_object(line, ')');
+	auto result = ghassanpl::formats::wilson::consume_object(line, ')').value_or(json{});
 	if (auto unsettable = AttributeProperties::FindUnsettable(result); !unsettable.empty())
 		throw std::runtime_error(format("The following attributes: '{}' cannot be set by the user, try using the C++ equivalents if applicable.", join(unsettable, ", ")));
 	return result;
@@ -445,6 +445,7 @@ ParsedFieldDecl ParseFieldDecl(string_view line)
 		type_and_name = TrimWhitespace(string_ops::make_sv(line.begin(), brace_start));
 		line = string_ops::make_sv(brace_start, line.end());
 		result.Initializer = ParseExpression(line);
+		result.Flags += FieldFlags::BraceInitialized;
 	}
 	else
 	{
@@ -527,6 +528,8 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 	/// Private implies Getter = false, Setter = false, Editor = false
 	if (Attribute::Private.GetOr(field, false))
 		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
+	if (Attribute::Transient.GetOr(field, false))
+		field.Flags.set(Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoSave, Reflector::FieldFlags::NoLoad);
 	if (Attribute::ScriptPrivate.GetOr(field, false))
 		field.Flags.set(Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
 
@@ -601,7 +604,7 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 
 	ParseCppAttributes(next_line, result->Attributes); /// Unfortunately, C++ attributes on functions can also be after the name: `void q [[ noreturn ]] (int i);`
 
-	if (!string_ops::contains(next_line, '('))
+	if (!string_ops::string_contains(next_line, '('))
 		throw std::runtime_error(std::format("Misformed method declaration"));
 
 	int num_pars = 0;
@@ -717,8 +720,13 @@ std::unique_ptr<Class> ParseClassDecl(FileMirror* mirror, string_view line, stri
 	klass.DefaultFieldAttributes = Attribute::DefaultFieldAttributes(klass, json::object());
 	klass.DefaultMethodAttributes = Attribute::DefaultMethodAttributes(klass, json::object());
 
+	/// TODO: This procedure doesn't really make sense, why does struct imply no constructors?
+	
 	if (klass.Flags.is_set(ClassFlags::Struct) || Attribute::Abstract(klass) == true || Attribute::Singleton(klass) == true)
 		klass.Flags += ClassFlags::NoConstructors;
+
+	if (Attribute::Serialize(klass) == false)
+		klass.Flags += ClassFlags::NotSerializable;
 
 	/// If we declared an actual class it has to derive from Reflectable
 	if (!klass.Flags.is_set(ClassFlags::NoConstructors) && klass.BaseClass.empty())

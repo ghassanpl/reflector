@@ -86,6 +86,12 @@ A filename or list of filenames (or directories) to scan for reflectable entitie
 			</tr>
 			<tr>
 				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.GenerateClassMirrors.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>GenerateClassMirrors<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>true</code></td>
+				<td><md>Whether to create structs inside reflected classes with per-member reflection information.</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
 				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.AddGCFunctionality.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>AddGCFunctionality<small class='specifiers'></small></a><small class='membertype'></small></td>
 				<td class='code'><code class='language-cpp'>false</code></td>
 				<td><md>Whether to add support for garbage-collected heaps for reflected classes.</md></td>
@@ -174,6 +180,12 @@ TODO: Can be modified by the file-level `RNamespace(...);` annotation, or by the
 				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.BodyAnnotationName.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>BodyAnnotationName<small class='specifiers'></small></a><small class='membertype'></small></td>
 				<td class='code'><code class='language-cpp'></code></td>
 				<td><md>Name of class body macro. If not set, will be `AnnotationPrefix + "Body"`.</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='Options.PrecompiledHeader.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>PrecompiledHeader<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'></code></td>
+				<td><md>If you're using precompiled headers, set its filename here to add `#include "PrecompiledHeader.h"` to the generated files</md></td>
 			</tr>
 		</table>
 		<h2>Details</h2>

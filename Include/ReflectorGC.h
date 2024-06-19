@@ -24,6 +24,7 @@ namespace Reflector
 	template <typename T>
 	concept has_mark_func = requires (T const& val) { val.GCMark(); };
 
+	/// This overload catches everything that we don't know how to mark
 	template <typename T, typename PT = std::remove_cvref_t<T>>
 	requires (!has_mark_func<PT>
 		&& !derives_from_reflectable<std::remove_pointer_t<PT>>
@@ -35,7 +36,7 @@ namespace Reflector
 		/// Don't mark stuff that isn't an aggregate
 		static_assert(!could_be_marked<T>::value, "Type is an aggregate but cannot be marked. Make sure you overload the Reflector::GCMark(T&) function.");
 	}
-
+	
 	template <typename T> void GCMark(std::basic_string<T> const&) {}
 	template <typename T> void GCMark(std::basic_string_view<T> const&) {}
 	template <typename... ELS>
@@ -44,6 +45,13 @@ namespace Reflector
 	void GCMark(std::pair<F, S> const& val) { GCMark(val.first); GCMark(val.second); }
 	template <typename... TYPES>
 	void GCMark(std::variant<TYPES...> const& val) { std::visit([](auto const& v) { GCMark(v); }, val); }
+
+	template <typename CLASS_TYPE, typename POINTER_TYPE>
+	void GCMark(PathReference<CLASS_TYPE, POINTER_TYPE> const& ref)
+	{
+		if (auto ptr = ref.TryPointer())
+			GCMark(*ptr);
+	}
 
 	template <typename T>
 	requires (has_mark_func<std::remove_cvref_t<T>>)
@@ -58,6 +66,7 @@ namespace Reflector
 			r->GCMark();
 	}
 
+	/// We don't know how to mark this type, so we let the user overload the function
 	template <typename T>
 	void GCMark(T const* r);
 
@@ -71,9 +80,15 @@ namespace Reflector
 		}
 	}
 
-	/// This class is NOT thread-safe.
+	/// Represents a heap of GC-enabled objects.
+	/// Only a single global heap is supported at this time.
+	/// NOTE: This class is NOT thread-safe.
 	struct Heap
 	{
+		/// ///////////////////////////////// ///
+		/// Roots
+		/// ///////////////////////////////// ///
+		
 		static std::map<std::string, Reflectable*, std::less<>> const& Roots();
 		static bool SetRoot(std::string_view key, Reflectable* r);
 		static bool RemoveRoot(std::string_view key);
@@ -87,6 +102,10 @@ namespace Reflector
 			return ptr ? ptr->As<T>() : nullptr;
 		}
 
+		/// ///////////////////////////////// ///
+		/// Objects
+		/// ///////////////////////////////// ///
+
 		static std::unordered_set<Reflectable*> const& Objects();
 
 		template <typename T>
@@ -97,8 +116,7 @@ namespace Reflector
 			return Objects() | std::views::filter([](auto* ptr) { return ptr->template Is<T>(); }) | std::views::transform([](auto* ptr) { return (T*)ptr; });
 		}
 
-		//static Reflectable* New(Class const* type);
-
+		/// Creates a new object of type T, and adds it to the GC heap.
 		template <typename T, typename... ARGS>
 		static T* New(ARGS&&... args)
 		{
@@ -110,6 +128,7 @@ namespace Reflector
 				return (T*)Add(new (Alloc<T>()) T);
 		}
 
+		/// Creates a new object of type T, and sets it as a root with the given name.
 		template <typename T>
 		static T* NewRoot(std::string_view name)
 		{
@@ -118,8 +137,17 @@ namespace Reflector
 			return ptr;
 		}
 
+		/// ///////////////////////////////// ///
+		/// Collection
+		/// ///////////////////////////////// ///
+
+		/// Frees all memory allocated by the GC that can be reclaimed.
+		/// Specifically, will NOT destroy any living objects.
 		static void MinimizeMemory();
 
+		/// Collects garbage
+		/// Marks all roots (both given as arguments, and those in Roots()), 
+		/// then marks all objects reachable from the roots, then sweeps all unmarked objects.
 		template <typename... ROOTS>
 		static void Collect(ROOTS&... roots)
 		{
@@ -129,6 +157,10 @@ namespace Reflector
 		}
 
 		static void GCMark(auto) noexcept {}
+
+		/// ///////////////////////////////// ///
+		/// Serialization
+		/// ///////////////////////////////// ///
 
 #if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)
 		template <derives_from_reflectable T>
@@ -164,6 +196,7 @@ namespace Reflector
 		friend struct GCRootPointer;
 	};
 
+	/// Creates a new object of type T, and adds it to the global GC heap.
 	template <reflected_class T, typename... ARGS>
 	T* New(ARGS&&... args)
 	{

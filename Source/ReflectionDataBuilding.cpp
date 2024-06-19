@@ -85,6 +85,7 @@ bool CreateReflectorDatabaseArtifact(ArtifactArgs args)
 	auto const& [_, final_path, opts, factory] = args;
 	FileWriter database_file{args};
 	
+	database_file.EnsurePCH();
 	database_file.WriteLine("#include <iostream>");
 	database_file.WriteLine("#include \"Reflector.h\"");
 	database_file.WriteLine("#include \"ReflectorUtils.h\"");
@@ -315,7 +316,7 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 		output.WriteLine("using parent_type = void;");
 	}
 
-	if (options.JSON.Use)
+	if (options.JSON.Use && Attribute::Serialize.GetOr(klass, true) != false)
 	{
 		if (!klass.BaseClass.empty())
 		{
@@ -403,6 +404,35 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 		if (func->Flags.is_set(Reflector::MethodFlags::Artificial))
 			output.WriteLine("{}{}auto {}({}){} -> {} {{ {} }}", FormatAccess(func->Access), FormatPreFlags(func->Flags), func->Name, func->GetParameters(), FormatPostFlags(func->Flags), func->Return.Name, func->ArtificialBody);
 	}
+
+	/// ///////////////////////////////////// ///
+	/// Struct for field reflections
+	/// ///////////////////////////////////// ///
+
+	if (options.GenerateClassMirrors)
+	{
+		output.WriteLine("template <typename T = {}>", klass.FullType());
+		output.StartBlock("struct ClassMirror {{");
+
+		for (size_t i = 0; i < klass.Fields.size(); i++)
+		{
+			const auto& field = klass.Fields[i];
+			const auto ptr_str = "&T::" + field->Name;
+			output.WriteLine("static inline ::Reflector::FieldVisitorData<::Reflector::CompileTimeFieldData<{2}, {3}, {4}, {5}, decltype({6}), {6}>> {8} {{ &{3}::StaticGetReflectionData().Fields[{7}] }};",
+				0, 0,
+				field->Type, /// 2
+				"T", /// 3 
+				field->Flags.bits, /// 4
+				BuildCompileTimeLiteral(field->Name), /// 5
+				ptr_str, /// 6
+				i, /// 7
+				field->Name /// 8
+			);
+		}
+
+		output.EndBlock("}};");
+	}
+
 
 	/// Back to public
 	output.EndDefine("public:");
@@ -525,7 +555,7 @@ bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 	///		magic_enum::enum_value("str")
 	///		mph
 	///		switch trie
-	/// TODO: EITHER: Use mph ( https://www.ibiblio.org/pub/Linux/devel/lang/c/!INDEX.short.html Q:\Code\Native\External\mph ) to generate a minimal perfect hash function for this
+	/// TODO: EITHER: Use mph ( https://www.ibiblio.org/pub/Linux/devel/lang/c/!INDEX.short.html Q:\Code\Native\External\mph https://github.com/boost-ext/mph ) to generate a minimal perfect hash function for this
 	/// TODO: OR, generate a TRIE and then for leafs check for equality, and for non-leafs switch against the first character:
 	/*
 		constexpr auto check(TT out, char const* a, char const* b) -> TT {
@@ -592,8 +622,8 @@ bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 		output.WriteLine("constexpr {0} operator--({0}& v, int) {{ auto result = v; v = GetPrev(v); return result; }}", henum.Name);
 	}
 
-	output.WriteLine("constexpr auto operator==(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left == std::to_underlying(right); }}", henum.Name);
-	output.WriteLine("constexpr auto operator<=>(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left <=> std::to_underlying(right); }}", henum.Name);
+	output.WriteLine("constexpr auto operator==(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left == static_cast<std::underlying_type_t<{0}>>(right); }}", henum.Name);
+	output.WriteLine("constexpr auto operator<=>(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left <=> static_cast<std::underlying_type_t<{0}>>(right); }}", henum.Name);
 
 	output.WriteLine("std::ostream& operator<<(std::ostream& strm, {} v);", henum.Name);
 	
@@ -701,7 +731,8 @@ void OutputContext::WriteForwardDeclaration(const Enum& henum)
 void OutputContext::BuildStaticReflectionData(const Enum& henum)
 {
 	output.StartBlock("::Reflector::Enum const& StaticGetReflectionData_For_{}() {{", henum.GeneratedUniqueName());
-	output.WriteLine("using namespace {};", henum.Namespace);
+	if (!henum.Namespace.empty())
+		output.WriteLine("using namespace {};", henum.Namespace);
 	output.StartBlock("static const ::Reflector::Enum _data = {{");
 
 	output.WriteLine(".Name = \"{}\",", henum.Name);
@@ -734,7 +765,19 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 		output.WriteLine("void ::Reflector::GCMark<{0}>({0} const* r) {{ ::Reflector::GCMark((::Reflector::Reflectable const*)r); }}", klass.FullType());
 	}
 
-	if (options.JSON.Use && options.JSON.GenerateSerializationMethods)
+	/// Ensure fields do not shadow parent class fields
+	if (!klass.BaseClass.empty() && !klass.Fields.empty())
+	{
+		output.StartBlock("template <typename T> concept {}_FieldsNotShadowedCheck = requires ( T value ) {{", klass.FullName());
+		for (auto const& field : klass.Fields)
+		{
+			output.WriteLine("{{ value.{} }};", field->Name);
+		}
+		output.EndBlock("}};");
+		output.WriteLine("static_assert(!{}_FieldsNotShadowedCheck<typename {}::parent_type>, \"A field in class '{}' shadows a field in its base class '{}'; Reflector currently does not support this\");", klass.FullName(), klass.FullType(), klass.FullType(), klass.BaseClass);
+	}
+
+	if (options.JSON.Use && options.JSON.GenerateSerializationMethods && Attribute::Serialize.GetOr(klass, true) != false)
 	{
 		output.StartBlock("void {}::JSONLoadFields({} const& src_object) {{", klass.FullType(), options.JSON.Type);
 		if (!klass.BaseClass.empty())
@@ -755,7 +798,12 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 			else
 			{
 				if (!field->InitializingExpression.empty())
-					output.WriteLine("this->{} = {};", field->Name, field->InitializingExpression);
+				{
+					if (field->Flags.contain(FieldFlags::BraceInitialized))
+						output.WriteLine("this->{} = {}{};", field->Name, field->Type, field->InitializingExpression);
+					else
+						output.WriteLine("this->{} = {};", field->Name, field->InitializingExpression);
+				}
 				else
 					output.WriteLine("this->{0} = decltype(this->{0}){{}};", field->Name);
 			}
@@ -808,7 +856,8 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 	}
 
 	output.StartBlock("::Reflector::Class const& StaticGetReflectionData_For_{}() {{", klass.GeneratedUniqueName());
-	output.WriteLine("using namespace {};", klass.Namespace);
+	if (!klass.Namespace.empty())
+		output.WriteLine("using namespace {};", klass.Namespace);
 	output.StartBlock("static const ::Reflector::Class _data = {{");
 	output.WriteLine(".Name = \"{}\",", klass.Name);
 	output.WriteLine(".FullType = \"{}\",", klass.FullType());
@@ -885,7 +934,7 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 	}
 	output.EndBlock("}},");
 
-	if (options.JSON.Use)
+	if (options.JSON.Use && Attribute::Serialize.GetOr(klass, true) != false)
 	{
 		output.StartBlock(".JSONLoadFieldsFunc = [](void* dest_object, {} const& src_object){{", options.JSON.Type);
 		output.WriteLine("(({0}*)dest_object)->JSONLoadFields(src_object);", klass.FullType());

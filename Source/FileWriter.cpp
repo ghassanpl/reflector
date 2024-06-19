@@ -12,6 +12,12 @@ void FileWriter::WriteLine()
 	mOutput << "\n";
 }
 
+void FileWriter::EnsurePCH()
+{
+	if (!mOptions.PrecompiledHeader.empty())
+		WriteLine("#include \"{}\"", mOptions.PrecompiledHeader);
+}
+
 bool FileWriter::FilesAreDifferent(path const& f1, path const& f2)
 {
 	namespace fs = std::filesystem;
@@ -24,8 +30,8 @@ bool FileWriter::FilesAreDifferent(path const& f1, path const& f2)
 	const auto f1map = ghassanpl::make_mmap_source<char>(f1);
 	const auto f2map = ghassanpl::make_mmap_source<char>(f2);
 
-	const auto h1 = ghassanpl::fnv(f1map);
-	const auto h2 = ghassanpl::fnv(f2map);
+	const auto h1 = ghassanpl::fnv64(f1map);
+	const auto h2 = ghassanpl::fnv64(f2map);
 	return h1 != h2;
 }
 
@@ -121,8 +127,8 @@ bool Artifactory::Write(path const& target_path, std::string contents) const
 
 			return true;
 			/*/
-			const auto h1 = ghassanpl::fnv(contents);
-			const auto h2 = ghassanpl::fnv(target_file_map);
+			const auto h1 = ghassanpl::fnv64(contents);
+			const auto h2 = ghassanpl::fnv64(target_file_map);
 			return h1 != h2;
 			//*/
 		}();

@@ -271,6 +271,10 @@ struct Options
 	RField();
 	bool GeneratePropertiesForPublicFields = false;
 
+	/// Whether to create structs inside reflected classes with per-member reflection information.
+	RField();
+	bool GenerateClassMirrors = true;
+
 	//bool GenerateLuaFunctionBindings = false; /// Maybe instead of Lua function bindings, since this options is loaded from a JSON, we can have a nice JSON structure that defines how to create scripting bindings?
 
 	/// Whether to add support for garbage-collected heaps for reflected classes.
@@ -344,6 +348,10 @@ struct Options
 	/// Name of namespace annotation macro. If not set, will be `AnnotationPrefix + "Namespace"`.
 	RField(Unimplemented);
 	std::string NamespaceAnnotationName;
+
+	/// If you're using precompiled headers, set its filename here to add `#include "PrecompiledHeader.h"` to the generated files
+	RField();
+	std::string PrecompiledHeader;
 
 	auto const& GetExePath() const { return mExePath; }
 	auto const& GetOptionsFilePath() const { return mOptionsFilePath; }

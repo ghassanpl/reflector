@@ -35,7 +35,7 @@ struct FileWriter
 	void WriteLine(std::string_view str, ARGS&& ... args)
 	{
 		mOutput << std::string(CurrentIndent, '\t');
-		mOutput << std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...));
+		mOutput << std::vformat(str, std::make_format_args(args...));
 		if (InDefine)
 			mOutput << " \\";
 		mOutput << '\n';
@@ -74,6 +74,8 @@ struct FileWriter
 	}
 
 	void WriteLine();
+
+	void EnsurePCH();
 
 	static bool FilesAreDifferent(path const& f1, path const& f2);
 };

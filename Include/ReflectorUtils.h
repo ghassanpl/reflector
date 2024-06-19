@@ -121,11 +121,11 @@ namespace Reflector
 	/// Ref
 	/// ///////////////////////////////////// ///
 
-	template <typename CLASS_TYPE>
+	template <typename CLASS_TYPE, typename POINTER_TYPE = CLASS_TYPE*>
 	struct PathReference
 	{
 		using ClassType = CLASS_TYPE;
-		using PointerType = CLASS_TYPE*;
+		using PointerType = POINTER_TYPE;
 
 		PathReference() noexcept = default;
 		PathReference(PathReference const&) noexcept = default;
@@ -133,41 +133,51 @@ namespace Reflector
 		PathReference& operator=(PathReference const& obj) noexcept = default;
 		PathReference& operator=(PathReference&& obj) noexcept = default;
 
-		PathReference(std::string p) : mPath(move(p)) {}
-		PathReference(PointerType p) : mPointer(move(p)) {}
+		PathReference(std::string p) : mPath(std::move(p)) {}
+		PathReference(PointerType p) : mPointer(std::move(p)) {}
 
 		PointerType operator->() const { return Pointer(); }
 		auto& operator*() const { return *Pointer(); }
 
+		auto operator<=>(PathReference const& other) const { return Path() <=> other.Path(); }
+		auto operator==(PathReference const& other) const { return Path() == other.Path(); }
+		
 		auto operator<=>(PointerType const& ptr) const { return Pointer() <=> ptr; }
 		auto operator==(PointerType const& ptr) const { return Pointer() == ptr; }
+		
 		auto operator<=>(std::string_view path) const { return this->Path() <=> path; }
 		auto operator==(std::string_view path) const { return this->Path() == path; }
-
+		
 		std::string_view Path() const& {
 			ResolvePath();
 			return mPath;
 		}
+
 		std::string Path() && {
 			ResolvePath();
 			return std::move(mPath);
 		}
+
 		PointerType const& Pointer() const {
 			ResolvePointer();
 			return mPointer;
 		}
 
-		auto& operator=(PointerType obj) { mPath = {}; mPointer = obj; return *this; }
-		auto& operator=(std::string path) { mPointer = {}; mPath = move(path); return *this; }
+		PointerType const* TryPointer() const {
+			return mPointer ? &mPointer : nullptr;
+		}
 
-		explicit operator bool() const noexcept { return (bool)Pointer(); }
+		auto& operator=(PointerType obj) { mPath = {}; mPointer = std::move(obj); return *this; }
+		auto& operator=(std::string path) { mPointer = {}; mPath = std::move(path); return *this; }
+
+		explicit operator bool() const noexcept { return Pointer() != PointerType{}; }
 
 	private:
 
 		void ResolvePointer() const
 		{
 			if (mPointer || mPath.empty()) return;
-			mPointer = dynamic_cast<PointerType>(ClassType::ResolveReferenceFromPath(mPath));
+			mPointer = ClassType::template ResolveReferenceFromPath<PointerType>(mPath);
 		}
 
 		void ResolvePath() const
@@ -197,6 +207,7 @@ namespace Reflector
 
 NLOHMANN_JSON_NAMESPACE_BEGIN
 template <::Reflector::reflected_class SERIALIZABLE>
+requires ((SERIALIZABLE::StaticClassFlags() & (1ULL << int(::Reflector::ClassFlags::NotSerializable))) == 0)
 struct adl_serializer<SERIALIZABLE>
 {
 	static void to_json(REFLECTOR_JSON_TYPE& j, const SERIALIZABLE& p)
@@ -211,22 +222,41 @@ struct adl_serializer<SERIALIZABLE>
 };
 
 template <typename SERIALIZABLE>
-requires ::Reflector::derives_from_reflectable<SERIALIZABLE>
+requires ::Reflector::derives_from_reflectable<SERIALIZABLE> && ((SERIALIZABLE::StaticClassFlags()& (1ULL << int(::Reflector::ClassFlags::NotSerializable))) == 0)
 struct adl_serializer<std::unique_ptr<SERIALIZABLE>>
 {
 	static void to_json(REFLECTOR_JSON_TYPE& j, const std::unique_ptr<SERIALIZABLE>& p)
 	{
-		adl_serializer<SERIALIZABLE>::to_json(j, *p);
+		if (p)
+			adl_serializer<SERIALIZABLE>::to_json(j, *p);
+		else
+			j = nullptr;
 	}
 
 	static void from_json(const REFLECTOR_JSON_TYPE& j, std::unique_ptr<SERIALIZABLE>& p)
 	{
-		auto type = std::string_view{ j["resourceType"] };
+		if (j.is_null())
+		{
+			p.reset();
+			return;
+		}
+		if (!j.is_object())
+			throw ::Reflector::DataError{ "JSON source is not an object" };
+		if (!j.contains("$type"))
+			throw ::Reflector::DataError{ "JSON source does not contain a '$type' field" };
+		if (!j["$type"].is_string())
+			throw ::Reflector::DataError{ "JSON source '$type' field is not a string" };
+
+		auto type = std::string_view{ j["$type"] };
 		if (!p || p->GetRuntimeClass()->FullType != type)
 		{
+			p.reset();
+
 			auto klass = Reflector::FindClassByFullType(type);
-			assert(klass);
+			if (!klass) 
+				throw ::Reflector::DataError{ std::format("Unknown reflectable type '{}'", type) };
 			/// NOTE: Not using aligned_alloc because MS doesn't handle it properly
+			
 			p = std::unique_ptr<SERIALIZABLE>{ (SERIALIZABLE*)klass->NewDefault(malloc(klass->Size)) };
 		}
 		adl_serializer<SERIALIZABLE>::from_json(j, *p);

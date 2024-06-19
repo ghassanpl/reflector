@@ -151,7 +151,7 @@ const BoolAttributeProperties Attribute::DocumentMembers {
 	true
 };
 
-const BoolAttributeProperties Attribute::Serialize{ "Serialize", "False means both 'Save' and 'Load' are false", Targets::Fields, true };
+const BoolAttributeProperties Attribute::Serialize{ "Serialize", "False means both 'Save' and 'Load' are false", {DeclarationType::Field, DeclarationType::Class}, true };
 const BoolAttributeProperties Attribute::Private{ "Private", "True sets 'Edit', 'Setter', 'Getter' to false", Targets::Fields, false };
 const BoolAttributeProperties Attribute::Transient{ "Transient", "True sets 'Setter' and 'Serialize' to false", Targets::Fields, false }; /// TODO: This
 const BoolAttributeProperties Attribute::ScriptPrivate{ "ScriptPrivate", "True sets 'Setter', 'Getter' to false", Targets::Fields, false };

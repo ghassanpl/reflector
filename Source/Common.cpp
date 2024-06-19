@@ -500,7 +500,7 @@ Method* Class::AddArtificialMethod(Declaration& for_decl, std::string function_t
 		ReportError(for_decl, "Artificial method '{}' already exists in class {}: {}", function_type, MakeLink(), it->second->MakeLink());
 		throw std::runtime_error("Internal error");
 	}
-	method.UID = ghassanpl::hash(ParentMirror->SourceFilePath.string(), method.ActualDeclarationLine(), method.GetParameters());
+	method.UID = ghassanpl::hash64(ParentMirror->SourceFilePath.string(), method.ActualDeclarationLine(), method.GetParameters());
 	return &method;
 }
 
@@ -584,6 +584,20 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 					message += std::format("\n{}({},0):   conflicts with this declaration", ParentMirror->SourceFilePath.string(), conflicting_method->DeclarationLine + 1);
 			}
 			throw std::exception{ message.c_str() };
+		}
+	}
+
+	/// Check if non-abstract-marked class has abstract methods
+	
+	if (!Attribute::Abstract(*this))
+	{
+		for (auto const& method : Methods)
+		{
+			if (method->Flags.is_set(Reflector::MethodFlags::Abstract))
+			{
+				ReportError(*method, "Abstract method '{}' in non-abstract class '{}'", FullType());
+				return;
+			}
 		}
 	}
 }

@@ -52,13 +52,13 @@ void PrintSafe(std::ostream& strm, std::string val);
 template <typename... ARGS>
 void ReportError(path const& path, size_t line_num, std::string_view fmt, ARGS&& ... args)
 {
-	PrintSafe(std::cerr, std::format("{}({},1): error: {}\n", path.string(), line_num, std::vformat(fmt, std::make_format_args(std::forward<ARGS>(args)...))));
+	PrintSafe(std::cerr, std::format("{}({},1): error: {}\n", path.string(), line_num, std::vformat(fmt, std::make_format_args(args...))));
 }
 
 template <typename... ARGS>
 void PrintLine(std::string_view fmt, ARGS&&... args)
 {
-	PrintSafe(std::cout, std::vformat(fmt, std::make_format_args(std::forward<ARGS>(args)...)) + "\n");
+	PrintSafe(std::cout, std::vformat(fmt, std::make_format_args(args...)) + "\n");
 }
 
 template <typename... ARGS>
@@ -147,13 +147,13 @@ struct SimpleDeclaration
 	template <typename... ARGS>
 	DocNote& AddDocNote(std::string header, std::string_view str, ARGS&& ... args)
 	{
-		return DocNotes.emplace_back(std::move(header), std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...)));
+		return DocNotes.emplace_back(std::move(header), std::vformat(str, std::make_format_args(args...)));
 	}
 
 	template <typename... ARGS>
 	DocNote& AddWarningDocNote(std::string header, std::string_view str, ARGS&& ... args)
 	{
-		auto& note = DocNotes.emplace_back(std::move(header), std::vformat(str, std::make_format_args(std::forward<ARGS>(args)...)));
+		auto& note = DocNotes.emplace_back(std::move(header), std::vformat(str, std::make_format_args(args...)));
 		note.ShowInMemberList = true;
 		note.Icon = "warning";
 		return note;
