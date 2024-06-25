@@ -169,6 +169,8 @@ using BoolAttributeProperties = TypedAttributeProperties<bool>;
 struct Attribute
 {
 	static const StringAttributeProperties DisplayName;
+	static const StringAttributeProperties SaveName;
+	static const StringAttributeProperties LoadName;
 
 	static const StringAttributeProperties Namespace;
 

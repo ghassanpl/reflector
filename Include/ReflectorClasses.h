@@ -164,7 +164,7 @@ namespace Reflector
 		DeclaredStruct,          /// TODO: Should we docnote this?
 		NoConstructors,          /// TODO: Should we docnote this?
 		HasProxy,
-		NotSerializable,
+		NotSerializable, /// TODO: Since we have strict attributes, we could generate flags for all of the bool ones, for example as a "AttributeFlags" field
 	};
 
 	void* AlignedAlloc(size_t alignment, size_t size);
@@ -206,6 +206,9 @@ namespace Reflector
 		void ForAllMethodsWithName(std::string_view name, FUNC&& func) const;
 		template <typename... ARGS>
 		auto FindMethod(std::string_view name, std::type_identity<std::tuple<ARGS...>> = {}) const->Method const*;
+
+		auto FindBaseClass() const -> Class const*;
+		auto HasBaseClass(std::string_view base_klass_name) const -> bool;
 
 		std::type_index TypeIndex = typeid(void);
 

@@ -309,6 +309,12 @@ struct Field : public MemberDeclaration<Class>
 	/// A identifier name without any member prefixes
 	std::string CleanName;
 
+	/// Name it will be loaded from
+	std::string LoadName;
+
+	/// Name it will be saved under
+	std::string SaveName;
+
 	Method* AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
 	void CreateArtificialMethodsAndDocument(Options const& options);
 

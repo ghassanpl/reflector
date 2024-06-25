@@ -791,10 +791,10 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 			if (field->Flags.contain(FieldFlags::NoLoad))
 				continue;
 
-			output.StartBlock("if (auto it = src_object.find(\"{}\"); it == src_object.end())", field->Name);
+			output.StartBlock("if (auto it = src_object.find(\"{}\"); it == src_object.end())", field->LoadName);
 
 			if (field->Flags.contain(FieldFlags::Required))
-				output.WriteLine("throw ::Reflector::DataError{{ \"Missing field '{}'\" }};", field->Name);
+				output.WriteLine("throw ::Reflector::DataError{{ \"Missing field '{}'\" }};", field->LoadName);
 			else
 			{
 				if (!field->InitializingExpression.empty())
@@ -815,7 +815,7 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 			output.WriteLine("it->get_to<{}>(this->{});", field->Type, field->Name);
 			output.EndBlock("}}");
 			output.StartBlock("catch (::Reflector::DataError& e) {{");
-			output.WriteLine("e.File += \"/{}\";", field->Name);
+			output.WriteLine("e.File += \"/{}\";", field->LoadName);
 			output.WriteLine("throw;");
 			output.EndBlock("}}");
 
@@ -843,7 +843,7 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 				output.EndBlock();
 			}
 
-			output.WriteLine("dest_object[\"{0}\"] = this->{0};", field->Name);
+			output.WriteLine("dest_object[\"{}\"] = this->{};", field->SaveName, field->Name);
 
 			if (check_for_init_value)
 				output.EndBlock("}} while (false);");

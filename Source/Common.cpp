@@ -541,6 +541,10 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 		AddDocNote("Abstract", "This class is not constructible via the reflection system.");
 	}
 
+	/// TODO: Find duplicates and other issues like:
+	/// - field with the same name as type (will cause issues in DB, but maybe can be fixed)
+	/// Also find a good/better place to put this duplicate checker
+
 	/// Create methods for fields and methods
 
 	for (const auto& method : Methods)

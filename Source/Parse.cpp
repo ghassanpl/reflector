@@ -497,9 +497,15 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 	else
 		field.DisplayName = field.Name;
 	field.CleanName = field.DisplayName;
+	field.LoadName = field.Name;
+	field.SaveName = field.Name;
 
-	/// Get display name from attributes if set
+	/// Get names from attributes if set
 	Attribute::DisplayName.TryGet(field, field.DisplayName);
+	Attribute::LoadName.TryGet(field, field.LoadName);
+	Attribute::SaveName.TryGet(field, field.SaveName);
+
+	/// TODO: Check for uniqueness of LoadName/SaveName as well as make sure regular Names of reflected fields are unique up the class hierarchy
 
 	const bool is_public = field.Access == AccessMode::Public;
 

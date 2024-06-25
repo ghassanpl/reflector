@@ -38,6 +38,20 @@ namespace Reflector
 		}
 		return nullptr;
 	}
+	
+	inline auto Class::FindBaseClass() const -> Class const*
+	{
+		return FindClassByFullType(BaseClassName);
+	}
+	
+	inline auto Class::HasBaseClass(std::string_view base_klass_name) const -> bool
+	{
+		if (BaseClassName == base_klass_name)
+			return true;
+		if (auto base_class = FindBaseClass())
+			return base_class->HasBaseClass(base_klass_name);
+		return false;
+	}
 
 	inline Enum const* FindEnumByFullType(std::string_view enum_name)
 	{
@@ -121,6 +135,9 @@ namespace Reflector
 	/// Ref
 	/// ///////////////////////////////////// ///
 
+	/// TODO: Change this to use `bool ResolveReferenceFromPath(string path, POINTER_TYPE& out_reference)`,
+	/// so we can have the same CLASS_TYPE resolve different pointer types
+
 	template <typename CLASS_TYPE, typename POINTER_TYPE = CLASS_TYPE*>
 	struct PathReference
 	{
@@ -177,13 +194,13 @@ namespace Reflector
 		void ResolvePointer() const
 		{
 			if (mPointer || mPath.empty()) return;
-			mPointer = ClassType::template ResolveReferenceFromPath<PointerType>(mPath);
+			ClassType::template ResolveReferenceFromPath<PointerType>(mPath, mPointer);
 		}
 
 		void ResolvePath() const
 		{
 			if (!mPath.empty() || !mPointer) return;
-			mPath = ClassType::ResolvePathFromReference(mPointer);
+			ClassType::ResolvePathFromReference(mPointer, mPath);
 		}
 
 		mutable std::string mPath{};

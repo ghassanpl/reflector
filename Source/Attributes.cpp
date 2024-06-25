@@ -83,10 +83,22 @@ AttributeValidatorFunc IsIdentifier = [](json const& attr_value, Declaration con
 
 AttributeValidatorFunc NoValidator{};
 
-const StringAttributeProperties Attribute::DisplayName {
+const StringAttributeProperties Attribute::DisplayName{
 	"DisplayName",
 	"The name that is going to be displayed in editors and such",
 	Targets::Any
+};
+
+const StringAttributeProperties Attribute::SaveName{
+	"SaveName",
+	"The name that this field will be saved with; can be used to rename fields without losing alraedy serialized data",
+	Targets::Fields
+};
+
+const StringAttributeProperties Attribute::LoadName{
+	"LoadName",
+	"The name that this field will be loaded from; can be used to rename fields without losing alraedy serialized data",
+	Targets::Fields
 };
 
 const StringAttributeProperties Attribute::Namespace {
