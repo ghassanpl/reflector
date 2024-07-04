@@ -131,9 +131,15 @@ const BoolAttributeProperties Attribute::Setter {
 	Targets::Fields,
 	true
 };
-const BoolAttributeProperties Attribute::Editor {
+const BoolAttributeProperties Attribute::Editor{
 	"Editor;Edit",
 	"Whether or not this field should be editable",
+	Targets::Fields,
+	true
+};
+const BoolAttributeProperties Attribute::Script{
+	"Script;Scriptable",
+	"Whether or not this field should be accessible via script",
 	Targets::Fields,
 	true
 };
@@ -284,6 +290,14 @@ const BoolAttributeProperties Attribute::Unimplemented {
 	"The functionality this entity represents is not implemented; mostly useful for documentation, but can generate some warnings",
 	Targets::Any,
 	false
+};
+
+/// TODO: This will also generate a enum class type that represents the unique IDs (`ClassNameID` or controlled by options: `{}_id`)
+const StringAttributeProperties Attribute::UniqueID{
+	"UniqueID",
+	"If set, will create a unique ID field with the given name, and a generator function, for this class",
+	Targets::Classes,
+	IsIdentifier
 };
 
 constexpr auto EnumerationsCat = "Enumerations"_ac;

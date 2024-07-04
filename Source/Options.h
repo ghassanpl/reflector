@@ -12,6 +12,8 @@ inline constexpr bool BootstrapBuild = true;
 #include "DummyReflector.h"
 #endif
 
+/// TODO: We should probably generate a schema for the JSON file these are loaded from
+
 /// NOTE: Changing this file requires a bootstrap rebuild!
 
 /// These are options for JSON serialization and reflection data representation.
@@ -53,6 +55,10 @@ struct JSONOptions
 	/// when storing a polymorphic object
 	RField();
 	std::string ObjectTypeFieldName = "$type";
+
+	/// TODO: This
+	RField();
+	bool AllowSchemaGenerationPerClass = true;
 };
 
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
@@ -202,6 +208,12 @@ RClass(DefaultFieldAttributes = { Setter = false, Getter = false }, Unimplemente
 struct ScriptBindingOptions
 {
 	RBody();
+
+	/// Whether or not to create hookup files (see documentation on hookup files for more info).
+	/// Hookup files contain generated code that binds reflected classes to scripting languages using the same macros as the type list.
+	/// If this is true, one hookup file (*.hookup.cpp) will be created for each reflected header file.
+	RField();
+	bool SplitTypeListIntoHookupFiles = false;
 };
 
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });
@@ -310,6 +322,10 @@ struct Options
 	/// Options regarding names, both in your source code as well as generated ones
 	RField();
 	NameOptions Names = {};
+
+	/// Script binding options
+	RField();
+	ScriptBindingOptions ScriptBinding = {};
 
 	/// TODO: Move affixes and macro names to a different struct
 

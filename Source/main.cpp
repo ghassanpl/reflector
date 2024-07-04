@@ -109,6 +109,13 @@ int main(int argc, const char* argv[])
 			if (file_change_time == 0) continue;
 
 			factory.QueueArtifact(file_path, BuildMirrorFile, std::ref(*file), file_change_time);
+
+			if (options.ScriptBinding.SplitTypeListIntoHookupFiles)
+			{
+				auto hookup_file_path = file_path;
+				hookup_file_path.replace_extension(".hookup.cpp");
+				factory.QueueArtifact(hookup_file_path, BuildMirrorHookupFile, std::ref(*file));
+			}
 		}
 		files_changed += factory.Wait();
 

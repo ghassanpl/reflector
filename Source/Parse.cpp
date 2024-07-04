@@ -222,7 +222,10 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 	
 	ParseCppAttributes(header_line, henum.Attributes);
 
+	/// TODO: We should generalize it, so that setting a name checks attributes and sets display name, etc.
 	henum.Name = ParseIdentifier(header_line);
+	henum.DisplayName = henum.Name;
+	Attribute::DisplayName.TryGet(henum, henum.DisplayName);
 
 	header_line = TrimWhitespace(header_line);
 
@@ -303,12 +306,14 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 				auto enumerator_result = std::make_unique<Enumerator>(&henum);
 				Enumerator& enumerator = *enumerator_result;
 				enumerator.Name = TrimWhitespace(name);
+				enumerator.DisplayName = enumerator.Name;
 				enumerator.Value = enumerator_value;
 				enumerator.DeclarationLine = line_num;
 				enumerator.Attributes = henum.DefaultEnumeratorAttributes;
 				enumerator.Attributes.update(std::exchange(attribute_list, json::object()), true);
 				enumerator.Attributes.update(cpp_attributes);
 				enumerator.Comments = std::exchange(comments, {});
+				Attribute::DisplayName.TryGet(enumerator, enumerator.DisplayName);
 				henum.Enumerators.push_back(std::move(enumerator_result));
 				enumerator_value++;
 			}
@@ -522,6 +527,8 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 		field.Flags.set(Reflector::FieldFlags::NoSetter);
 	if (Attribute::Editor.GetOr(field, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoEdit);
+	if (Attribute::Script.GetOr(field, true) == false)
+		field.Flags.set(Reflector::FieldFlags::NoScript);
 	if (Attribute::Save.GetOr(field, true) == false)
 		field.Flags.set(Reflector::FieldFlags::NoSave);
 	if (Attribute::Load.GetOr(field, true) == false)
@@ -670,6 +677,9 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 	if (auto getter = Attribute::UniqueName.SafeGet(method))
 		method.UniqueName = *getter;
 
+	method.DisplayName = method.Name;
+	Attribute::DisplayName.TryGet(method, method.DisplayName);
+
 	/// TODO: How to docnote this?
 	if (auto getter = Attribute::GetterFor.SafeGet(method))
 	{
@@ -741,6 +751,9 @@ std::unique_ptr<Class> ParseClassDecl(FileMirror* mirror, string_view line, stri
 	}
 
 	klass.Namespace = Attribute::Namespace.GetOr(klass, options.DefaultNamespace);
+
+	klass.DisplayName = klass.Name;
+	Attribute::DisplayName.TryGet(klass, klass.DisplayName);
 
 	return result;
 }

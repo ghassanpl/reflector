@@ -70,6 +70,7 @@ json Declaration::ToJSON() const
 	if (!Attributes.empty())
 		result["Attributes"] = Attributes;
 	result["FullName"] = FullName(".");
+	if (DisplayName != Name) result["DisplayName"] = DisplayName;
 	if (!DocumentMembers) result["DocumentMembers"] = DocumentMembers;
 	if (DeclarationLine != 0) result["DeclarationLine"] = DeclarationLine;
 	if (Access != AccessMode::Unspecified) result["Access"] = AMStrings[(int)Access];
@@ -129,9 +130,9 @@ void to_json(json& j, DocNote const& p)
 	if (!p.Icon.empty()) j["Icon"] = p.Icon;
 }
 
-Method* Field::AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags)
+Method* Field::AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags, ghassanpl::enum_flags<Reflector::EntityFlags> entity_flags)
 {
-	return ParentType->AddArtificialMethod(*this, std::move(function_type), std::move(results), std::move(name), std::move(parameters), std::move(body), std::move(comments), additional_flags);
+	return ParentType->AddArtificialMethod(*this, std::move(function_type), std::move(results), std::move(name), std::move(parameters), std::move(body), std::move(comments), additional_flags, entity_flags);
 }
 
 void Field::CreateArtificialMethodsAndDocument(Options const& options)
@@ -187,6 +188,24 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 
 	if (Flags.is_set(Reflector::FieldFlags::NoUniqueAddress)) AddDocNote("No Unique Address", "This field has the [\\[\\[no_unique_address\\]\\]](https://en.cppreference.com/w/cpp/language/attributes/no_unique_address) attribute applied to it..", ParentType->MakeLink());
 
+	/// This doesn't work because the ID needs to be serialized to work, which means we can only do it per-class
+	/*
+	if (Attribute::UniqueID_Fields.SafeGet(*this))
+	{
+		/// TODO: Add option for the generator function prefix
+		auto method = AddArtificialMethod(
+			format("NewUniqueIDFor_{}", Name), 
+			Type, 
+			options.Names.NewUniqueIDFor + Name, 
+			"", /// Parameters
+			std::format("static {} UniqueID__ = {{}}; return ++UniqueID__;", Type),
+			{}, 
+			MethodFlags::Static
+		);
+		method->ForceDocument = false;
+	}
+	*/
+
 	auto flag_getters = Attribute::FlagGetters.SafeGet(*this);
 	auto flag_setters = Attribute::Flags.SafeGet(*this);
 	if (flag_getters && flag_setters)
@@ -219,6 +238,8 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 
 		for (auto& enumerator : henum->Enumerators)
 		{
+			/// TODO: If enumerator name starts with 'Not' (notprefix?), invert the logic of the getters and setters; control this using an option
+			
 			this->Parent()->ClassDeclaredFlags.emplace_back(enumerator->Name, this, enumerator.get());
 
 			AddArtificialMethod(format("FlagGetter.{}.{}", henum->FullName(), enumerator->Name), "bool", options.Names.IsPrefix + enumerator->Name, "", 
@@ -321,7 +342,6 @@ json Field::ToJSON() const
 	json result = MemberDeclaration<Class>::ToJSON();
 	result["Type"] = Type;
 	if (!InitializingExpression.empty()) result["InitializingExpression"] = InitializingExpression;
-	if (DisplayName != Name) result["DisplayName"] = DisplayName;
 	if (CleanName != Name) result["CleanName"] = CleanName;
 	SetFlags(Flags, result);
 	return result;
@@ -420,9 +440,9 @@ std::string Method::GetSignature(Class const& parent_class) const
 	return base;
 }
 
-Method* Method::AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags)
+Method* Method::AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags, ghassanpl::enum_flags<Reflector::EntityFlags> entity_flags)
 {
-	return ParentType->AddArtificialMethod(*this, std::move(function_type), std::move(results), std::move(name), std::move(parameters), std::move(body), std::move(comments), additional_flags);
+	return ParentType->AddArtificialMethod(*this, std::move(function_type), std::move(results), std::move(name), std::move(parameters), std::move(body), std::move(comments), additional_flags, entity_flags);
 }
 
 void Method::CreateArtificialMethodsAndDocument(Options const& options)
@@ -478,12 +498,13 @@ json Property::ToJSON() const
 	return result;
 }
 
-Method* Class::AddArtificialMethod(Declaration& for_decl, std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags)
+Method* Class::AddArtificialMethod(Declaration& for_decl, std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags, ghassanpl::enum_flags<Reflector::EntityFlags> entity_flags)
 {
 	Method& method = *mArtificialMethods.emplace_back(std::make_unique<Method>(this));
 	method.SourceDeclaration = this; /// The class is the default source of the artificial method
 	method.Flags += Reflector::MethodFlags::Artificial;
 	method.Flags += additional_flags;
+	method.EntityFlags += entity_flags;
 	method.Return.Name = std::move(results);
 	method.Name = std::move(name);
 	method.SetParameters(std::move(parameters));
@@ -542,7 +563,7 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 	}
 
 	/// TODO: Find duplicates and other issues like:
-	/// - field with the same name as type (will cause issues in DB, but maybe can be fixed)
+	/// - field with the same name as a type (will cause issues in DB)
 	/// Also find a good/better place to put this duplicate checker
 
 	/// Create methods for fields and methods

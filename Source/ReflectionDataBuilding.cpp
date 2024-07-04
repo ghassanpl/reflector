@@ -274,8 +274,10 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 
 	/// Property visitor
 	output.StartDefine("#define {0}_VISIT_{1}_PROPERTIES({0}_VISITOR)", options.MacroPrefix, klass.FullName());
-	for (const auto& snd : klass.Properties | std::views::values)
+	size_t i = 0;
+	for (const auto& property : klass.Properties | std::views::values)
 	{
+#if 0
 		std::string getter_name = "nullptr";
 		if (snd.Getter)
 			getter_name = std::format("&{}::{}", klass_full_type, snd.Getter->Name);
@@ -283,8 +285,26 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 		if (snd.Setter)
 			setter_name = std::format("&{}::{}", klass_full_type, snd.Setter->Name);
 		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", snd.Name) : std::string{};
-		output.WriteLine("{7}{0}_VISITOR(&{1}::StaticGetReflectionData(), \"{2}\", {3}, {4}, ::Reflector::CompileTimePropertyData<{5}, {1}, 0ULL, {6}>{{}});",
+		output.WriteLine("{7}{0}_VISITOR(::Reflector::CompileTimePropertyData<{5}, {1}, 0ULL, {6}>{{ &{1}::StaticGetReflectionData() }});",
 			options.MacroPrefix, klass_full_type, snd.Name, getter_name, setter_name, snd.Type, BuildCompileTimeLiteral(snd.Name), debugging_comment_prefix);
+#endif
+
+		/*
+		const auto& method = klass.Pre[i];
+
+		const auto method_pointer = std::format("({})&{}::{}", method->GetSignature(klass), klass_full_type, method->Name);
+		const auto parameter_tuple = std::format("::std::tuple<{}>", method->ParametersTypesOnly);
+		const auto compile_time_method_data = std::format("::Reflector::CompileTimeMethodData<{0}, {1}, {2}, {3}, {4}, decltype({5}), {5}, ::Reflector::AccessMode::{6}>",
+			method->Return.Name, parameter_tuple, klass_full_type, method->Flags.bits, BuildCompileTimeLiteral(method->Name), method_pointer, magic_enum::enum_name(method->Access)
+		);*/
+		const auto compile_time_property_data = std::format("::Reflector::CompileTimeCommonData<{0}, {1}, {2}, {3}>",
+			property.Type, klass.FullType(), 0, BuildCompileTimeLiteral(property.Name));
+
+		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", property.Name) : std::string{};
+		output.WriteLine("{}{}_VISITOR(::Reflector::PropertyVisitorData<{}>{{ &{}::StaticGetReflectionData().Properties[{}] }});",
+			debugging_comment_prefix, options.MacroPrefix, compile_time_property_data, klass_full_type, i);
+
+		++i;
 	}
 	output.EndDefine("");
 
@@ -499,6 +519,9 @@ bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 		output.StartBlock("namespace {} {{", henum.Namespace);
 	}
 
+
+	/// TODO: Make sure these work when the enums are in namespaces
+	/// 
 	/// TODO: Make the name of ALL these functions and values in the global namespace configurable
 	/// TODO: Instead, we could do something like:
 	/// 
@@ -513,7 +536,10 @@ bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 		output.WriteLine("constexpr inline size_t {}Count = {};", henum.Name, henum.Enumerators.size());
 		if (has_any_enumerators)
 		{
+			output.WriteLine("constexpr inline std::pair<{0}, std::string_view> {0}Entries[] = {{ {1} }};", henum.Name, 
+				ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](auto const& enumerator) { return std::format("{{ {}{{{}}}, \"{}\" }}", henum.Name, enumerator->Value, enumerator->Name); }));
 			output.WriteLine("constexpr inline std::string_view {}NamesByIndex[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](auto const& enumerator) { return std::format("\"{}\"", enumerator->Name); }));
+			output.WriteLine("constexpr inline std::string_view {}DisplayNamesByIndex[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](auto const& enumerator) { return std::format("\"{}\"", enumerator->DisplayName); }));
 			output.WriteLine("constexpr inline {0} {0}ValuesByIndex[] = {{ {1} }} ;", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](auto const& enumerator) {
 				return std::format("{}{{{}}}", henum.Name, enumerator->Value);
 			}));
@@ -524,8 +550,20 @@ bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 	}
 
 	output.WriteLine("constexpr std::string_view GetEnumName({0}) {{ return \"{0}\"; }}", henum.Name);
+	if (has_any_enumerators)
+	{
+		output.WriteLine("constexpr auto const& GetEnumerators({0}) {{ return {0}Entries; }}", henum.Name);
+		output.WriteLine("constexpr auto const& GetEnumeratorNames({0}) {{ return {0}NamesByIndex; }}", henum.Name);
+		output.WriteLine("constexpr auto const& GetEnumeratorValuesByIndex({0}) {{ return {0}ValuesByIndex; }}", henum.Name);
+	}
 	output.WriteLine("constexpr size_t GetEnumCount({}) {{ return {}; }}", henum.Name, henum.Enumerators.size());
-	output.WriteLine("constexpr std::string_view GetEnumeratorName({} v) {{", henum.Name);
+	if (has_any_enumerators)
+		output.WriteLine("constexpr {0} GetEnumeratorValue({0}, size_t index) {{ return {0}ValuesByIndex[index]; }}", henum.Name);
+	else
+		output.WriteLine("constexpr {0} GetEnumeratorValue({0}, size_t index) {{ return {{}}; }}", henum.Name);
+
+
+	output.WriteLine("constexpr size_t GetEnumeratorIndex({} v) {{", henum.Name);
 	{
 		auto indent = output.Indent();
 
@@ -533,14 +571,41 @@ bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 		{
 			if (henum.IsConsecutive())
 			{
-				output.WriteLine("if (int64_t(v) >= {0} && int64_t(v) <= {1}) return {2}NamesByIndex[int64_t(v)-{0}];", henum.Enumerators.front()->Value, henum.Enumerators.back()->Value, henum.Name);
+				output.WriteLine("if (int64_t(v) >= {0} && int64_t(v) <= {1}) return size_t(v) - size_t({0});", henum.Enumerators.front()->Value, henum.Enumerators.back()->Value, henum.Name);
 			}
 			else
 			{
 				output.WriteLine("switch (int64_t(v)) {{");
 				for (auto& enumerator : henum.Enumerators)
 				{
-					output.WriteLine("case {}: return \"{}\";", enumerator->Value, enumerator->Name);
+					output.WriteLine("case {}: return {};", enumerator->Value, enumerator->Value);
+				}
+				output.WriteLine("}}");
+			}
+		}
+		output.WriteLine("return 0;");
+	}
+	output.WriteLine("}}");
+
+	output.WriteLine("constexpr std::string_view GetEnumeratorName({} v, bool display_name = false) {{", henum.Name);
+	{
+		auto indent = output.Indent();
+
+		if (has_any_enumerators)
+		{
+			if (henum.IsConsecutive())
+			{
+				output.WriteLine("if (int64_t(v) >= {0} && int64_t(v) <= {1}) return display_name ? {2}DisplayNamesByIndex[int64_t(v)-{0}] : {2}NamesByIndex[int64_t(v)-{0}];", henum.Enumerators.front()->Value, henum.Enumerators.back()->Value, henum.Name);
+			}
+			else
+			{
+				output.WriteLine("switch (int64_t(v)) {{");
+				for (auto& enumerator : henum.Enumerators)
+				{
+					if (enumerator->DisplayName == enumerator->Name)
+						output.WriteLine("case {}: return \"{}\";", enumerator->Value, enumerator->Name);
+					else
+						output.WriteLine("case {}: return display_name ? \"{}\" : \"{}\";", enumerator->Value, enumerator->DisplayName, enumerator->Name);
 				}
 				output.WriteLine("}}");
 			}
@@ -677,6 +742,22 @@ bool FileMirrorOutputContext::BuildDatabaseEntriesForMirror()
 	return true;
 }
 
+bool BuildMirrorHookupFile(ArtifactArgs args, FileMirror const& mirror)
+{
+	auto const& [_, final_path, options, factory] = args;
+	FileWriter f{ args };
+
+	f.EnsurePCH();
+	f.WriteLine("#include \"{}\"", mirror.SourceFilePath.string());
+	f.WriteLine("#include \"Hookup.h\"");
+	for (auto& klass : mirror.Classes)
+		f.WriteLine("void Reflect_{}() {{ ReflectClass({}, {}); }}", klass->FullName(), klass->Name, klass->FullType());
+	for (auto& henum : mirror.Enums)
+		f.WriteLine("void Reflect_{}() {{ ReflectEnum({}, {}); }}", henum->FullName(), henum->Name, henum->FullType());
+
+	return true;
+}
+
 bool BuildMirrorFile(ArtifactArgs args, FileMirror const& mirror, uint64_t file_change_time)
 {
 	auto const& [_, final_path, options, factory] = args;
@@ -736,6 +817,7 @@ void OutputContext::BuildStaticReflectionData(const Enum& henum)
 	output.StartBlock("static const ::Reflector::Enum _data = {{");
 
 	output.WriteLine(".Name = \"{}\",", henum.Name);
+	output.WriteLine(".DisplayName = \"{}\",", henum.DisplayName);
 	output.WriteLine(".FullType = \"{}\",", henum.FullType());
 	if (!henum.Attributes.empty())
 	{
@@ -745,7 +827,12 @@ void OutputContext::BuildStaticReflectionData(const Enum& henum)
 	}
 	output.StartBlock(".Enumerators = {{");
 	for (auto& enumerator : henum.Enumerators)
-		output.WriteLine("{{ \"{}\", {}, {} }},", enumerator->Name, enumerator->Value, enumerator->Flags.bits);
+	{
+		if (options.JSON.Use)
+			output.WriteLine("{{ \"{}\", \"{}\", {}, {}, {}, {}({}) }},", enumerator->Name, enumerator->DisplayName, enumerator->Value, enumerator->Flags.bits, EscapeJSON(enumerator->Attributes), options.JSON.ParseFunction, EscapeJSON(enumerator->Attributes));
+		else
+			output.WriteLine("{{ \"{}\", \"{}\", {}, {}, {} }},", enumerator->Name, enumerator->DisplayName, enumerator->Value, enumerator->Flags.bits, EscapeJSON(enumerator->Attributes));
+	}
 	output.EndBlock("}},");
 	output.WriteLine(".TypeIndex = typeid({}),", henum.FullType());
 	output.WriteLine(".Flags = {},", henum.Flags.bits);
@@ -860,6 +947,7 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 		output.WriteLine("using namespace {};", klass.Namespace);
 	output.StartBlock("static const ::Reflector::Class _data = {{");
 	output.WriteLine(".Name = \"{}\",", klass.Name);
+	output.WriteLine(".DisplayName = \"{}\",", klass.DisplayName);
 	output.WriteLine(".FullType = \"{}\",", klass.FullType());
 
 	/// TODO: Comment and describe here why we should only give the type as the parent class name, since we support full namespaced names?
@@ -876,7 +964,10 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 	output.WriteLine(".Alignment = alignof({0}),", klass.FullType());
 	output.WriteLine(".Size = sizeof({0}),", klass.FullType());
 	if (!klass.Flags.is_set(ClassFlags::NoConstructors))
-		output.WriteLine(".DefaultConstructor = +[](void* ptr){{ new (ptr) {0}({0}::StaticGetReflectionData()); }},", klass.FullType());
+	{
+		output.WriteLine(".DefaultPlacementConstructor = +[](void* ptr){{ new (ptr) {0}({0}::StaticGetReflectionData()); }},", klass.FullType());
+		output.WriteLine(".DefaultConstructor = +[]() -> void* {{ return new {0}({0}::StaticGetReflectionData()); }},", klass.FullType());
+	}
 	output.WriteLine(".Destructor = +[](void* obj){{ auto _tobj = ({}*)obj; _tobj->~{}(); }},", klass.FullType(), klass.Name);
 
 	/// Fields
@@ -908,6 +999,7 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 	{
 		output.StartBlock("::Reflector::Method {{");
 		output.WriteLine(".Name = \"{}\",", method->Name);
+		output.WriteLine(".DisplayName = \"{}\",", method->DisplayName);
 		output.WriteLine(".ReturnType= \"{}\",", method->Return.Name);
 		if (!method->GetParameters().empty())
 		{
@@ -929,6 +1021,59 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 		output.WriteLine(".ReturnTypeIndex = typeid({}),", method->Return.Name);
 		output.WriteLine(".ParameterTypeIndices = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { return format("typeid({})", param.Type); }));
 		output.WriteLine(".Flags = {},", method->Flags.bits);
+		output.WriteLine(".ParentClass = &_data");
+		output.EndBlock("}},");
+	}
+	output.EndBlock("}},");
+
+	/// Properties
+	output.StartBlock(".Properties = {{");
+	for (auto& [name, property] : klass.Properties)
+	{
+		output.StartBlock("::Reflector::Property {{");
+		output.WriteLine(".Name = \"{}\",", name);
+		output.WriteLine(".DisplayName = \"{}\",", property.DisplayName);
+		output.WriteLine(".Type = \"{}\",", property.Type);
+		if (property.Getter)
+		{
+			output.WriteLine(".Getter = [](void const* self, void* out_value) {{ *reinterpret_cast<{}*>(out_value) = reinterpret_cast<{} const*>(self)->{}(); }},",
+				property.Type,
+				klass.Name,
+				property.Getter->Name
+			);
+		}
+		if (property.Setter)
+		{
+			output.WriteLine(".Setter = [](void* self, void const* in_value) {{ reinterpret_cast<{}*>(self)->{}(*reinterpret_cast<{} const*>(in_value)); }},",
+				klass.Name,
+				property.Setter->Name,
+				property.Type
+			);
+		}
+		output.WriteLine(".PropertyTypeIndex = typeid({}),", klass.Name, property.Type);
+		//output.WriteLine(".PropertyTypeIndex = typeid(decltype(std::declval<{}>().{}())),", klass.Name, property.Getter->Name);
+
+		if (!property.Attributes.empty())
+		{
+			output.WriteLine(".Attributes = {},", EscapeJSON(property.Attributes));
+			if (options.JSON.Use)
+				output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(property.Attributes));
+		}
+		/*
+		output.WriteLine(".ReturnType = \"{}\",", method->Return.Name);
+		if (!method->Attributes.empty())
+		{
+			output.WriteLine(".Attributes = {},", EscapeJSON(method->Attributes));
+			if (options.JSON.Use)
+				output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(method->Attributes));
+		}
+		if (!method->UniqueName.empty())
+			output.WriteLine(".UniqueName = \"{}\",", method->UniqueName);
+		if (!method->ArtificialBody.empty())
+			output.WriteLine(".ArtificialBody = {},", EscapeString(method->ArtificialBody));
+		output.WriteLine(".ReturnTypeIndex = typeid({}),", method->Return.Name);
+		output.WriteLine(".ParameterTypeIndices = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { return format("typeid({})", param.Type); }));
+		*/
 		output.WriteLine(".ParentClass = &_data");
 		output.EndBlock("}},");
 	}

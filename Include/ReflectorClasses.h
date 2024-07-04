@@ -25,6 +25,7 @@ namespace Reflector
 	enum class MethodFlags;
 	struct Field;
 	struct Method;
+	struct Property;
 
 	enum class AccessMode { Unspecified, Public, Private, Protected };
 
@@ -40,7 +41,7 @@ namespace Reflector
 	/// TODO: We could technically put attributes in here as well (at least top-level bool ones, as flags or something)
 
 	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL>
-	struct CompileTimePropertyData
+	struct CompileTimeCommonData
 	{
 		using Type = std::remove_cvref_t<FIELD_TYPE>;
 		using ParentType = PARENT_TYPE;
@@ -54,7 +55,7 @@ namespace Reflector
 		static constexpr bool IsType() noexcept { return std::is_same_v<TYPE, FIELD_TYPE>; }
 	};
 	template <typename FIELD_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER>
-	struct CompileTimeFieldData : CompileTimePropertyData<FIELD_TYPE, PARENT_TYPE, FLAGS, NAME_CTL>
+	struct CompileTimeFieldData : CompileTimeCommonData<FIELD_TYPE, PARENT_TYPE, FLAGS, NAME_CTL>
 	{
 		using PointerType = PTR_TYPE;
 		static constexpr PTR_TYPE Pointer = POINTER;
@@ -173,6 +174,7 @@ namespace Reflector
 	struct Class
 	{
 		std::string_view Name = "";
+		std::string_view DisplayName = "";
 		std::string_view FullType = "";
 		std::string_view BaseClassName = "";
 		std::string_view Attributes = "{}";
@@ -182,16 +184,32 @@ namespace Reflector
 		uint64_t UID = 0;
 		size_t Alignment{};
 		size_t Size{};
-		void (*DefaultConstructor)(void*) = {};
+		void (*DefaultPlacementConstructor)(void*) = {};
+		void* (*DefaultConstructor)() = {};
 		void (*Destructor)(void*) = {};
 
 		void* Alloc() const;
 		void Delete(void* obj) const;
 		void* NewDefault(void* at) const;
 
+		template <typename T>
+		T* New() const
+		{
+			if (DefaultConstructor)
+				return static_cast<T*>(DefaultConstructor());
+			return nullptr;
+		}
+		void* New() const
+		{
+			if (DefaultConstructor)
+				return DefaultConstructor();
+			return nullptr;
+		}
+
 		/// These are vectors and not e.g. initializer_list's because you might want to create your own classes
 		std::vector<Field> Fields;
 		std::vector<Method> Methods;
+		std::vector<Property> Properties;
 
 #if REFLECTOR_USES_JSON
 		void(*JSONLoadFieldsFunc)(void* dest_object, REFLECTOR_JSON_TYPE const& src_object);
@@ -262,6 +280,8 @@ namespace Reflector
 		DeclaredPrivate,
 
 		BraceInitialized,
+
+		/// TODO: Flags,
 	};
 
 	struct Field
@@ -319,6 +339,7 @@ namespace Reflector
 		};
 
 		std::string_view Name = "";
+		std::string_view DisplayName = "";
 		std::string_view ReturnType = "";
 		std::string_view Parameters = "";
 		std::vector<Parameter> ParametersSplit{}; /// TODO: Could be given at compile-time as well
@@ -333,6 +354,8 @@ namespace Reflector
 		std::vector<std::type_index> ParameterTypeIndices = {};
 		uint64_t Flags = 0;
 		uint64_t UID = 0;
+
+		std::string_view ScriptName() const { return UniqueName.empty() ? Name : UniqueName; }
 
 		Class const* ParentClass = nullptr;
 	};
@@ -349,13 +372,20 @@ namespace Reflector
 	struct Enumerator
 	{
 		std::string_view Name = "";
+		std::string_view DisplayName = "";
 		int64_t Value;
 		uint64_t Flags = 0;
+
+		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
+#if REFLECTOR_USES_JSON
+		REFLECTOR_JSON_TYPE AttributesJSON;
+#endif
 	};
 
 	struct Enum
 	{
 		std::string_view Name = "";
+		std::string_view DisplayName = "";
 		std::string_view FullType = "";
 		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 #if REFLECTOR_USES_JSON
@@ -365,6 +395,31 @@ namespace Reflector
 		std::type_index TypeIndex = typeid(void);
 		uint64_t Flags = 0;
 		uint64_t UID = 0;
+	};
+
+	struct Property
+	{
+		std::string_view Name = "";
+		std::string_view DisplayName = "";
+		std::string_view Type = "";
+		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
+#if REFLECTOR_USES_JSON
+		REFLECTOR_JSON_TYPE AttributesJSON;
+#endif
+		std::function<void(void const*, void*)> Getter = {};
+		std::function<void(void*, void const*)> Setter = {};
+		std::type_index PropertyTypeIndex = typeid(void);
+		uint64_t Flags = 0;
+
+		Class const* ParentClass = nullptr;
+	};
+
+	template <typename CTRD>
+	struct PropertyVisitorData : public CTRD
+	{
+		explicit PropertyVisitorData(Property const* data) : Data(data) {}
+
+		Property const* Data{};
 	};
 
 	struct Reflectable
@@ -463,8 +518,19 @@ namespace Reflector
 	template <typename ENUM>
 	::Reflector::Enum const& GetEnumReflectionData();
 
+	template <typename ENUM>
+	::Reflector::Enumerator const* GetEnumeratorReflectionData(ENUM value)
+	{
+		auto& henum = GetEnumReflectionData<ENUM>();
+		for (auto& enumerator : henum.Enumerators)
+			if (enumerator.Value == (int64_t)value)
+				return &enumerator;
+		return nullptr;
+	}
+
 	template <typename T> concept reflected_class = requires {
 		T::StaticClassFlags();
+		{ T::StaticGetReflectionData() } -> std::same_as<::Reflector::Class const&>;
 		typename T::self_type;
 	} && std::same_as<T, typename T::self_type>;
 	

@@ -177,11 +177,14 @@ struct Attribute
 	static const BoolAttributeProperties Getter;
 	static const BoolAttributeProperties Setter;
 	static const BoolAttributeProperties Editor;
+	static const BoolAttributeProperties Script;
 	static const BoolAttributeProperties Save;
 	static const BoolAttributeProperties Load;
 
 	static const BoolAttributeProperties Document;
 	static const BoolAttributeProperties DocumentMembers;
+
+	static const StringAttributeProperties UniqueID; /// TODO: This
 
 	static const BoolAttributeProperties Serialize;
 	static const BoolAttributeProperties Private;
@@ -216,6 +219,8 @@ struct Attribute
 
 	static const BoolAttributeProperties List;
 	static const StringAttributeProperties Opposite;
+
+	static const BoolAttributeProperties GenerateJSONSchema;
 
 	/// These mirror C++ attributes but should not be set by the user directly, most of the time
 	static const BoolAttributeProperties NoReturn;

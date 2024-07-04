@@ -321,7 +321,10 @@ struct DocumentationGenerator
 
 		OutputAttributeDescriptors(out, klass);
 
-		auto documented_fields = klass.Fields | std::views::filter([](auto& field) { return field->Document() && field->Access == AccessMode::Public; });
+		auto documented_fields = klass.Fields | std::views::filter([](auto& field) { 
+			return field->Document() &&
+				field->Access == AccessMode::Public; 
+		});
 		if (!documented_fields.empty())
 		{
 			out.WriteLine("<h2>Fields</h2>");
@@ -385,7 +388,10 @@ struct DocumentationGenerator
 			out.EndBlock("</table>");
 		}
 
-		auto documented_private_fields = klass.Fields | std::views::filter([](auto& field) { return field->Document() && field->Access != AccessMode::Public; });
+		auto documented_private_fields = klass.Fields | std::views::filter([](auto& field) { 
+			return field->Document() &&
+				field->Access != AccessMode::Public; 
+		});
 		if (!documented_private_fields.empty())
 		{
 			out.WriteLine("<h2>Private Fields</h2>");
@@ -411,7 +417,9 @@ struct DocumentationGenerator
 
 	void OutputArtificialMethods(HTMLFileWriter& out, Declaration const& decl) const
 	{
-		auto documented_artificial_methods = decl.AssociatedArtificialMethods | std::views::filter([](auto& method) { return method.second->Document(); });
+		auto documented_artificial_methods = decl.AssociatedArtificialMethods | std::views::filter([](auto& method) { 
+			return method.second->Document();
+		});
 		if (!documented_artificial_methods.empty())
 		{
 			out.WriteLine("<h2>See Also</h2>");

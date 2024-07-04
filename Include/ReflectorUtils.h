@@ -138,7 +138,7 @@ namespace Reflector
 	/// TODO: Change this to use `bool ResolveReferenceFromPath(string path, POINTER_TYPE& out_reference)`,
 	/// so we can have the same CLASS_TYPE resolve different pointer types
 
-	template <typename CLASS_TYPE, typename POINTER_TYPE = CLASS_TYPE*>
+	template <typename CLASS_TYPE, typename POINTER_TYPE = CLASS_TYPE*, typename... TAGS>
 	struct PathReference
 	{
 		using ClassType = CLASS_TYPE;
@@ -164,6 +164,8 @@ namespace Reflector
 		
 		auto operator<=>(std::string_view path) const { return this->Path() <=> path; }
 		auto operator==(std::string_view path) const { return this->Path() == path; }
+
+		void Reset() { mPath = {}; mPointer = {}; }
 		
 		std::string_view Path() const& {
 			ResolvePath();
@@ -194,13 +196,13 @@ namespace Reflector
 		void ResolvePointer() const
 		{
 			if (mPointer || mPath.empty()) return;
-			ClassType::template ResolveReferenceFromPath<PointerType>(mPath, mPointer);
+			ClassType::template ResolveReferenceFromPath<PointerType, TAGS...>(mPath, mPointer);
 		}
 
 		void ResolvePath() const
 		{
 			if (!mPath.empty() || !mPointer) return;
-			ClassType::ResolvePathFromReference(mPointer, mPath);
+			ClassType::template ResolvePathFromReference<PointerType, TAGS...>(mPointer, mPath);
 		}
 
 		mutable std::string mPath{};

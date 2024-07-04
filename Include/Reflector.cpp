@@ -43,9 +43,9 @@ namespace Reflector
 
 	void* Class::NewDefault(void* at) const
 	{
-		if (at && DefaultConstructor)
+		if (at && DefaultPlacementConstructor)
 		{
-			DefaultConstructor(at);
+			DefaultPlacementConstructor(at);
 			return at;
 		}
 		return nullptr;
@@ -255,7 +255,7 @@ namespace Reflector
 
 			auto [obj, klass] = mLoadingMapping[id];
 
-			klass->DefaultConstructor(obj);
+			klass->DefaultPlacementConstructor(obj);
 			Add(obj);
 			obj->JSONLoadFields(obj_data);
 		}
@@ -271,7 +271,7 @@ namespace Reflector
 			auto klass = mapping.second;
 			assert(klass);
 
-			klass->DefaultConstructor(mapping.first);
+			klass->DefaultPlacementConstructor(mapping.first);
 			Add(mapping.first);
 		}
 

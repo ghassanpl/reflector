@@ -185,6 +185,9 @@ struct Declaration : public SimpleDeclaration
 	/// TODO: Fill this in for every declaration!
 	uint64_t UID = 0;
 
+	/// A name to be displayed in editors and such
+	std::string DisplayName;
+
 	/// These are in a map for historical reasons mostly, but it's easier to find bugs this way
 	std::map<std::string, Method const*, std::less<>> AssociatedArtificialMethods;
 
@@ -303,9 +306,6 @@ struct Field : public MemberDeclaration<Class>
 	std::string Type;
 	std::string InitializingExpression;
 
-	/// A name to be displayed in editors and such
-	std::string DisplayName;
-
 	/// A identifier name without any member prefixes
 	std::string CleanName;
 
@@ -315,7 +315,7 @@ struct Field : public MemberDeclaration<Class>
 	/// Name it will be saved under
 	std::string SaveName;
 
-	Method* AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
+	Method* AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {}, ghassanpl::enum_flags<Reflector::EntityFlags> entity_flags = {});
 	void CreateArtificialMethodsAndDocument(Options const& options);
 
 	virtual json ToJSON() const override;
@@ -359,7 +359,7 @@ struct Method : public MemberDeclaration<Class>
 
 	std::string GetSignature(Class const& parent_class) const;
 
-	Method* AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {});
+	Method* AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {}, ghassanpl::enum_flags<Reflector::EntityFlags> entity_flags = {});
 	void CreateArtificialMethodsAndDocument(Options const& options);
 
 	virtual std::string FullName(std::string_view sep = "_") const override;
@@ -434,7 +434,8 @@ struct Class : public TypeDeclaration
 		std::string parameters, 
 		std::string body, 
 		std::vector<std::string> comments, 
-		ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {}
+		ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {},
+		ghassanpl::enum_flags<Reflector::EntityFlags> entity_flags = {}
 	);
 	void CreateArtificialMethodsAndDocument(Options const& options);
 
