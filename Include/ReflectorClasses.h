@@ -166,6 +166,8 @@ namespace Reflector
 		NoConstructors,          /// TODO: Should we docnote this?
 		HasProxy,
 		NotSerializable, /// TODO: Since we have strict attributes, we could generate flags for all of the bool ones, for example as a "AttributeFlags" field
+		NotEditable,
+		NotScriptable,
 	};
 
 	void* AlignedAlloc(size_t alignment, size_t size);
@@ -214,6 +216,14 @@ namespace Reflector
 #if REFLECTOR_USES_JSON
 		void(*JSONLoadFieldsFunc)(void* dest_object, REFLECTOR_JSON_TYPE const& src_object);
 		void(*JSONSaveFieldsFunc)(void const* src_object, REFLECTOR_JSON_TYPE& dest_object);
+
+		template <typename T>
+		T AttributeValue(std::string_view attr_name, T&& default_value) const
+		{
+			if (!AttributesJSON.is_object())
+				return std::forward<T>(default_value);
+			return AttributesJSON.value(attr_name, std::forward<T>(default_value));
+		}
 #endif
 		auto FindField(std::string_view name) const->Field const*;
 		template <typename T>
@@ -227,6 +237,10 @@ namespace Reflector
 
 		auto FindBaseClass() const -> Class const*;
 		auto HasBaseClass(std::string_view base_klass_name) const -> bool;
+		auto HasBaseClass(Class const& klass) const -> bool;
+		template <typename U>
+		requires reflected_class<U>
+		auto HasBaseClass() const -> bool;
 
 		std::type_index TypeIndex = typeid(void);
 
@@ -249,6 +263,10 @@ namespace Reflector
 		constexpr bool HasProxy() const { return (Flags & (1ULL << uint64_t(ClassFlags::HasProxy))) != 0; }
 		constexpr bool NotSerializable() const { return (Flags & (1ULL << uint64_t(ClassFlags::NotSerializable))) != 0; }
 		constexpr bool IsSerializable() const { return (Flags & (1ULL << uint64_t(ClassFlags::NotSerializable))) == 0; }
+		constexpr bool NotEditable() const { return (Flags & (1ULL << uint64_t(ClassFlags::NotEditable))) != 0; }
+		constexpr bool IsEditable() const { return (Flags & (1ULL << uint64_t(ClassFlags::NotEditable))) == 0; }
+		constexpr bool NotScriptable() const { return (Flags & (1ULL << uint64_t(ClassFlags::NotScriptable))) != 0; }
+		constexpr bool IsScriptable() const { return (Flags & (1ULL << uint64_t(ClassFlags::NotScriptable))) == 0; }
 	};
 
 	enum class EnumFlags
@@ -281,7 +299,7 @@ namespace Reflector
 
 		BraceInitialized,
 
-		/// TODO: Flags,
+		/// TODO: ReadOnly
 	};
 
 	struct Field
@@ -291,6 +309,7 @@ namespace Reflector
 		std::string_view FieldType = "";
 		std::string_view Initializer = "";
 		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
+		/// TODO: std::string_view ScriptName; /// Set to ScriptName if not empty, else UniqueName if not empty, otherwise Name
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
@@ -322,7 +341,7 @@ namespace Reflector
 		Abstract,
 		Artificial,
 		HasBody,
-		NoCallable,
+		NoScript,
 		Proxy,
 		NoReturn,
 		NoDiscard,
@@ -355,6 +374,7 @@ namespace Reflector
 		uint64_t Flags = 0;
 		uint64_t UID = 0;
 
+		/// TODO: std::string_view ScriptName; /// Set to ScriptName if not empty, else UniqueName if not empty, otherwise Name
 		std::string_view ScriptName() const { return UniqueName.empty() ? Name : UniqueName; }
 
 		Class const* ParentClass = nullptr;
@@ -395,6 +415,15 @@ namespace Reflector
 		std::type_index TypeIndex = typeid(void);
 		uint64_t Flags = 0;
 		uint64_t UID = 0;
+	};
+
+	enum class PropertyFlags
+	{
+		NoEdit = MaxEntityFlags,
+		NoScript, /// TODO: We should probably move NoScript (and maybe others) to EntityFlags
+		NoDebug,
+
+		FromField,
 	};
 
 	struct Property

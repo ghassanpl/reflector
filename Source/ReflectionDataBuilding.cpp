@@ -217,6 +217,8 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 	}
 	/// TODO: Make the name of this function configurable?
 	output.WriteLine("::Reflector::Class const& StaticGetReflectionData_For_{}();", klass.GeneratedUniqueName());
+	//output.WriteLine("constexpr ::std::string_view GetClassName(::std::type_identity<{}>) noexcept {{ return \"{}\"; }}", klass.FullType(), klass.Name);
+	//output.WriteLine("constexpr ::std::string_view GetFullClassName(::std::type_identity<{}>) noexcept {{ return \"{}\"; }}", klass.FullType(), klass.FullName());
 
 	/// ///////////////////////////////////// ///
 	/// Visitor macros
@@ -298,7 +300,7 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 			method->Return.Name, parameter_tuple, klass_full_type, method->Flags.bits, BuildCompileTimeLiteral(method->Name), method_pointer, magic_enum::enum_name(method->Access)
 		);*/
 		const auto compile_time_property_data = std::format("::Reflector::CompileTimeCommonData<{0}, {1}, {2}, {3}>",
-			property.Type, klass.FullType(), 0, BuildCompileTimeLiteral(property.Name));
+			property.Type, klass.FullType(), property.Flags.bits, BuildCompileTimeLiteral(property.Name));
 
 		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", property.Name) : std::string{};
 		output.WriteLine("{}{}_VISITOR(::Reflector::PropertyVisitorData<{}>{{ &{}::StaticGetReflectionData().Properties[{}] }});",
@@ -324,6 +326,8 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 
 	/// Typedefs
 	output.WriteLine("using self_type = {};", klass.Name);
+	output.WriteLine("static constexpr ::std::string_view self_type_name = \"{}\";", klass.Name);
+	output.WriteLine("static constexpr ::std::string_view self_type_full_name = \"{}\";", klass.FullName());
 	if (!klass.BaseClass.empty())
 	{
 		output.WriteLine("using parent_type = {};", klass.BaseClass);
@@ -369,24 +373,27 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 
 	if (!klass.BaseClass.empty())
 	{
-		output.WriteLine("virtual ::Reflector::Class const& GetReflectionData() const {{ return StaticGetReflectionData(); }}");
+		output.WriteLine("virtual ::Reflector::Class const& GetReflectionData() const {{ return StaticGetReflectionData_For_{}(); }}", klass.GeneratedUniqueName());
 	}
 
 	/// ///////////////////////////////////// ///
 	/// Visitor methods
 	/// ///////////////////////////////////// ///
+	
+	if (options.ScriptBinding.SplitTypeListIntoHookupFiles)
+		output.WriteLine("friend void Reflect_{}();", klass.FullName());
 
 	if (klass.BaseClass.empty())
 	{
-		output.WriteLine("template <typename VISITOR> static void ForEachMethod(VISITOR&& visitor) {{ {}_VISIT_{}_METHODS(visitor); }}", options.MacroPrefix, klass.FullName());
-		output.WriteLine("template <typename VISITOR> static void ForEachField(VISITOR&& visitor) {{ {}_VISIT_{}_FIELDS(visitor); }}", options.MacroPrefix, klass.FullName());
-		output.WriteLine("template <typename VISITOR> static void ForEachProperty(VISITOR&& visitor) {{ {}_VISIT_{}_PROPERTIES(visitor); }}", options.MacroPrefix, klass.FullName());
+		output.WriteLine("template <typename VISITOR> static void ForEachMethod(VISITOR&& visitor, bool own_only = false) {{ {}_VISIT_{}_METHODS(visitor); }}", options.MacroPrefix, klass.FullName());
+		output.WriteLine("template <typename VISITOR> static void ForEachField(VISITOR&& visitor, bool own_only = false) {{ {}_VISIT_{}_FIELDS(visitor); }}", options.MacroPrefix, klass.FullName());
+		output.WriteLine("template <typename VISITOR> static void ForEachProperty(VISITOR&& visitor, bool own_only = false) {{ {}_VISIT_{}_PROPERTIES(visitor); }}", options.MacroPrefix, klass.FullName());
 	}
 	else
 	{
-		output.WriteLine("template <typename VISITOR> static void ForEachMethod(VISITOR&& visitor) {{ parent_type::ForEachMethod(visitor); {}_VISIT_{}_METHODS(visitor); }}", options.MacroPrefix, klass.FullName());
-		output.WriteLine("template <typename VISITOR> static void ForEachField(VISITOR&& visitor) {{ parent_type::ForEachField(visitor); {}_VISIT_{}_FIELDS(visitor); }}", options.MacroPrefix, klass.FullName());
-		output.WriteLine("template <typename VISITOR> static void ForEachProperty(VISITOR&& visitor) {{ parent_type::ForEachProperty(visitor); {}_VISIT_{}_PROPERTIES(visitor); }}", options.MacroPrefix, klass.FullName());
+		output.WriteLine("template <typename VISITOR> static void ForEachMethod(VISITOR&& visitor, bool own_only = false) {{ if (!own_only) parent_type::ForEachMethod(visitor); {}_VISIT_{}_METHODS(visitor); }}", options.MacroPrefix, klass.FullName());
+		output.WriteLine("template <typename VISITOR> static void ForEachField(VISITOR&& visitor, bool own_only = false) {{ if (!own_only) parent_type::ForEachField(visitor); {}_VISIT_{}_FIELDS(visitor); }}", options.MacroPrefix, klass.FullName());
+		output.WriteLine("template <typename VISITOR> static void ForEachProperty(VISITOR&& visitor, bool own_only = false) {{ if (!own_only) parent_type::ForEachProperty(visitor); {}_VISIT_{}_PROPERTIES(visitor); }}", options.MacroPrefix, klass.FullName());
 	}
 	if (options.AddGCFunctionality)
 	{
@@ -595,7 +602,7 @@ bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 		{
 			if (henum.IsConsecutive())
 			{
-				output.WriteLine("if (int64_t(v) >= {0} && int64_t(v) <= {1}) return display_name ? {2}DisplayNamesByIndex[int64_t(v)-{0}] : {2}NamesByIndex[int64_t(v)-{0}];", henum.Enumerators.front()->Value, henum.Enumerators.back()->Value, henum.Name);
+				output.WriteLine("if (int64_t(v) >= {0} && int64_t(v) <= {1}) return display_name ? {2}DisplayNamesByIndex[int64_t(v)-({0})] : {2}NamesByIndex[int64_t(v)-({0})];", henum.Enumerators.front()->Value, henum.Enumerators.back()->Value, henum.Name);
 			}
 			else
 			{
@@ -922,6 +929,8 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 
 			const auto check_for_init_value = !field->InitializingExpression.empty() && !options.JSON.AlwaysSaveAllFields && !field->Flags.contain(FieldFlags::Required);
 
+			/// TODO: AlwaysSave field attribute
+
 			if (check_for_init_value)
 			{
 				output.StartBlock("do {{");
@@ -1034,24 +1043,6 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 		output.WriteLine(".Name = \"{}\",", name);
 		output.WriteLine(".DisplayName = \"{}\",", property.DisplayName);
 		output.WriteLine(".Type = \"{}\",", property.Type);
-		if (property.Getter)
-		{
-			output.WriteLine(".Getter = [](void const* self, void* out_value) {{ *reinterpret_cast<{}*>(out_value) = reinterpret_cast<{} const*>(self)->{}(); }},",
-				property.Type,
-				klass.Name,
-				property.Getter->Name
-			);
-		}
-		if (property.Setter)
-		{
-			output.WriteLine(".Setter = [](void* self, void const* in_value) {{ reinterpret_cast<{}*>(self)->{}(*reinterpret_cast<{} const*>(in_value)); }},",
-				klass.Name,
-				property.Setter->Name,
-				property.Type
-			);
-		}
-		output.WriteLine(".PropertyTypeIndex = typeid({}),", klass.Name, property.Type);
-		//output.WriteLine(".PropertyTypeIndex = typeid(decltype(std::declval<{}>().{}())),", klass.Name, property.Getter->Name);
 
 		if (!property.Attributes.empty())
 		{
@@ -1059,21 +1050,25 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 			if (options.JSON.Use)
 				output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(property.Attributes));
 		}
-		/*
-		output.WriteLine(".ReturnType = \"{}\",", method->Return.Name);
-		if (!method->Attributes.empty())
+
+		if (property.Getter)
 		{
-			output.WriteLine(".Attributes = {},", EscapeJSON(method->Attributes));
-			if (options.JSON.Use)
-				output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(method->Attributes));
+			output.WriteLine(".Getter = [](void const* self, void* out_value) {{ *reinterpret_cast<std::add_pointer_t<{}>>(out_value) = reinterpret_cast<std::add_pointer_t<{} const>>(self)->{}(); }},",
+				property.Type,
+				klass.Name,
+				property.Getter->Name
+			);
 		}
-		if (!method->UniqueName.empty())
-			output.WriteLine(".UniqueName = \"{}\",", method->UniqueName);
-		if (!method->ArtificialBody.empty())
-			output.WriteLine(".ArtificialBody = {},", EscapeString(method->ArtificialBody));
-		output.WriteLine(".ReturnTypeIndex = typeid({}),", method->Return.Name);
-		output.WriteLine(".ParameterTypeIndices = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { return format("typeid({})", param.Type); }));
-		*/
+		if (property.Setter)
+		{
+			output.WriteLine(".Setter = [](void* self, void const* in_value) {{ reinterpret_cast<std::add_pointer_t<{}>>(self)->{}(*reinterpret_cast<std::add_pointer_t<{} const>>(in_value)); }},",
+				klass.Name,
+				property.Setter->Name,
+				property.Type
+			);
+		}
+		output.WriteLine(".PropertyTypeIndex = typeid({}),", klass.Name, property.Type);
+		output.WriteLine(".Flags = {},", property.Flags.bits);
 		output.WriteLine(".ParentClass = &_data");
 		output.EndBlock("}},");
 	}

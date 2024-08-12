@@ -47,12 +47,20 @@ inline string_view TrimWhitespace(std::string_view str)
 	return ghassanpl::string_ops::trimmed_whitespace(str);
 }
 
+string_view TrimWhitespaceAndComments(std::string_view str);
+
+
 void PrintSafe(std::ostream& strm, std::string val);
 
 template <typename... ARGS>
 void ReportError(path const& path, size_t line_num, std::string_view fmt, ARGS&& ... args)
 {
 	PrintSafe(std::cerr, std::format("{}({},1): error: {}\n", path.string(), line_num, std::vformat(fmt, std::make_format_args(args...))));
+}
+template <typename... ARGS>
+void ReportWarning(path const& path, size_t line_num, std::string_view fmt, ARGS&& ... args)
+{
+	PrintSafe(std::cerr, std::format("{}({},1): warning: {}\n", path.string(), line_num, std::vformat(fmt, std::make_format_args(args...))));
 }
 
 template <typename... ARGS>
@@ -178,6 +186,12 @@ using LinkFlags = enum_flags<LinkFlag>;
 
 struct Declaration : public SimpleDeclaration
 {
+	Declaration() noexcept = default;
+	Declaration(FileMirror* parent) noexcept : ParentMirror(parent) {}
+
+	FileMirror* ParentMirror = nullptr;
+	virtual FileMirror* GetParentMirror() const { return ParentMirror; }
+
 	size_t DeclarationLine = 0;
 	json Attributes = json::object();
 	AccessMode Access = AccessMode::Unspecified;
@@ -211,18 +225,11 @@ struct Declaration : public SimpleDeclaration
 	virtual json ToJSON() const;
 };
 
-template <typename... ARGS>
-void ReportError(Declaration const& decl, std::string_view fmt, ARGS&& ... args)
-{
-	ReportError("TODO declaration file", decl.DeclarationLine, fmt, std::forward<ARGS>(args)...);
-}
-
 struct TypeDeclaration : public Declaration
 {
-	FileMirror* ParentMirror = nullptr;
 	std::string Namespace;
 
-	TypeDeclaration(FileMirror* parent) : ParentMirror(parent) {}
+	TypeDeclaration(FileMirror* parent) : Declaration(parent) {}
 
 	std::string FullType() const
 	{
@@ -274,7 +281,11 @@ struct TypeDeclaration : public Declaration
 
 struct BaseMemberDeclaration : Declaration
 {
+	std::string ScriptName;
+
 	virtual Declaration* ParentDecl() const = 0;
+
+	virtual FileMirror* GetParentMirror() const override { if (auto parent = ParentDecl()) return parent->GetParentMirror(); else return ParentMirror; }
 
 	virtual bool Document() const override;
 
@@ -383,8 +394,11 @@ struct Property : MemberDeclaration<Class>
 {
 	using MemberDeclaration<Class>::MemberDeclaration;
 
+	ghassanpl::enum_flags<Reflector::PropertyFlags> Flags;
+
 	Method const* Setter = nullptr;
 	Method const* Getter = nullptr;
+	Field const* SourceField = nullptr;
 	std::string Type;
 
 	void CreateArtificialMethodsAndDocument(Options const& options);
@@ -574,4 +588,16 @@ inline std::string OnlyType(std::string str)
 	if (const auto last = str.find_last_of(':'); last != std::string::npos)
 		str = str.substr(last + 1);
 	return str;
+}
+
+template <typename... ARGS>
+void ReportError(Declaration const& decl, std::string_view fmt, ARGS&& ... args)
+{
+	ReportError(decl.GetParentMirror()->SourceFilePath, decl.DeclarationLine, fmt, std::forward<ARGS>(args)...);
+}
+
+template <typename... ARGS>
+void ReportWarning(Declaration const& decl, std::string_view fmt, ARGS&& ... args)
+{
+	ReportWarning(decl.GetParentMirror()->SourceFilePath, decl.DeclarationLine, fmt, std::forward<ARGS>(args)...);
 }

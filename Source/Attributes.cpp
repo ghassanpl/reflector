@@ -95,6 +95,7 @@ const StringAttributeProperties Attribute::SaveName{
 	Targets::Fields
 };
 
+/// TODO: This should become LoadName with "LoadNames;LoadName", and be a ';'-separated list of names to try to load from
 const StringAttributeProperties Attribute::LoadName{
 	"LoadName",
 	"The name that this field will be loaded from; can be used to rename fields without losing alraedy serialized data",
@@ -133,14 +134,14 @@ const BoolAttributeProperties Attribute::Setter {
 };
 const BoolAttributeProperties Attribute::Editor{
 	"Editor;Edit",
-	"Whether or not this field should be editable",
-	Targets::Fields,
+	"Whether or not this entity should be editable",
+	Targets::Fields + Targets::Classes,
 	true
 };
 const BoolAttributeProperties Attribute::Script{
 	"Script;Scriptable",
 	"Whether or not this field should be accessible via script",
-	Targets::Fields,
+	Targets::Members,
 	true
 };
 const BoolAttributeProperties Attribute::Save {
@@ -224,10 +225,16 @@ const BoolAttributeProperties Attribute::FlagNots {
 	true
 };
 
-const StringAttributeProperties Attribute::UniqueName {
+const StringAttributeProperties Attribute::UniqueName{
 	"UniqueName",
-	"A unique (for this type) name of this method; useful for overloaded functions",
+	"A unique (within this class) name of this method; useful for overloaded functions",
 	Targets::Methods,
+	IsIdentifier
+};
+const StringAttributeProperties Attribute::ScriptName{
+	"ScriptName",
+	"A name of this class member that will be used in scripts",
+	Targets::Members,
 	IsIdentifier
 };
 
@@ -240,6 +247,11 @@ const StringAttributeProperties Attribute::SetterFor {
 	"SetterFor",
 	"This function is a setter for the named field",
 	Targets::Methods,
+};
+const BoolAttributeProperties Attribute::Property{
+	"Property",
+	"For methods, if true, is equivalent to `GetterFor = <methodname>`. For fields, if false, will not create a property for this field if it would otherwise have been.",
+	Targets::Members,
 };
 
 /// TODO: Should this also be a flag?

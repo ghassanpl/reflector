@@ -29,6 +29,25 @@ namespace Reflector
 			func(*klass);
 	}
 
+	template <typename FUNC, typename BASE>
+	void ForEachClass(FUNC&& func, BASE&& base_class)
+	{
+		for (auto klass = Classes; *klass; ++klass)
+		{
+			if ((*klass)->HasBaseClass(base_class))
+				func(*klass);
+		}
+	}
+	template <typename BASE, typename FUNC>
+	void ForEachClass(FUNC&& func)
+	{
+		for (auto klass = Classes; *klass; ++klass)
+		{
+			if ((*klass)->HasBaseClass<BASE>())
+				func(*klass);
+		}
+	}
+
 	inline Class const* FindClassByFullType(std::string_view class_name)
 	{
 		for (auto klass = Classes; *klass; ++klass)
@@ -50,6 +69,17 @@ namespace Reflector
 			return true;
 		if (auto base_class = FindBaseClass())
 			return base_class->HasBaseClass(base_klass_name);
+		return false;
+	}
+
+	inline auto Class::HasBaseClass(Class const& klass) const -> bool
+	{
+		if (auto base_class = FindBaseClass())
+		{
+			if (base_class == &klass)
+				return true;
+			return base_class->HasBaseClass(klass);
+		}
 		return false;
 	}
 
@@ -98,6 +128,13 @@ namespace Reflector
 		return nullptr;
 	}
 
+	template<typename U>
+	requires reflected_class<U>
+	inline auto Class::HasBaseClass() const -> bool
+	{
+		return this->HasBaseClass(::Reflector::Reflect<U>());
+	}
+
 
 	template <typename T, typename VISITOR>
 	void ForEachField(T& object, VISITOR&& visitor)
@@ -135,9 +172,6 @@ namespace Reflector
 	/// Ref
 	/// ///////////////////////////////////// ///
 
-	/// TODO: Change this to use `bool ResolveReferenceFromPath(string path, POINTER_TYPE& out_reference)`,
-	/// so we can have the same CLASS_TYPE resolve different pointer types
-
 	template <typename CLASS_TYPE, typename POINTER_TYPE = CLASS_TYPE*, typename... TAGS>
 	struct PathReference
 	{
@@ -150,8 +184,18 @@ namespace Reflector
 		PathReference& operator=(PathReference const& obj) noexcept = default;
 		PathReference& operator=(PathReference&& obj) noexcept = default;
 
-		PathReference(std::string p) : mPath(std::move(p)) {}
-		PathReference(PointerType p) : mPointer(std::move(p)) {}
+		template <typename T>
+		requires std::constructible_from<std::string, T>
+		PathReference(T&& p) : mPath(std::forward<T>(p)) { ValidatePath(); }
+
+		template <typename T>
+		requires std::constructible_from<std::string, T>
+		auto& operator=(T&& p) { 
+			mPointer = {}; 
+			mPath = std::forward<T>(p);
+			ValidatePath();
+			return *this;
+		}
 
 		PointerType operator->() const { return Pointer(); }
 		auto& operator*() const { return *Pointer(); }
@@ -186,12 +230,14 @@ namespace Reflector
 			return mPointer ? &mPointer : nullptr;
 		}
 
-		auto& operator=(PointerType obj) { mPath = {}; mPointer = std::move(obj); return *this; }
-		auto& operator=(std::string path) { mPointer = {}; mPath = std::move(path); return *this; }
-
 		explicit operator bool() const noexcept { return Pointer() != PointerType{}; }
 
 	private:
+
+		void ValidatePath()
+		{
+			ClassType::template ValidatePath<PointerType, TAGS...>(mPath, mPointer);
+		}
 
 		void ResolvePointer() const
 		{
@@ -221,6 +267,10 @@ namespace Reflector
 		std::string Message;
 		std::string File;
 		int Line;
+	};
+	struct UserError
+	{
+		std::string Message;
 	};
 }
 
@@ -277,6 +327,8 @@ struct adl_serializer<std::unique_ptr<SERIALIZABLE>>
 			/// NOTE: Not using aligned_alloc because MS doesn't handle it properly
 			
 			p = std::unique_ptr<SERIALIZABLE>{ (SERIALIZABLE*)klass->NewDefault(malloc(klass->Size)) };
+			if (!p)
+				throw ::Reflector::UserError{ std::format("Cannot create type '{}' - it has no default constructor", type) };
 		}
 		adl_serializer<SERIALIZABLE>::from_json(j, *p);
 	}

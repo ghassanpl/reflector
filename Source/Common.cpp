@@ -148,9 +148,11 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 	Property* property_for_field = nullptr;
 	if (
 		(Flags.is_set(Reflector::FieldFlags::DeclaredPrivate) || options.GeneratePropertiesForPublicFields)
-		&& !Flags.contains_all_of(FieldFlags::NoGetter, FieldFlags::NoSetter))
+		&& !Flags.contains_all_of(FieldFlags::NoGetter, FieldFlags::NoSetter)
+		&& Attribute::Property.GetOr(*this, true))
 	{
 		property_for_field = &ParentType->EnsureProperty(CleanName);
+		property_for_field->SourceField = this;
 		if (property_for_field->Type.empty()) property_for_field->Type = Type;
 	}
 
@@ -160,6 +162,8 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 		using enum Reflector::MethodFlags;
 		auto getter = AddArtificialMethod("Getter", Type + " const&", options.Names.GetterPrefix + CleanName, "", "return this->" + Name + ";", {"Gets " + field_comments},
 			{Const, Noexcept, NoDiscard});
+		if (Flags.is_set(Reflector::FieldFlags::NoScript)) 
+			getter->Flags += Reflector::MethodFlags::NoScript;
 		AddDocNote("Getter", "The value of this field is retrieved by the {} method.", getter->MakeLink());
 
 		if (property_for_field)
@@ -172,6 +176,8 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 		auto setter = AddArtificialMethod("Setter", "void", options.Names.SetterPrefix + CleanName, Type + " const& value", 
 			"static_assert(std::is_copy_assignable_v<decltype(this->"+Name+")>, \"err\"); this->" + Name + " = value; " + on_change + ";", 
 			{"Sets " + field_comments}, {});
+		if (Flags.is_set(Reflector::FieldFlags::NoScript))
+			setter->Flags += Reflector::MethodFlags::NoScript;
 		AddDocNote("Setter", "The value of this field is set by the {} method.", setter->MakeLink());
 		if (!on_change.empty())
 			AddDocNote("On Change", "When this field is changed (via its setter and other such functions), the following code will be executed: `{}`", Escaped(on_change));
@@ -230,7 +236,17 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 
 		AddDocNote("Flags", "This is a bitflag field, with bits representing flags in the {} enum; accessor functions were generated in {} for each flag.", henum->MakeLink(), ParentType->MakeLink());
 
-		ParentType->AdditionalBodyLines.push_back(std::format("static_assert(::std::is_integral_v<{}>, \"Type '{}' for field '{}' with Flags attribute must be integral\");", this->Type, henum->FullType(), this->Name));
+		ParentType->AdditionalBodyLines.push_back(std::format("static_assert(::std::is_integral_v<{0}>, \"Type '{0}' for field '{2}' with attribute 'Flags={2}' must be integral\");", this->Type, henum->FullType(), this->Name));
+		if (!henum->IsConsecutive())
+		{
+			AddWarningDocNote("Non-Consecutive Flags", "The enumerators in the {} enum are not consecutive, which may cause issues with the generated flag methods.", henum->MakeLink());
+			ReportWarning(*this, "The enumerators in the '{}' enum are not consecutive, which may cause issues with the generated flag methods.", henum->FullType());
+		}
+		enum_flags<int64_t> set_bits;
+		for (auto& enumerator : henum->Enumerators)
+			set_bits += enumerator->Value;
+		//if (set_bits.last_set() >= ReportWarning(*this, 
+		ParentType->AdditionalBodyLines.push_back(std::format("static_assert(sizeof({0})*CHAR_BIT >= {3}, \"Type '{0}' for field '{2}' with Flags attribute is too small to hold all values of its flag type {1}\");", this->Type, henum->FullType(), this->Name, set_bits.last_set() + 1));
 
 		const auto flag_nots = Attribute::FlagNots(*this);
 
@@ -463,6 +479,7 @@ void Method::CreateArtificialMethodsAndDocument(Options const& options)
 	}
 
 	if (Flags.is_set(NoReturn)) AddDocNote("Does Not Return", "This function does not return.");
+	if (Flags.is_set(NoScript)) AddDocNote("Not Scriptable", "This method is not accessible via script.");
 }
 
 std::string Method::FullName(std::string_view sep) const
@@ -484,17 +501,30 @@ json Method::ToJSON() const
 
 void Property::CreateArtificialMethodsAndDocument(Options const& options)
 {
+	if (SourceField)
+	{
+		Flags += Reflector::PropertyFlags::FromField;
+		if (SourceField->Flags.is_set(Reflector::FieldFlags::NoEdit))
+			Flags += Reflector::PropertyFlags::NoEdit;
+		if (SourceField->Flags.is_set(Reflector::FieldFlags::NoScript))
+			Flags += Reflector::PropertyFlags::NoScript;
+		if (SourceField->Flags.is_set(Reflector::FieldFlags::NoDebug))
+			Flags += Reflector::PropertyFlags::NoDebug;
+	}
+	/// TODO: Static properties?
+
 	MemberDeclaration::CreateArtificialMethodsAndDocument(options);
 }
 
 json Property::ToJSON() const
 {
-	auto result = Declaration::ToJSON();
+	auto result = MemberDeclaration<Class>::ToJSON();
 	result.update(json::object({
 		{ "Type", Type },
 		{ "Getter", Getter ? json{Getter->FullName(".")} : json{} },
 		{ "Setter", Setter ? json{Setter->FullName(".")} : json{} },
 	}));
+	SetFlags(Flags, result);
 	return result;
 }
 
@@ -631,7 +661,10 @@ Property& Class::EnsureProperty(std::string name)
 {
 	auto [it, added] = Properties.try_emplace(name, this);
 	if (added)
+	{
 		it->second.Name = name;
+		it->second.DisplayName = name;
+	}
 	else
 		assert(it->second.Name == name);
 	return it->second;
@@ -741,6 +774,24 @@ void FileMirror::CreateArtificialMethodsAndDocument(Options const& options)
 		klass->CreateArtificialMethodsAndDocument(options);
 	for (auto const& henum : Enums)
 		henum->CreateArtificialMethodsAndDocument(options);
+}
+
+string_view TrimWhitespaceAndComments(std::string_view str)
+{
+	while (true)
+	{
+		ghassanpl::string_ops::trim_whitespace_left(str);
+		if (str.starts_with("//"))
+			return { str.end(), str.end() };
+		if (consume(str, "/*"))
+		{
+			std::ignore = consume_until(str, "*/");
+			std::ignore = consume(str, "*/");
+		}
+		else
+			break;
+	}
+	return str;
 }
 
 void PrintSafe(std::ostream& strm, std::string val)

@@ -202,9 +202,14 @@ struct Attribute
 	static const BoolAttributeProperties FlagNots;
 
 	static const StringAttributeProperties UniqueName;
+	static const StringAttributeProperties ScriptName;
 
 	static const StringAttributeProperties GetterFor;
 	static const StringAttributeProperties SetterFor;
+	static const BoolAttributeProperties Property;
+
+	static const BoolAttributeProperties Resettable; /// TODO: Can reset entire object to default values (basically default value of Reset for all fields)
+	static const BoolAttributeProperties Reset; /// TODO: Can reset field to default value
 
 	static const BoolAttributeProperties Abstract;
 	static const BoolAttributeProperties Singleton;
@@ -219,6 +224,10 @@ struct Attribute
 
 	static const BoolAttributeProperties List;
 	static const StringAttributeProperties Opposite;
+	/// TODO: If this is set, it will create a `constexpr inline <EnumName> Invalid<EnumName> = <ThisValue>`,
+	///		and will return it in functions that can return an invalid value (e.g. `GetEnumeratorValue`, etc.)
+	static const TypedAttributeProperties<int64_t> InvalidValue;
+	static const StringAttributeProperties InvalidValueName;
 
 	static const BoolAttributeProperties GenerateJSONSchema;
 

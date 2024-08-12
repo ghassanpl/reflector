@@ -337,6 +337,23 @@ struct ParsedClassLine
 	json Attributes = json::object();
 };
 
+void RemoveBlockComments(std::string& str)
+{
+	while (!str.empty())
+	{
+		auto start = str.find("/*");
+		if (start == std::string::npos)
+			break;
+		auto end = str.find("*/", start);
+		if (end == std::string::npos)
+		{
+			str.erase(start);
+			break;
+		}
+		str.erase(start, end - start + 2);
+	}
+}
+
 ParsedClassLine ParseClassLine(string_view line)
 {
 	ParsedClassLine result;
@@ -356,7 +373,7 @@ ParsedClassLine ParseClassLine(string_view line)
 	/// TODO: Parse C++ [[attributes]], specifically [[deprecated]]
 
 	result.Name = ParseIdentifier(line);
-	line = TrimWhitespace(line);
+	line = TrimWhitespaceAndComments(line);
 
 	if (line.starts_with(":"))
 	{
@@ -370,9 +387,9 @@ ParsedClassLine ParseClassLine(string_view line)
 		int triangles = 0;
 		int brackets = 0;
 
-		line = TrimWhitespace(line);
+		line = TrimWhitespaceAndComments(line);
 		auto start = line;
-		while (!line.empty() && !line.starts_with("{"))
+		while (!line.empty() && !line.starts_with("{") && !line.starts_with("//"))
 		{
 			const auto ch = *line.begin();
 			if (ch == '(') parens++;
@@ -388,9 +405,11 @@ ParsedClassLine ParseClassLine(string_view line)
 				throw std::exception{ "Mismatch class parents" };
 
 			(void)consume(line);
+			line = TrimWhitespace(line);
 		}
 
-		result.BaseClass = make_string(start.begin(), line.begin());
+		result.BaseClass = std::string{ TrimWhitespace(make_sv(start.begin(), line.begin())) };
+		RemoveBlockComments(result.BaseClass);
 	}
 
 	return result;
@@ -680,8 +699,19 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 	method.DisplayName = method.Name;
 	Attribute::DisplayName.TryGet(method, method.DisplayName);
 
+	if (Attribute::NoReturn(method))
+		method.Flags += MethodFlags::NoReturn;
+
+	if (Attribute::Script.GetOr(method, true) == false)
+		method.Flags.set(Reflector::MethodFlags::NoScript);
+
+	method.Comments = std::move(comments);
+
 	/// TODO: How to docnote this?
-	if (auto getter = Attribute::GetterFor.SafeGet(method))
+	auto getter = Attribute::GetterFor.SafeGet(method);
+	if (!getter && Attribute::Property(method) == true)
+		getter = method.Name;
+	if (getter)
 	{
 		auto& property = klass.EnsureProperty(*getter);
 		if (property.Getter)
@@ -707,11 +737,6 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 		}
 		if (property.Name.empty()) property.Name = *setter;
 	}
-
-	if (Attribute::NoReturn(method))
-		method.Flags += MethodFlags::NoReturn;
-
-	method.Comments = std::move(comments);
 
 	return result;
 }
@@ -743,6 +768,10 @@ std::unique_ptr<Class> ParseClassDecl(FileMirror* mirror, string_view line, stri
 
 	if (Attribute::Serialize(klass) == false)
 		klass.Flags += ClassFlags::NotSerializable;
+	if (Attribute::Editor(klass) == false)
+		klass.Flags += ClassFlags::NotEditable;
+	if (Attribute::Script(klass) == false)
+		klass.Flags += ClassFlags::NotScriptable;
 
 	/// If we declared an actual class it has to derive from Reflectable
 	if (!klass.Flags.is_set(ClassFlags::NoConstructors) && klass.BaseClass.empty())
