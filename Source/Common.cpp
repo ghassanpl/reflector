@@ -551,7 +551,7 @@ Method* Class::AddArtificialMethod(Declaration& for_decl, std::string function_t
 		ReportError(for_decl, "Artificial method '{}' already exists in class {}: {}", function_type, MakeLink(), it->second->MakeLink());
 		throw std::runtime_error("Internal error");
 	}
-	method.UID = ghassanpl::hash64(ParentMirror->SourceFilePath.string(), method.ActualDeclarationLine(), method.GetParameters());
+	method.ReflectionUID = ghassanpl::hash64(ParentMirror->SourceFilePath.string(), method.ActualDeclarationLine(), method.GetParameters());
 	return &method;
 }
 

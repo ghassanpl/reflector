@@ -173,6 +173,7 @@ struct Attribute
 	static const StringAttributeProperties LoadName;
 
 	static const StringAttributeProperties Namespace;
+	static const StringAttributeProperties GUID;
 
 	static const BoolAttributeProperties Getter;
 	static const BoolAttributeProperties Setter;

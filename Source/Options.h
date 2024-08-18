@@ -56,9 +56,19 @@ struct JSONOptions
 	RField();
 	std::string ObjectTypeFieldName = "$type";
 
+	/// The name of the field that holds the GUID of the type of the object stored
+	/// when storing a polymorphic object
+	RField();
+	std::string ObjectGUIDFieldName = "$guid";
+
 	/// TODO: This
 	RField();
 	bool AllowSchemaGenerationPerClass = true;
+
+	/// If true, errors while deserializing non-required object fields will be silently ignored, the fields will be reset,
+	/// and deserialization will continue. If false, errors (exceptions) will be propagated.
+	RField();
+	bool IgnoreInvalidObjectFields = false;
 };
 
 RClass(DefaultFieldAttributes = { Setter = false, Getter = false });

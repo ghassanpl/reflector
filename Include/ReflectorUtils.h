@@ -57,7 +57,17 @@ namespace Reflector
 		}
 		return nullptr;
 	}
-	
+
+	inline Class const* FindClassByGUID(std::string_view class_guid)
+	{
+		for (auto klass = Classes; *klass; ++klass)
+		{
+			if ((*klass)->GUID == class_guid)
+				return *klass;
+		}
+		return nullptr;
+	}
+
 	inline auto Class::FindBaseClass() const -> Class const*
 	{
 		return FindClassByFullType(BaseClassName);
@@ -302,6 +312,8 @@ struct adl_serializer<std::unique_ptr<SERIALIZABLE>>
 			j = nullptr;
 	}
 
+	/// TODO: $type here should be dependent on the Options.JSON.ObjectTypeFieldName
+
 	static void from_json(const REFLECTOR_JSON_TYPE& j, std::unique_ptr<SERIALIZABLE>& p)
 	{
 		if (j.is_null())
@@ -322,13 +334,18 @@ struct adl_serializer<std::unique_ptr<SERIALIZABLE>>
 			p.reset();
 
 			auto klass = Reflector::FindClassByFullType(type);
-			if (!klass) 
+			if (!klass && j.contains("$guid") && j.at("$guid").is_string())
+				klass = Reflector::FindClassByGUID(j.at("$guid"));
+			if (!klass)
 				throw ::Reflector::DataError{ std::format("Unknown reflectable type '{}'", type) };
 			/// NOTE: Not using aligned_alloc because MS doesn't handle it properly
 			
-			p = std::unique_ptr<SERIALIZABLE>{ (SERIALIZABLE*)klass->NewDefault(malloc(klass->Size)) };
+			const auto ptr = static_cast<Reflector::Reflectable*>(klass->NewDefault(malloc(klass->Size)));
+			if (!ptr)
+				throw ::Reflector::UserError{ std::format("Could not construct object of type '{}' - type has no default constructor", type) };
+			p = std::unique_ptr<SERIALIZABLE>{ dynamic_cast<SERIALIZABLE*>(ptr) };
 			if (!p)
-				throw ::Reflector::UserError{ std::format("Cannot create type '{}' - it has no default constructor", type) };
+				throw ::Reflector::UserError{ std::format("Could not pass constructed object of type '{}' to pointer of type '{}'", type, SERIALIZABLE::StaticGetReflectionData().Name) };
 		}
 		adl_serializer<SERIALIZABLE>::from_json(j, *p);
 	}

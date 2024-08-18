@@ -885,22 +885,23 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 			if (field->Flags.contain(FieldFlags::NoLoad))
 				continue;
 
+			std::string reset_line;
+			if (!field->InitializingExpression.empty())
+			{
+				if (field->Flags.contain(FieldFlags::BraceInitialized))
+					reset_line = format("this->{} = {}{};", field->Name, field->Type, field->InitializingExpression);
+				else
+					reset_line = format("this->{} = {};", field->Name, field->InitializingExpression);
+			}
+			else
+				reset_line = format("this->{0} = decltype(this->{0}){{}};", field->Name);
+
 			output.StartBlock("if (auto it = src_object.find(\"{}\"); it == src_object.end())", field->LoadName);
 
 			if (field->Flags.contain(FieldFlags::Required))
 				output.WriteLine("throw ::Reflector::DataError{{ \"Missing field '{}'\" }};", field->LoadName);
 			else
-			{
-				if (!field->InitializingExpression.empty())
-				{
-					if (field->Flags.contain(FieldFlags::BraceInitialized))
-						output.WriteLine("this->{} = {}{};", field->Name, field->Type, field->InitializingExpression);
-					else
-						output.WriteLine("this->{} = {};", field->Name, field->InitializingExpression);
-				}
-				else
-					output.WriteLine("this->{0} = decltype(this->{0}){{}};", field->Name);
-			}
+				output.WriteLine("{}", reset_line);
 
 			output.EndBlock();
 			output.StartBlock("else try {{");
@@ -908,10 +909,20 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 			output.WriteLine("static_assert(::nlohmann::detail::is_basic_json<field_type>::value || ::nlohmann::detail::has_from_json<::nlohmann::json, field_type>::value, \"cannot serialize type '{0}' of field {1}\");", field->Type, field->FullName("::"));
 			output.WriteLine("it->get_to<{}>(this->{});", field->Type, field->Name);
 			output.EndBlock("}}");
-			output.StartBlock("catch (::Reflector::DataError& e) {{");
-			output.WriteLine("e.File += \"/{}\";", field->LoadName);
-			output.WriteLine("throw;");
-			output.EndBlock("}}");
+			if (options.JSON.IgnoreInvalidObjectFields)
+			{
+				output.StartBlock("catch (...) {{");
+				output.WriteLine("{}", reset_line);
+				/// TODO: Probably should report this error somehow
+				output.EndBlock("}}");
+			}
+			else
+			{
+				output.StartBlock("catch (::Reflector::DataError& e) {{");
+				output.WriteLine("e.File += \"/{}\";", field->LoadName);
+				output.WriteLine("throw;");
+				output.EndBlock("}}");
+			}
 
 			output.WriteLine();
 		}
@@ -947,7 +958,11 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 			//output.WriteLine();
 		}
 		if (!klass.BaseClass.empty())
+		{
 			output.WriteLine("dest_object[\"{}\"] = \"{}\";", options.JSON.ObjectTypeFieldName, klass.FullType());
+			if (!klass.GUID.empty())
+				output.WriteLine("dest_object[\"{}\"] = \"{}\";", options.JSON.ObjectGUIDFieldName, klass.GUID);
+		}
 		output.EndBlock("}}");
 	}
 
@@ -969,7 +984,9 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 		if (options.JSON.Use)
 			output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(klass.Attributes));
 	}
-	output.WriteLine(".UID = {}ULL,", klass.UID);
+	output.WriteLine(".ReflectionUID = {}ULL,", klass.ReflectionUID);
+	if (!klass.GUID.empty())
+		output.WriteLine(".GUID = {},", EscapeString(klass.GUID));
 	output.WriteLine(".Alignment = alignof({0}),", klass.FullType());
 	output.WriteLine(".Size = sizeof({0}),", klass.FullType());
 	if (!klass.Flags.is_set(ClassFlags::NoConstructors))

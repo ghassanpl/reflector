@@ -66,10 +66,24 @@ Set AlwaysSaveAllFields to true to always save all object fields to JSON.</md></
 when storing a polymorphic object</md></td>
 			</tr>
 			<tr>
+				<td class='fieldtype'><span class="hljs-type">string</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='JSONOptions.ObjectGUIDFieldName.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>ObjectGUIDFieldName<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>"$guid"</code></td>
+				<td><md>The name of the field that holds the GUID of the type of the object stored
+when storing a polymorphic object</md></td>
+			</tr>
+			<tr>
 				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
 				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='JSONOptions.AllowSchemaGenerationPerClass.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>AllowSchemaGenerationPerClass<small class='specifiers'></small></a><small class='membertype'></small></td>
 				<td class='code'><code class='language-cpp'>true</code></td>
 				<td><md>TODO: This</md></td>
+			</tr>
+			<tr>
+				<td class='fieldtype'><span class="hljs-keyword">bool</span></td>
+				<td class='declnamecol'><i class="codicon codicon-symbol-field"></i><small class='specifiers'></small><a href='JSONOptions.IgnoreInvalidObjectFields.html' class='entitylink '><small class='namespace'></small><small class='parent'></small>IgnoreInvalidObjectFields<small class='specifiers'></small></a><small class='membertype'></small></td>
+				<td class='code'><code class='language-cpp'>false</code></td>
+				<td><md>If true, errors while deserializing non-required object fields will be silently ignored, the fields will be reset,
+and deserialization will continue. If false, errors (exceptions) will be propagated.</md></td>
 			</tr>
 		</table>
 		<h2>Details</h2>

@@ -175,15 +175,16 @@ namespace Reflector
 
 	struct Class
 	{
-		std::string_view Name = "";
-		std::string_view DisplayName = "";
-		std::string_view FullType = "";
-		std::string_view BaseClassName = "";
+		std::string_view Name = {};
+		std::string_view DisplayName = {};
+		std::string_view FullType = {};
+		std::string_view BaseClassName = {};
 		std::string_view Attributes = "{}";
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON;
 #endif
-		uint64_t UID = 0;
+		uint64_t ReflectionUID = 0;
+		std::string GUID = {};
 		size_t Alignment{};
 		size_t Size{};
 		void (*DefaultPlacementConstructor)(void*) = {};

@@ -780,6 +780,7 @@ std::unique_ptr<Class> ParseClassDecl(FileMirror* mirror, string_view line, stri
 	}
 
 	klass.Namespace = Attribute::Namespace.GetOr(klass, options.DefaultNamespace);
+	klass.GUID = Attribute::GUID(klass);
 
 	klass.DisplayName = klass.Name;
 	Attribute::DisplayName.TryGet(klass, klass.DisplayName);
@@ -827,7 +828,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 			{
 				mirror.Enums.push_back(ParseEnum(&mirror, lines, line_num, options));
 				mirror.Enums.back()->Comments = std::exchange(comments, {});
-				mirror.Enums.back()->UID = GenerateUID(path, line_num);
+				mirror.Enums.back()->ReflectionUID = GenerateUID(path, line_num);
 				if (options.Verbose)
 				{
 					PrintLine("Found enum {}", mirror.Enums.back()->FullType());
@@ -837,7 +838,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 			{
 				current_access = AccessMode::Private;
 				mirror.Classes.push_back(ParseClassDecl(&mirror, current_line, next_line, line_num, std::exchange(comments, {}), options));
-				mirror.Classes.back()->UID = GenerateUID(path, line_num);
+				mirror.Classes.back()->ReflectionUID = GenerateUID(path, line_num);
 				if (options.Verbose)
 				{
 					PrintLine("Found class {}", mirror.Classes.back()->FullType());
@@ -859,7 +860,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				}
 
 				klass->Fields.push_back(ParseFieldDecl(mirror, *klass, current_line, next_line, line_num, current_access, std::exchange(comments, {}), options));
-				klass->Fields.back()->UID = GenerateUID(path, line_num);
+				klass->Fields.back()->ReflectionUID = GenerateUID(path, line_num);
 			}
 			else if (current_line.starts_with(options.MethodAnnotationName))
 			{
@@ -877,7 +878,7 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 				}
 
 				klass->Methods.push_back(ParseMethodDecl(*klass, current_line, next_line, line_num, current_access, std::exchange(comments, {}), options));
-				klass->Methods.back()->UID = GenerateUID(path, line_num);
+				klass->Methods.back()->ReflectionUID = GenerateUID(path, line_num);
 			}
 			else if (current_line.starts_with(options.BodyAnnotationName))
 			{

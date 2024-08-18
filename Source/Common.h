@@ -197,7 +197,7 @@ struct Declaration : public SimpleDeclaration
 	AccessMode Access = AccessMode::Unspecified;
 
 	/// TODO: Fill this in for every declaration!
-	uint64_t UID = 0;
+	uint64_t ReflectionUID = 0;
 
 	/// A name to be displayed in editors and such
 	std::string DisplayName;
@@ -207,7 +207,7 @@ struct Declaration : public SimpleDeclaration
 
 	bool DocumentMembers = true;
 	
-	std::string GeneratedUniqueName() const { return std::format("{}_{:016x}", Name, UID); }
+	std::string GeneratedUniqueName() const { return std::format("{}_{:016x}", Name, ReflectionUID); }
 
 	virtual std::string FullName(std::string_view sep = "_") const
 	{
@@ -228,6 +228,7 @@ struct Declaration : public SimpleDeclaration
 struct TypeDeclaration : public Declaration
 {
 	std::string Namespace;
+	std::string GUID;
 
 	TypeDeclaration(FileMirror* parent) : Declaration(parent) {}
 

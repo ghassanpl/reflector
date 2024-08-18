@@ -118,6 +118,13 @@ const StringAttributeProperties Attribute::Namespace {
 	}
 };
 
+const StringAttributeProperties Attribute::GUID{
+	"GUID",
+	"A globaly-unique ID for this type. Can aid with renaming.",
+	Targets::Types,
+	NotEmptyString
+};
+
 /// TODO: Maybe instead of Getter and Setter, just have one attribute - ReadOnly - which also influences whether or not other setters are created (like flag, vector, optional setters)
 
 const BoolAttributeProperties Attribute::Getter {
