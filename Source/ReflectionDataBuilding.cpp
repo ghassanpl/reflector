@@ -489,9 +489,9 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 			/// TODO: Change {1} to std::forward<>({1})
 			output.WriteLine("using return_type = decltype(T::{0}({1}));", func->Name, func->ParametersNamesOnly);
 			if (func->Flags.is_set(MethodFlags::Abstract))
-				output.WriteLine(R"(if (ReflectionProxyObject.Contains("{0}")) return ReflectionProxyObject.CallOverload<return_type>("{0}"{2}{1}); else ReflectionProxyObject.AbstractCall("{0}");)", func->Name, func->ParametersNamesOnly, (func->ParametersSplit.size() ? ", " : ""));
+				output.WriteLine(R"(if (ReflectionProxyObject.Contains("{0}")) return ReflectionProxyObject.template CallOverload<return_type>("{0}"{2}{1}); else ReflectionProxyObject.AbstractCall("{0}");)", func->Name, func->ParametersNamesOnly, (func->ParametersSplit.size() ? ", " : ""));
 			else
-				output.WriteLine(R"(return ReflectionProxyObject.Contains("{0}") ? ReflectionProxyObject.CallOverload<return_type>("{0}"{2}{1}) : T::{0}({1});)", func->Name, func->ParametersNamesOnly, (func->ParametersSplit.size() ? ", " : ""));
+				output.WriteLine(R"(return ReflectionProxyObject.Contains("{0}") ? ReflectionProxyObject.template CallOverload<return_type>("{0}"{2}{1}) : T::{0}({1});)", func->Name, func->ParametersNamesOnly, (func->ParametersSplit.size() ? ", " : ""));
 			output.EndBlock("}}");
 		}
 		output.CurrentIndent--;
@@ -544,7 +544,9 @@ bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 		if (has_any_enumerators)
 		{
 			output.WriteLine("constexpr inline std::pair<{0}, std::string_view> {0}Entries[] = {{ {1} }};", henum.Name, 
-				ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](auto const& enumerator) { return std::format("{{ {}{{{}}}, \"{}\" }}", henum.Name, enumerator->Value, enumerator->Name); }));
+				ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](auto const& enumerator) { 
+					return std::format("std::pair<{0}, std::string_view>{{ {0}{{{1}}}, \"{2}\" }}", henum.Name, enumerator->Value, enumerator->Name); 
+					}));
 			output.WriteLine("constexpr inline std::string_view {}NamesByIndex[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](auto const& enumerator) { return std::format("\"{}\"", enumerator->Name); }));
 			output.WriteLine("constexpr inline std::string_view {}DisplayNamesByIndex[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](auto const& enumerator) { return std::format("\"{}\"", enumerator->DisplayName); }));
 			output.WriteLine("constexpr inline {0} {0}ValuesByIndex[] = {{ {1} }} ;", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](auto const& enumerator) {
