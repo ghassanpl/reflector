@@ -43,7 +43,10 @@ static path RelativePath(path const& writing_file, path const& referenced_file)
 	return referenced_file.lexically_relative(writing_file.parent_path());
 }
 
-uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, const Options& opts)
+/// Compares the generation time of the target artifact (acquired from its first line), with
+/// the last write time of the source file. If they differ, the artifact needs to be regenerated.
+/// The executable change time, if it is newer, always takes precedence over the source file's last write time.
+uint64_t ArtifactNeedsRegenerating(const path& target_path, const path& source_path, const Options& opts)
 {
 	const auto stat = std::filesystem::status(target_path);
 	const uint64_t file_change_time = std::max(ExecutableChangeTime, static_cast<uint64_t>(std::filesystem::last_write_time(source_path).time_since_epoch().count()));
@@ -195,7 +198,7 @@ bool CreateTypeListArtifact(ArtifactArgs args)
 
 std::string BuildCompileTimeLiteral(std::string_view str)
 {
-	return std::format("\"{}\"",ghassanpl::string_ops::escaped(str));
+	return std::format("\"{}\"",escaped(str));
 }
 
 
@@ -545,12 +548,12 @@ bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 		if (has_any_enumerators)
 		{
 			output.WriteLine("constexpr inline std::pair<{0}, std::string_view> {0}Entries[] = {{ {1} }};", henum.Name, 
-				ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](auto const& enumerator) { 
+				join(henum.Enumerators, ", ", [&](auto const& enumerator) { 
 					return std::format("std::pair<{0}, std::string_view>{{ {0}{{{1}}}, \"{2}\" }}", henum.Name, enumerator->Value, enumerator->Name); 
 					}));
-			output.WriteLine("constexpr inline std::string_view {}NamesByIndex[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](auto const& enumerator) { return std::format("\"{}\"", enumerator->Name); }));
-			output.WriteLine("constexpr inline std::string_view {}DisplayNamesByIndex[] = {{ {} }};", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [](auto const& enumerator) { return std::format("\"{}\"", enumerator->DisplayName); }));
-			output.WriteLine("constexpr inline {0} {0}ValuesByIndex[] = {{ {1} }} ;", henum.Name, ghassanpl::string_ops::join(henum.Enumerators, ", ", [&](auto const& enumerator) {
+			output.WriteLine("constexpr inline std::string_view {}NamesByIndex[] = {{ {} }};", henum.Name, join(henum.Enumerators, ", ", [](auto const& enumerator) { return std::format("\"{}\"", enumerator->Name); }));
+			output.WriteLine("constexpr inline std::string_view {}DisplayNamesByIndex[] = {{ {} }};", henum.Name, join(henum.Enumerators, ", ", [](auto const& enumerator) { return std::format("\"{}\"", enumerator->DisplayName); }));
+			output.WriteLine("constexpr inline {0} {0}ValuesByIndex[] = {{ {1} }} ;", henum.Name, join(henum.Enumerators, ", ", [&](auto const& enumerator) {
 				return std::format("{}{{{}}}", henum.Name, enumerator->Value);
 			}));
 

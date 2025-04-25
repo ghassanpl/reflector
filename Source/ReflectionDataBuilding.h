@@ -11,7 +11,7 @@
 
 constexpr std::string_view TIMESTAMP_TEXT = "/// TIMESTAMP: ";
 
-uint64_t FileNeedsUpdating(const path& target_path, const path& source_path, const Options& opts);
+uint64_t ArtifactNeedsRegenerating(const path& target_path, const path& source_path, const Options& opts);
 
 bool BuildMirrorHookupFile(ArtifactArgs args, FileMirror const& mirror);
 bool BuildMirrorFile(ArtifactArgs args, FileMirror const& file, uint64_t file_change_time);

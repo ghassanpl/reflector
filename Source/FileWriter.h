@@ -15,6 +15,8 @@ struct ArtifactArgs
 
 struct FileWriter
 {
+	static constexpr std::string_view EndLineCharacters = "\n"; /// TODO: Make this be determined from OS, and configurable
+
 	std::stringstream& mOutput;
 	size_t CurrentIndent = 0;
 	bool InDefine = false;
@@ -38,7 +40,7 @@ struct FileWriter
 		mOutput << std::vformat(str, std::make_format_args(args...));
 		if (InDefine)
 			mOutput << " \\";
-		mOutput << '\n';
+		mOutput << EndLineCharacters;
 	}
 
 	template <typename... ARGS>

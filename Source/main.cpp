@@ -7,7 +7,6 @@
 #include "Parse.h"
 #include "ReflectionDataBuilding.h"
 #include "Documentation.h"
-#include <vector>
 #include <future>
 
 Options const* global_options = nullptr;
@@ -17,6 +16,7 @@ int main(int argc, const char* argv[])
 	/// If executable changed, it's newer than the files it created in the past, so they need to be rebuild
 	ExecutableChangeTime = std::filesystem::last_write_time(argv[0]).time_since_epoch().count();
 	InvocationTime = std::chrono::system_clock::now().time_since_epoch().count();
+	CaseInsensitiveFileSystem = (std::filesystem::path("A") <=> std::filesystem::path("a")) == std::strong_ordering::equivalent;
 
 	try
 	{
@@ -26,7 +26,7 @@ int main(int argc, const char* argv[])
 			
 			if (argc > 1 || exe.parent_path() != std::filesystem::current_path())
 			{
-				std::cerr << format("Error: {} has been build in bootstrap mode. Run it from its directory ({}), and rebuild it to create the final executable. See https://github.com/ghassanpl/reflector/wiki/Building for more information on what this means.\n", exe.filename().string(), exe.parent_path().string());
+				std::cerr << format("Error: {} has been build in bootstrap mode. Run it from its directory ({}), and rebuild it in non-boostrap mode to create the final executable. See https://github.com/ghassanpl/reflector/wiki/Building for more information on what this means.\n", exe.filename().string(), exe.parent_path().string());
 				return 1;
 			}
 		}
@@ -52,11 +52,11 @@ int main(int argc, const char* argv[])
 					if (file.string().ends_with(options.MirrorExtension)) return;
 
 					auto ext = file.extension().string();
-					std::ranges::transform(ext, ext.begin(), ::tolower);
+					if (CaseInsensitiveFileSystem)
+						std::ranges::transform(ext, ext.begin(), ::tolower);
+
 					if (!std::filesystem::is_directory(file) && options.ExtensionsToScan.contains(ext))
-					{
 						final_files.push_back(file);
-					}
 				};
 				if (options.Recursive)
 				{
@@ -80,12 +80,11 @@ int main(int argc, const char* argv[])
 		PrintLine("{} reflectable files found", final_files.size());
 
 		std::vector<std::future<bool>> parsers;
-		/// Parse all types
+		/// Parse all marked declarations in files
 		for (const auto& file : final_files)
 		{
 			parsers.push_back(std::async(ParseClassFile, std::filesystem::path(file), options));
 		}
-
 		if (!std::ranges::all_of(parsers, [](auto& future) { return future.get(); }))
 			return -1;
 
@@ -102,18 +101,18 @@ int main(int argc, const char* argv[])
 
 		for (const auto& file : GetMirrors())
 		{
-			auto file_path = file->SourceFilePath;
-			file_path.concat(options.MirrorExtension);
+			auto mirror_file_path = file->SourceFilePath;
+			mirror_file_path.concat(options.MirrorExtension);
 
-			auto file_change_time = FileNeedsUpdating(file_path, file->SourceFilePath, options);
+			auto file_change_time = ArtifactNeedsRegenerating(mirror_file_path, file->SourceFilePath, options);
 			if (file_change_time == 0) continue;
 
-			factory.QueueArtifact(file_path, BuildMirrorFile, std::ref(*file), file_change_time);
+			factory.QueueArtifact(mirror_file_path, BuildMirrorFile, std::ref(*file), file_change_time);
 
 			if (options.ScriptBinding.SplitTypeListIntoHookupFiles)
 			{
-				auto hookup_file_path = file_path;
-				hookup_file_path.replace_extension(".hookup.cpp");
+				auto hookup_file_path = mirror_file_path;
+				hookup_file_path.replace_extension(options.ScriptBinding.HookupFileExtension);
 				factory.QueueArtifact(hookup_file_path, BuildMirrorHookupFile, std::ref(*file));
 			}
 		}
@@ -127,6 +126,8 @@ int main(int argc, const char* argv[])
 		factory.QueueArtifact(options.ArtifactPath / "Classes.reflect.h", CreateTypeListArtifact);
 		if (!BootstrapBuild)
 		{
+			/// TODO: Make linking these files optional; some people might want to change these files for some reason, as part of their
+			/// build system, and we don't want to trample over our own files.
 			factory.QueueLinkOrCopyArtifact(options.ArtifactPath / "Reflector.cpp", options.GetExePath().parent_path() / "Include" / "Reflector.cpp");
 			factory.QueueLinkOrCopyArtifact(options.ArtifactPath / "ReflectorClasses.h", options.GetExePath().parent_path() / "Include" / "ReflectorClasses.h");
 			factory.QueueLinkOrCopyArtifact(options.ArtifactPath / "ReflectorUtils.h", options.GetExePath().parent_path() / "Include" / "ReflectorUtils.h");
@@ -141,6 +142,8 @@ int main(int argc, const char* argv[])
 		{
 			files_changed += GenerateDocumentation(factory, options);
 		}
+
+		files_changed += factory.Wait();
 
 		if (!options.Quiet)
 		{

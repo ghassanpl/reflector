@@ -15,8 +15,6 @@
 #include <regex>
 using namespace std::string_literals;
 
-uint64_t ExecutableChangeTime = 0;
-uint64_t InvocationTime = 0;
 std::vector<std::unique_ptr<FileMirror>> Mirrors;
 
 extern Options const* global_options;
@@ -52,12 +50,12 @@ void Declaration::CreateArtificialMethodsAndDocument(Options const& options)
 		if (Deprecation)
 			AddWarningDocNote("Deprecated", Deprecation.value());
 		else
-			AddWarningDocNote("Deprecated", "This {} is deprecated; no reason was given", string_ops::ascii::tolower(magic_enum::enum_name(this->DeclarationType())));
+			AddWarningDocNote("Deprecated", "This {} is deprecated; no reason was given", ascii::tolower(magic_enum::enum_name(this->DeclarationType())));
 	}
 
 	if (EntityFlags.is_set(Reflector::EntityFlags::Unimplemented))
 	{
-		AddWarningDocNote("Unimplemented", "This {}'s functionality is unimplemented", string_ops::ascii::tolower(magic_enum::enum_name(this->DeclarationType()))).Icon = "circle-slash";
+		AddWarningDocNote("Unimplemented", "This {}'s functionality is unimplemented", ascii::tolower(magic_enum::enum_name(this->DeclarationType()))).Icon = "circle-slash";
 	}
 
 	/// TODO: We could do a preliminary pass on Comments here and create a vector<string, vector<string>> that holds lines for each section.
@@ -780,7 +778,7 @@ string_view TrimWhitespaceAndComments(std::string_view str)
 {
 	while (true)
 	{
-		ghassanpl::string_ops::trim_whitespace_left(str);
+		trim_whitespace_left(str);
 		if (str.starts_with("//"))
 			return { str.end(), str.end() };
 		if (consume(str, "/*"))

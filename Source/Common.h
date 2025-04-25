@@ -21,7 +21,7 @@ namespace tl
 #include <nlohmann/json.hpp>
 #include <ghassanpl/enum_flags.h>
 #include <ghassanpl/string_ops.h>
-#include <magic_enum_format.hpp>
+#include <magic_enum/magic_enum_format.hpp>
 #include <format>
 using std::string_view;
 using nlohmann::json;
@@ -44,7 +44,7 @@ struct Artifactory;
 
 inline string_view TrimWhitespace(std::string_view str)
 {
-	return ghassanpl::string_ops::trimmed_whitespace(str);
+	return trimmed_whitespace(str);
 }
 
 string_view TrimWhitespaceAndComments(std::string_view str);
@@ -243,7 +243,7 @@ struct TypeDeclaration : public Declaration
 	{
 		if (Namespace.empty())
 			return Name;
-		return std::format("{}{}{}", ghassanpl::string_ops::replaced(Namespace, "::", sep), sep, Name);
+		return std::format("{}{}{}", replaced(Namespace, "::", sep), sep, Name);
 	}
 
 	virtual json ToJSON() const override
@@ -576,8 +576,10 @@ std::string FormatPostFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags
 std::string Icon(std::string_view icon);
 std::string IconFor(DeclarationType type);
 
-extern uint64_t ExecutableChangeTime;
-extern uint64_t InvocationTime;
+inline uint64_t ExecutableChangeTime = 0;
+inline uint64_t InvocationTime = 0;
+inline bool CaseInsensitiveFileSystem = false;
+
 std::vector<FileMirror const*> GetMirrors();
 FileMirror* AddMirror();
 void RemoveEmptyMirrors();

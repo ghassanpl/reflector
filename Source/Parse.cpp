@@ -26,12 +26,12 @@ string_view Expect(string_view str, string_view value)
 		throw std::exception(std::format("Expected `{}`", value).c_str());
 	}
 	str.remove_prefix(value.size());
-	return string_ops::trimmed_whitespace(str);
+	return trimmed_whitespace(str);
 }
 
 std::string EscapeString(std::string_view string)
 {
-	if (!string_ops::string_contains(string, '"'))
+	if (!string_contains(string, '"'))
 		return std::format("\"{}\"", string);
 	/// """" is not a valid substring of a JSON document, so we can use it to escape the string
 	return std::format("R\"\"\"\"\"({})\"\"\"\"\"", string);
@@ -158,7 +158,7 @@ std::string ParseType(string_view& str)
 	
 	trim_whitespace_left(str);
 
-	return ghassanpl::string_ops::make_string(start, str.begin());
+	return make_string(start, str.begin());
 }
 
 std::string ParseExpression(string_view& str)
@@ -281,7 +281,7 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 
 				/// TODO: Parse C++ integer literal (including 0x/0b bases, ' separators, suffixes, etc.)
 				int base = 10;
-				if (string_ops::ascii::string_starts_with_ignore_case(rest, "0x"))
+				if (ascii::string_starts_with_ignore_case(rest, "0x"))
 				{
 					rest.remove_prefix(2);
 					base = 16;
@@ -465,14 +465,14 @@ ParsedFieldDecl ParseFieldDecl(string_view line)
 	
 	if (eq_start != line.end())
 	{
-		type_and_name = TrimWhitespace(string_ops::make_sv(line.begin(), eq_start));
-		line = string_ops::make_sv(eq_start + 1, line.end());
+		type_and_name = TrimWhitespace(make_sv(line.begin(), eq_start));
+		line = make_sv(eq_start + 1, line.end());
 		result.Initializer = ParseExpression(line);
 	}
 	else if (brace_start != line.end())
 	{
-		type_and_name = TrimWhitespace(string_ops::make_sv(line.begin(), brace_start));
-		line = string_ops::make_sv(brace_start, line.end());
+		type_and_name = TrimWhitespace(make_sv(line.begin(), brace_start));
+		line = make_sv(brace_start, line.end());
 		result.Initializer = ParseExpression(line);
 		result.Flags += FieldFlags::BraceInitialized;
 	}
@@ -641,7 +641,7 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 
 	ParseCppAttributes(next_line, result->Attributes); /// Unfortunately, C++ attributes on functions can also be after the name: `void q [[ noreturn ]] (int i);`
 
-	if (!string_ops::string_contains(next_line, '('))
+	if (!string_contains(next_line, '('))
 		throw std::runtime_error(std::format("Misformed method declaration"));
 
 	int num_pars = 0;
@@ -654,7 +654,7 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 			num_pars--;
 		next_line.remove_prefix(1);
 	} while (num_pars);
-	auto params = string_ops::make_sv(start_args + 1, next_line.begin());
+	auto params = make_sv(start_args + 1, next_line.begin());
 	
 	if (params.empty())
 		throw std::runtime_error(std::format("Misformed method declaration"));

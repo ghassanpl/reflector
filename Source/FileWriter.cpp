@@ -9,7 +9,7 @@
 
 void FileWriter::WriteLine()
 {
-	mOutput << "\n";
+	mOutput << EndLineCharacters;
 }
 
 void FileWriter::EnsurePCH()
@@ -23,6 +23,7 @@ bool FileWriter::FilesAreDifferent(path const& f1, path const& f2)
 	namespace fs = std::filesystem;
 
 	if (fs::exists(f1) != fs::exists(f2)) return true;
+	if (fs::equivalent(f1, f2)) return false;
 	const auto f1filesize = fs::file_size(f1);
 	if (f1filesize != fs::file_size(f2)) return true;
 	if (f1filesize == 0) return false; /// This guard is here because we cannot map 0-sized files
@@ -54,7 +55,7 @@ void Artifactory::QueueCopyArtifact(path target_path, path source_path)
 		}
 		catch (std::exception const& e)
 		{
-			ReportError(target_path, 0, std::format("Exception when building artifact: {}\n", e.what()));
+			ReportError(target_path, 0, std::format("Exception when building this artifact: {}\n", e.what()));
 		}
 		--this->mArtifactsToFinish;
 	}));
@@ -69,7 +70,7 @@ void Artifactory::QueueLinkOrCopyArtifact(path target_path, path source_path)
 		try
 		{
 			const bool target_exists = std::filesystem::exists(target_path);
-			if (!target_exists || (!std::filesystem::equivalent(source_path, target_path) && FileWriter::FilesAreDifferent(source_path, target_path)))
+			if (!target_exists || FileWriter::FilesAreDifferent(source_path, target_path))
 			{
 				std::error_code ec;
 				if (!target_exists || (std::filesystem::remove(target_path, ec) && ec != std::errc{}))
@@ -85,12 +86,22 @@ void Artifactory::QueueLinkOrCopyArtifact(path target_path, path source_path)
 					if (!options.Quiet)
 						PrintLine("Linked file '{}' as '{}'", source_path.string(), target_path.string());
 				}
+
+				/// Since we're trying to link, it means that we're basically trying to copy an "immutable shared" file.
+				/// So let's make it read-only so that the user doesn't accidentally override the shared contents.
+				auto permissions = std::filesystem::status(target_path).permissions();
+				std::filesystem::permissions(target_path,
+					std::filesystem::perms::owner_write
+					| std::filesystem::perms::group_write
+					| std::filesystem::perms::others_write,
+					std::filesystem::perm_options::remove);
+
 				++this->mModifiedFiles;
 			}
 		}
 		catch (std::exception const& e)
 		{
-			ReportError(target_path, 0, std::format("Exception when building artifact: {}\n", e.what()));
+			ReportError(target_path, 0, std::format("Exception when building this artifact: {}\n", e.what()));
 		}
 		--this->mArtifactsToFinish;
 	}));
@@ -118,19 +129,10 @@ bool Artifactory::Write(path const& target_path, std::string contents) const
 				return false;
 
 			const auto target_file_map = ghassanpl::make_mmap_source<char>(target_path);
-			/*
-			auto mismatch = std::ranges::mismatch(contents, target_file_map);
-			if (mismatch.in1 == contents.end() && mismatch.in2 == target_file_map.end())
-				return false;
-
-			std::cout << std::format("[WRITING BECAUSE] Mismatch at {} pos {}: expected {}, got {}\n", target_path.string(), std::distance(contents.begin(), mismatch.in1), *mismatch.in1, *mismatch.in2);
-
-			return true;
-			/*/
+			
 			const auto h1 = ghassanpl::fnv64(contents);
 			const auto h2 = ghassanpl::fnv64(target_file_map);
 			return h1 != h2;
-			//*/
 		}();
 	}
 

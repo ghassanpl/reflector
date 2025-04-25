@@ -15,6 +15,7 @@ Options::Options(path exe_path, path const& options_file_path)
 
 	if constexpr (!BootstrapBuild)
 	{
+		/// TODO: This does not work with suboptions in subobjects, e.g. JSON.Use
 		std::vector<std::string> unsupported_options;
 		auto& options_class = Options::StaticGetReflectionData();
 		for (auto& [name, value] : mOptionsFile.items())
@@ -24,7 +25,7 @@ Options::Options(path exe_path, path const& options_file_path)
 		}
 
 		if (!unsupported_options.empty())
-			throw std::runtime_error{ std::format("The following options are not supported: '{}'; if you want to comment out options, prefix their name with #", string_ops::join(unsupported_options, ", ")) };
+			throw std::runtime_error{ std::format("The following options are not supported: '{}'; if you want to comment out options, prefix their name with #", join(unsupported_options, ", ")) };
 	}
 
 #else
@@ -43,13 +44,13 @@ Options::Options(path exe_path, path const& options_file_path)
 	Documentation.ClearTargetDirectory = true;
 #endif
 
-	auto EnsureAbsoluteToOptions = [options_file_path = mOptionsFilePath] (std::filesystem::path p) {
+	auto ConvertPathRelativeToOptionsFileToAbsolute = [options_file_path = mOptionsFilePath] (std::filesystem::path p) {
 		if (p.empty() || p.is_relative())
 			return std::filesystem::absolute(options_file_path.parent_path() / path{ std::move(p) });
 		return p;
 	};
 
-	ArtifactPath = EnsureAbsoluteToOptions(ArtifactPath);
+	ArtifactPath = ConvertPathRelativeToOptionsFileToAbsolute(ArtifactPath);
 
 	if (Files.is_null())
 		throw std::exception{ "Options file missing `Files' entry" };
@@ -60,16 +61,25 @@ Options::Options(path exe_path, path const& options_file_path)
 		{
 			if (!file.is_string())
 				throw std::exception{ "`Files' array must contain only strings" };
-			mPathsToScan.emplace_back(EnsureAbsoluteToOptions(file).string());
+			mPathsToScan.emplace_back(ConvertPathRelativeToOptionsFileToAbsolute(file).string());
 		}
 	}
 	else if (Files.is_string())
-		mPathsToScan.emplace_back(EnsureAbsoluteToOptions(Files).string());
+		mPathsToScan.emplace_back(ConvertPathRelativeToOptionsFileToAbsolute(Files).string());
 	else
 		throw std::exception{ "`Files' entry must be an array of strings or a string" };
 
-#define X(e) if (e##AnnotationName.empty()) e##AnnotationName = AnnotationPrefix + #e
+	/// Extensions to scan should be lowercase if the file system is case insensitive
+	if (CaseInsensitiveFileSystem)
+	{
+		std::set<std::string, std::less<>> e2s;
+		for (auto& ext : ExtensionsToScan)
+			e2s.insert(ascii::tolower(ext));
+		std::exchange(ExtensionsToScan, std::move(e2s));
+	}
 
+	/// Setup annotation name defaults
+#define X(e) if (e##AnnotationName.empty()) e##AnnotationName = AnnotationPrefix + #e
 	X(Enum);
 	X(Enumerator);
 	X(Class);

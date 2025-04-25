@@ -40,7 +40,7 @@ struct AttributeProperties
 
 	template <typename... ARGS>
 	AttributeProperties(std::string name, std::string desc, enum_flags<DeclarationType> targets, json default_value = nullptr, ARGS&&... args) noexcept
-		: ValidNames(string_ops::split<std::string>(name, ";"))
+		: ValidNames(split<std::string>(name, ";"))
 		, Description(std::move(desc))
 		, ValidTargets(targets)
 		, DefaultValueIfAny(std::move(default_value))

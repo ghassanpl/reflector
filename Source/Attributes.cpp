@@ -76,7 +76,7 @@ AttributeValidatorFunc IsReflectedEnum = [](json const& attr_value, Declaration 
 AttributeValidatorFunc IsIdentifier = [](json const& attr_value, Declaration const& on_decl)->tl::expected<void, std::string> {
 	if (auto err = NotEmptyString(attr_value, on_decl); !err) return err;
 	std::string_view identifier{attr_value};
-	if (!string_ops::ascii::is_identifier(identifier))
+	if (!ascii::is_identifier(identifier))
 		return tl::unexpected(format("must be a valid C++ identifier", identifier));
 	return {};
 };
@@ -108,10 +108,10 @@ const StringAttributeProperties Attribute::Namespace {
 	Targets::Types,
 	[](json const& attr_value, Declaration const& on_decl) -> tl::expected<void, std::string> {
 		if (auto err = NotEmptyString(attr_value, on_decl); !err) return err;
-		auto namespaces = string_ops::split(attr_value.get_ref<std::string const&>(), "::");
+		auto namespaces = split(attr_value.get_ref<std::string const&>(), "::");
 		for (auto& ns : namespaces)
 		{
-			if (!string_ops::ascii::is_identifier(ns))
+			if (!ascii::is_identifier(ns))
 				return tl::unexpected(format("must be a valid namespace ('{}' unexpected)", ns));
 		}
 		return {};
