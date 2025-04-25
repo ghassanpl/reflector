@@ -193,10 +193,14 @@ namespace Reflector
 		PathReference(PathReference&&) noexcept = default;
 		PathReference& operator=(PathReference const& obj) noexcept = default;
 		PathReference& operator=(PathReference&& obj) noexcept = default;
-
+		
 		template <typename T>
 		requires std::constructible_from<std::string, T>
 		PathReference(T&& p) : mPath(std::forward<T>(p)) { ValidatePath(); }
+
+		template <typename T>
+		requires std::constructible_from<PointerType, T>
+		PathReference(T&& p) : mPointer(std::forward<T>(p)) { }
 
 		template <typename T>
 		requires std::constructible_from<std::string, T>
@@ -207,17 +211,25 @@ namespace Reflector
 			return *this;
 		}
 
+		template <typename T>
+		requires std::constructible_from<PointerType, T>
+		auto& operator=(T&& p) {
+			mPath = {};
+			mPointer = std::forward<T>(p);
+			return *this;
+		}
+
 		PointerType operator->() const { return Pointer(); }
 		auto& operator*() const { return *Pointer(); }
 
 		auto operator<=>(PathReference const& other) const { return Path() <=> other.Path(); }
-		auto operator==(PathReference const& other) const { return Path() == other.Path(); }
+		bool operator==(PathReference const& other) const { return Path() == other.Path(); }
 		
 		auto operator<=>(PointerType const& ptr) const { return Pointer() <=> ptr; }
-		auto operator==(PointerType const& ptr) const { return Pointer() == ptr; }
+		bool operator==(PointerType const& ptr) const { return Pointer() == ptr; }
 		
 		auto operator<=>(std::string_view path) const { return this->Path() <=> path; }
-		auto operator==(std::string_view path) const { return this->Path() == path; }
+		bool operator==(std::string_view path) const { return this->Path() == path; }
 
 		void Reset() { mPath = {}; mPointer = {}; }
 		

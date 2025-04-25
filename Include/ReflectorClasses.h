@@ -26,6 +26,13 @@ namespace Reflector
 	struct Field;
 	struct Method;
 	struct Property;
+	struct Class;
+
+	template <typename T> concept reflected_class = requires {
+		T::StaticClassFlags();
+		{ T::StaticGetReflectionData() } -> std::same_as<::Reflector::Class const&>;
+		typename T::self_type;
+	}&& std::same_as<T, typename T::self_type>;
 
 	enum class AccessMode { Unspecified, Public, Private, Protected };
 
@@ -181,7 +188,7 @@ namespace Reflector
 		std::string_view BaseClassName = {};
 		std::string_view Attributes = "{}";
 #if REFLECTOR_USES_JSON
-		REFLECTOR_JSON_TYPE AttributesJSON;
+		REFLECTOR_JSON_TYPE AttributesJSON = REFLECTOR_JSON_TYPE::object();
 #endif
 		uint64_t ReflectionUID = 0;
 		std::string GUID = {};
@@ -312,7 +319,7 @@ namespace Reflector
 		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 		/// TODO: std::string_view ScriptName; /// Set to ScriptName if not empty, else UniqueName if not empty, otherwise Name
 #if REFLECTOR_USES_JSON
-		REFLECTOR_JSON_TYPE AttributesJSON;
+		REFLECTOR_JSON_TYPE AttributesJSON = REFLECTOR_JSON_TYPE::object();
 #endif
 		std::type_index FieldTypeIndex = typeid(void);
 		uint64_t Flags = 0;
@@ -360,12 +367,12 @@ namespace Reflector
 
 		std::string_view Name = "";
 		std::string_view DisplayName = "";
-		std::string_view ReturnType = "";
+		std::string_view ReturnType = "void";
 		std::string_view Parameters = "";
 		std::vector<Parameter> ParametersSplit{}; /// TODO: Could be given at compile-time as well
 		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 #if REFLECTOR_USES_JSON
-		REFLECTOR_JSON_TYPE AttributesJSON;
+		REFLECTOR_JSON_TYPE AttributesJSON = REFLECTOR_JSON_TYPE::object();
 #endif
 
 		std::string_view UniqueName = ""; /// TODO: Could be given at compile-time as well
@@ -399,7 +406,7 @@ namespace Reflector
 
 		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 #if REFLECTOR_USES_JSON
-		REFLECTOR_JSON_TYPE AttributesJSON;
+		REFLECTOR_JSON_TYPE AttributesJSON = REFLECTOR_JSON_TYPE::object();
 #endif
 	};
 
@@ -410,7 +417,7 @@ namespace Reflector
 		std::string_view FullType = "";
 		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 #if REFLECTOR_USES_JSON
-		REFLECTOR_JSON_TYPE AttributesJSON;
+		REFLECTOR_JSON_TYPE AttributesJSON = REFLECTOR_JSON_TYPE::object();
 #endif
 		std::vector<Enumerator> Enumerators;
 		std::type_index TypeIndex = typeid(void);
@@ -434,10 +441,10 @@ namespace Reflector
 		std::string_view Type = "";
 		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 #if REFLECTOR_USES_JSON
-		REFLECTOR_JSON_TYPE AttributesJSON;
+		REFLECTOR_JSON_TYPE AttributesJSON = REFLECTOR_JSON_TYPE::object();
 #endif
-		std::function<void(void const*, void*)> Getter = {};
-		std::function<void(void*, void const*)> Setter = {};
+		void(*Getter)(void const*, void*) = {};
+		void(*Setter)(void*, void const*) = {};
 		std::type_index PropertyTypeIndex = typeid(void);
 		uint64_t Flags = 0;
 
@@ -558,12 +565,6 @@ namespace Reflector
 		return nullptr;
 	}
 
-	template <typename T> concept reflected_class = requires {
-		T::StaticClassFlags();
-		{ T::StaticGetReflectionData() } -> std::same_as<::Reflector::Class const&>;
-		typename T::self_type;
-	} && std::same_as<T, typename T::self_type>;
-	
 	template <typename T> concept derives_from_reflectable = (::Reflector::reflected_class<std::remove_cvref_t<T>> && std::derived_from<std::remove_cvref_t<T>, ::Reflector::Reflectable>) 
 		|| std::same_as<std::remove_cvref_t<T>, ::Reflector::Reflectable>;
 

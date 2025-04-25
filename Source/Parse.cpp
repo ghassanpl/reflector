@@ -29,14 +29,19 @@ string_view Expect(string_view str, string_view value)
 	return string_ops::trimmed_whitespace(str);
 }
 
-std::string EscapeJSON(json const& json)
-{
-	return "R\"_REFLECT_(" + json.dump() + ")_REFLECT_\"";
-}
-
 std::string EscapeString(std::string_view string)
 {
-	return std::format("R\"_REFLECT_({})_REFLECT_\"", string);
+	if (!string_ops::string_contains(string, '"'))
+		return std::format("\"{}\"", string);
+	/// """" is not a valid substring of a JSON document, so we can use it to escape the string
+	return std::format("R\"\"\"\"\"({})\"\"\"\"\"", string);
+}
+
+std::string EscapeJSON(json const& json)
+{
+	if (json.is_object() && json.empty())
+		return "empty_json_object_str";
+	return EscapeString(json.dump());
 }
 
 uint64_t GenerateUID(std::filesystem::path const& file_path, size_t declaration_line)

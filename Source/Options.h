@@ -90,11 +90,11 @@ struct DocumentationOptions
 	RField();
 	json AdditionalStyles = json::object();
 	
-	/// Will be added directly to the `<head>` tag of each page
+	/// Will be added directly to the `\<head\>` tag of each page
 	RField();
 	std::string AdditionalHeadTags {};
 
-	/// language tag (e.g. "en") to add to the `<html>` tag to define the language of the page
+	/// Language tag (e.g. "en") to add to the `\<html\>` tag to define the language of the page
 	RField();
 	std::string Language = "en";
 
@@ -297,6 +297,10 @@ struct Options
 	/// Whether to create property entries for public fields.
 	RField();
 	bool GeneratePropertiesForPublicFields = false;
+
+	/// Whether or not to store the bodies of artificial functions in the reflection database.
+	RField();
+	bool ReflectBodiesOfArtificialFunctions = false;
 
 	/// Whether to create structs inside reflected classes with per-member reflection information.
 	RField();

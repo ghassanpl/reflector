@@ -93,6 +93,7 @@ bool CreateReflectorDatabaseArtifact(ArtifactArgs args)
 	database_file.WriteLine("#include \"Includes.reflect.h\"");
 
 	database_file.WriteLine("template <typename T, typename U = T> bool Compare_(T&& t, U&& u) {{ return t == u; }}");
+	database_file.WriteLine("static constexpr std::string_view empty_json_object_str = \"{{}}\";");
 	
 	for (const auto& mirror : GetMirrors())
 	{
@@ -696,7 +697,7 @@ bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 		output.WriteLine("constexpr {0} operator--({0}& v, int) {{ auto result = v; v = GetPrev(v); return result; }}", henum.Name);
 	}
 
-	output.WriteLine("constexpr auto operator==(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left == static_cast<std::underlying_type_t<{0}>>(right); }}", henum.Name);
+	output.WriteLine("constexpr bool operator==(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left == static_cast<std::underlying_type_t<{0}>>(right); }}", henum.Name);
 	output.WriteLine("constexpr auto operator<=>(std::underlying_type_t<{0}> left, {0} right) noexcept {{ return left <=> static_cast<std::underlying_type_t<{0}>>(right); }}", henum.Name);
 
 	output.WriteLine("std::ostream& operator<<(std::ostream& strm, {} v);", henum.Name);
@@ -826,7 +827,8 @@ void OutputContext::BuildStaticReflectionData(const Enum& henum)
 	output.StartBlock("static const ::Reflector::Enum _data = {{");
 
 	output.WriteLine(".Name = \"{}\",", henum.Name);
-	output.WriteLine(".DisplayName = \"{}\",", henum.DisplayName);
+	if (!henum.DisplayName.empty())
+		output.WriteLine(".DisplayName = \"{}\",", henum.DisplayName);
 	output.WriteLine(".FullType = \"{}\",", henum.FullType());
 	if (!henum.Attributes.empty())
 	{
@@ -837,14 +839,17 @@ void OutputContext::BuildStaticReflectionData(const Enum& henum)
 	output.StartBlock(".Enumerators = {{");
 	for (auto& enumerator : henum.Enumerators)
 	{
-		if (options.JSON.Use)
+		if (enumerator->Attributes.empty())
+			output.WriteLine("{{ \"{}\", \"{}\", {}, {}, }},", enumerator->Name, enumerator->DisplayName, enumerator->Value, enumerator->Flags.bits);
+		else if (options.JSON.Use)
 			output.WriteLine("{{ \"{}\", \"{}\", {}, {}, {}, {}({}) }},", enumerator->Name, enumerator->DisplayName, enumerator->Value, enumerator->Flags.bits, EscapeJSON(enumerator->Attributes), options.JSON.ParseFunction, EscapeJSON(enumerator->Attributes));
 		else
 			output.WriteLine("{{ \"{}\", \"{}\", {}, {}, {} }},", enumerator->Name, enumerator->DisplayName, enumerator->Value, enumerator->Flags.bits, EscapeJSON(enumerator->Attributes));
 	}
 	output.EndBlock("}},");
 	output.WriteLine(".TypeIndex = typeid({}),", henum.FullType());
-	output.WriteLine(".Flags = {},", henum.Flags.bits);
+	if (!henum.Flags.empty())
+		output.WriteLine(".Flags = {},", henum.Flags.bits);
 	output.EndBlock("}}; return _data;");
 	output.EndBlock("}}");
 
@@ -940,7 +945,9 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 			if (field->Flags.contain(FieldFlags::NoSave))
 				continue;
 
-			const auto check_for_init_value = !field->InitializingExpression.empty() && !options.JSON.AlwaysSaveAllFields && !field->Flags.contain(FieldFlags::Required);
+			const auto check_for_init_value = !field->InitializingExpression.empty() 
+				&& !options.JSON.AlwaysSaveAllFields 
+				&& !field->Flags.contain(FieldFlags::Required);
 
 			/// TODO: AlwaysSave field attribute
 
@@ -973,7 +980,8 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 		output.WriteLine("using namespace {};", klass.Namespace);
 	output.StartBlock("static const ::Reflector::Class _data = {{");
 	output.WriteLine(".Name = \"{}\",", klass.Name);
-	output.WriteLine(".DisplayName = \"{}\",", klass.DisplayName);
+	if (!klass.DisplayName.empty())
+		output.WriteLine(".DisplayName = \"{}\",", klass.DisplayName);
 	output.WriteLine(".FullType = \"{}\",", klass.FullType());
 
 	/// TODO: Comment and describe here why we should only give the type as the parent class name, since we support full namespaced names?
@@ -1004,9 +1012,12 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 	{
 		output.StartBlock("{{");
 		output.WriteLine(".Name = \"{}\",", field->Name);
-		output.WriteLine(".DisplayName = \"{}\",", field->DisplayName);
+		if (!field->DisplayName.empty())
+			output.WriteLine(".DisplayName = \"{}\",", field->DisplayName);
 		output.WriteLine(".FieldType = \"{}\",", field->Type);
-		if (!field->InitializingExpression.empty())
+		if (field->InitializingExpression == "{}")
+			output.WriteLine(".Initializer = empty_json_object_str,");
+		else if (!field->InitializingExpression.empty())
 			output.WriteLine(".Initializer = {},", EscapeString(field->InitializingExpression));
 		if (!field->Attributes.empty())
 		{
@@ -1015,7 +1026,8 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 				output.WriteLine(".AttributesJSON = {}({}),", options.JSON.ParseFunction, EscapeJSON(field->Attributes));
 		}
 		output.WriteLine(".FieldTypeIndex = typeid({}),", field->Type);
-		output.WriteLine(".Flags = {},", field->Flags.bits);
+		if (!field->Flags.empty())
+			output.WriteLine(".Flags = {},", field->Flags.bits);
 		output.WriteLine(".ParentClass = &_data");
 		output.EndBlock("}},");
 	}
@@ -1027,14 +1039,16 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 	{
 		output.StartBlock("::Reflector::Method {{");
 		output.WriteLine(".Name = \"{}\",", method->Name);
-		output.WriteLine(".DisplayName = \"{}\",", method->DisplayName);
-		output.WriteLine(".ReturnType= \"{}\",", method->Return.Name);
+		if (!method->DisplayName.empty())
+			output.WriteLine(".DisplayName = \"{}\",", method->DisplayName);
+		if (method->Return.Name != "void")
+			output.WriteLine(".ReturnType = \"{}\",", method->Return.Name);
 		if (!method->GetParameters().empty())
 		{
 			output.WriteLine(".Parameters = {},", EscapeString(method->GetParameters()));
 			output.WriteLine(".ParametersSplit = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) {
 				return format("{{ {}, {}, {} }}", EscapeString(param.Name), EscapeString(param.Type), EscapeString(param.Initializer));
-				}));
+			}));
 		}
 		if (!method->Attributes.empty())
 		{
@@ -1044,11 +1058,17 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 		}
 		if (!method->UniqueName.empty())
 			output.WriteLine(".UniqueName = \"{}\",", method->UniqueName);
-		if (!method->ArtificialBody.empty())
-			output.WriteLine(".ArtificialBody = {},", EscapeString(method->ArtificialBody));
-		output.WriteLine(".ReturnTypeIndex = typeid({}),", method->Return.Name);
-		output.WriteLine(".ParameterTypeIndices = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { return format("typeid({})", param.Type); }));
-		output.WriteLine(".Flags = {},", method->Flags.bits);
+		if (options.ReflectBodiesOfArtificialFunctions)
+		{
+			if (!method->ArtificialBody.empty())
+				output.WriteLine(".ArtificialBody = {},", EscapeString(method->ArtificialBody));
+		}
+		if (method->Return.Name != "void")
+			output.WriteLine(".ReturnTypeIndex = typeid({}),", method->Return.Name);
+		if (!method->GetParameters().empty())
+			output.WriteLine(".ParameterTypeIndices = {{ {} }},", join(method->ParametersSplit, ", ", [](MethodParameter const& param) { return format("typeid({})", param.Type); }));
+		if (!method->Flags.empty())
+			output.WriteLine(".Flags = {},", method->Flags.bits);
 		output.WriteLine(".ParentClass = &_data");
 		output.EndBlock("}},");
 	}
@@ -1060,7 +1080,8 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 	{
 		output.StartBlock("::Reflector::Property {{");
 		output.WriteLine(".Name = \"{}\",", name);
-		output.WriteLine(".DisplayName = \"{}\",", property.DisplayName);
+		if (!property.DisplayName.empty())
+			output.WriteLine(".DisplayName = \"{}\",", property.DisplayName);
 		output.WriteLine(".Type = \"{}\",", property.Type);
 
 		if (!property.Attributes.empty())
@@ -1087,7 +1108,8 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 			);
 		}
 		output.WriteLine(".PropertyTypeIndex = typeid({}),", klass.Name, property.Type);
-		output.WriteLine(".Flags = {},", property.Flags.bits);
+		if (!property.Flags.empty())
+			output.WriteLine(".Flags = {},", property.Flags.bits);
 		output.WriteLine(".ParentClass = &_data");
 		output.EndBlock("}},");
 	}
