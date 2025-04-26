@@ -242,6 +242,7 @@
     <ClCompile Include="Source\Attributes.cpp" />
     <ClCompile Include="Source\Common.cpp" />
     <ClCompile Include="Source\DB.cpp" />
+    <ClCompile Include="Source\Declarations.cpp" />
     <ClCompile Include="Source\Documentation.cpp" />
     <ClCompile Include="Source\FileWriter.cpp" />
     <ClCompile Include="Source\main.cpp" />
@@ -255,6 +256,7 @@
     <ClInclude Include="Include\ReflectorUtils.h" />
     <ClInclude Include="Source\Attributes.h" />
     <ClInclude Include="Source\Common.h" />
+    <ClInclude Include="Source\Declarations.h" />
     <ClInclude Include="Source\Documentation.h" />
     <ClInclude Include="Source\DummyReflector.h" />
     <ClInclude Include="Source\FileWriter.h" />

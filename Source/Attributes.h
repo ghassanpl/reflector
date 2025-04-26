@@ -1,3 +1,8 @@
+/// Copyright 2017-2025 Ghassan.pl
+/// Usage of the works is permitted provided that this instrument is retained with
+/// the works, so that any entity that uses the works is notified of this instrument.
+/// DISCLAIMER: THE WORKS ARE WITHOUT WARRANTY.
+
 #pragma once
 
 #include "Common.h"
@@ -26,7 +31,7 @@ struct AttributeProperties
 	std::string Category = "Miscellaneous";
 	enum_flags<DeclarationType> ValidTargets{};
 
-	bool AppliesTo(Declaration const& decl) const { return ValidTargets.contain(decl.DeclarationType()); }
+	bool AppliesTo(Declaration const& decl) const;
 
 
 	json DefaultValueIfAny = nullptr;
@@ -97,25 +102,9 @@ struct AttributeProperties
 
 protected:
 
-	void ValidateThrowing(json const& attr_value, Declaration const& decl) const
-	{
-		if (auto exp = Validate(attr_value, decl); !exp)
-			ReportError(decl, "Invalid attribute '{}': {}", Name(), std::move(exp).error());
-	}
+	void ValidateThrowing(json const& attr_value, Declaration const& decl) const;
 
-	json const* Find(Declaration const& decl, bool validate = true) const
-	{
-		for (auto& name : ValidNames)
-		{
-			if (auto it = decl.Attributes.find(name); it != decl.Attributes.end() && !it->is_null())
-			{
-				if (validate)
-					ValidateThrowing(*it, decl);
-				return std::to_address(it);
-			}
-		}
-		return nullptr;
-	}
+	json const* Find(Declaration const& decl, bool validate = true) const;
 
 	AttributeProperties(AttributeProperties const& other) noexcept = default;
 };

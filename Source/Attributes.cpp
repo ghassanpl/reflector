@@ -1,7 +1,15 @@
+/// Copyright 2017-2025 Ghassan.pl
+/// Usage of the works is permitted provided that this instrument is retained with
+/// the works, so that any entity that uses the works is notified of this instrument.
+/// DISCLAIMER: THE WORKS ARE WITHOUT WARRANTY.
+
 #include "Attributes.h"
 #include "Documentation.h"
+#include "Declarations.h"
 
 std::vector<AttributeProperties const*> AttributeProperties::AllAttributes;
+
+bool AttributeProperties::AppliesTo(Declaration const& decl) const { return ValidTargets.contain(decl.DeclarationType()); }
 
 std::vector<std::string_view> AttributeProperties::FindUnsettable(json const& attrs)
 {
@@ -33,6 +41,26 @@ std::optional<std::string> AttributeProperties::ExistsIn(json const& attrs) cons
 	if (const auto it = std::ranges::find_if(ValidNames, [&](std::string const& name) { return attrs.contains(name); }); it != ValidNames.end())
 		return *it;
 	return std::nullopt;
+}
+
+void AttributeProperties::ValidateThrowing(json const& attr_value, Declaration const& decl) const
+{
+	if (auto exp = Validate(attr_value, decl); !exp)
+		ReportError(decl, "Invalid attribute '{}': {}", Name(), std::move(exp).error());
+}
+
+json const* AttributeProperties::Find(Declaration const& decl, bool validate) const
+{
+	for (auto& name : ValidNames)
+	{
+		if (auto it = decl.Attributes.find(name); it != decl.Attributes.end() && !it->is_null())
+		{
+			if (validate)
+				ValidateThrowing(*it, decl);
+			return std::to_address(it);
+		}
+	}
+	return nullptr;
 }
 
 namespace Targets
