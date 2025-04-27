@@ -17,15 +17,13 @@ int main(int argc, const char* argv[])
 	/// If executable changed, it's newer than the files it created in the past, so they need to be rebuild
 	ExecutableChangeTime = std::filesystem::last_write_time(argv[0]).time_since_epoch().count();
 	InvocationTime = std::chrono::system_clock::now().time_since_epoch().count();
-	CaseInsensitiveFileSystem = (std::filesystem::path("A") <=> std::filesystem::path("a")) == std::strong_ordering::equivalent;
+	CaseInsensitiveFileSystem = (path("A") <=> path("a")) == std::strong_ordering::equivalent;
 
 	try
 	{
 		if constexpr (BootstrapBuild)
 		{
-			auto exe = std::filesystem::absolute(path{ argv[0] });
-			
-			if (argc > 1 || exe.parent_path() != std::filesystem::current_path())
+			if (auto exe = absolute(path{ argv[0] }); argc > 1 || exe.parent_path() != std::filesystem::current_path())
 			{
 				std::cerr << format("Error: {} has been build in bootstrap mode. Run it from its directory ({}), and rebuild it in non-boostrap mode to create the final executable. See https://github.com/ghassanpl/reflector/wiki/Building for more information on what this means.\n", exe.filename().string(), exe.parent_path().string());
 				return 1;
@@ -35,7 +33,7 @@ int main(int argc, const char* argv[])
 		{
 			if (argc != 2)
 			{
-				std::cerr << "Syntax: " << std::filesystem::path{ argv[0] }.filename() << " <options file>\n";
+				std::cerr << "Syntax: " << path{ argv[0] }.filename() << " <options file>\n";
 				return 1;
 			}
 		}
@@ -43,11 +41,11 @@ int main(int argc, const char* argv[])
 		Options options{ argv[0], (BootstrapBuild ? "options_reflection.json" : argv[1])};
 		global_options = &options;
 
-		std::vector<std::filesystem::path> final_files;
+		std::vector<path> final_files;
 		for (auto& path : options.GetPathsToScan())
 		{
-			std::cout << std::format("Looking in '{}'...\n", std::filesystem::absolute(path).string());
-			if (std::filesystem::is_directory(path))
+			std::cout << std::format("Looking in '{}'...\n", absolute(path).string());
+			if (is_directory(path))
 			{
 				auto add_files = [&](const std::filesystem::path& file) {
 					if (file.string().ends_with(options.MirrorExtension)) return;
@@ -56,19 +54,19 @@ int main(int argc, const char* argv[])
 					if (CaseInsensitiveFileSystem)
 						std::ranges::transform(ext, ext.begin(), ::tolower);
 
-					if (!std::filesystem::is_directory(file) && options.ExtensionsToScan.contains(ext))
+					if (!is_directory(file) && options.ExtensionsToScan.contains(ext))
 						final_files.push_back(file);
 				};
 				if (options.Recursive)
 				{
-					for (auto it = std::filesystem::recursive_directory_iterator{ std::filesystem::canonical(path) }; it != std::filesystem::recursive_directory_iterator{}; ++it)
+					for (auto it = std::filesystem::recursive_directory_iterator{ canonical(path) }; it != std::filesystem::recursive_directory_iterator{}; ++it)
 					{
 						add_files(*it);
 					}
 				}
 				else
 				{
-					for (auto it = std::filesystem::directory_iterator{ std::filesystem::canonical(path) }; it != std::filesystem::directory_iterator{}; ++it)
+					for (auto it = std::filesystem::directory_iterator{ canonical(path) }; it != std::filesystem::directory_iterator{}; ++it)
 					{
 						add_files(*it);
 					}
@@ -84,7 +82,7 @@ int main(int argc, const char* argv[])
 		/// Parse all marked declarations in files
 		for (const auto& file : final_files)
 		{
-			parsers.push_back(std::async(ParseClassFile, std::filesystem::path(file), options));
+			parsers.push_back(std::async(ParseClassFile, path(file), options));
 		}
 		if (!std::ranges::all_of(parsers, [](auto& future) { return future.get(); }))
 			return -1;
@@ -119,7 +117,7 @@ int main(int argc, const char* argv[])
 		}
 		files_changed += factory.Wait();
 
-		std::filesystem::create_directories(options.ArtifactPath);
+		create_directories(options.ArtifactPath);
 		factory.QueueArtifact(options.ArtifactPath / "Reflector.h", CreateReflectorHeaderArtifact);
 		factory.QueueArtifact(options.ArtifactPath / "Database.reflect.cpp", CreateReflectorDatabaseArtifact);
 		

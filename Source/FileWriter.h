@@ -89,12 +89,9 @@ struct FileWriter
 
 struct Artifactory
 {
+	explicit Artifactory(Options& opt) : options(opt) {}
+	
 	Options& options;
-
-	std::atomic<size_t> mArtifactsToFinish = 0;
-	std::atomic<size_t> mModifiedFiles = 0;
-	std::vector<std::future<void>> mFutures;
-	std::mutex mListMutex;
 
 	template <typename FUNCTOR, typename... ARGS>
 	void QueueArtifact(path const& target_path, FUNCTOR&& functor, ARGS&&... args)
@@ -129,4 +126,11 @@ struct Artifactory
 	bool Write(path const& target_path, std::string contents) const;
 
 	size_t Wait();
+
+private:
+	
+	std::atomic<size_t> mArtifactsToFinish = 0;
+	std::atomic<size_t> mModifiedFiles = 0;
+	std::vector<std::future<void>> mFutures;
+	std::mutex mListMutex;
 };

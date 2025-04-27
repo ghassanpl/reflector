@@ -31,7 +31,7 @@ void PrintSafe(std::ostream& strm, std::string val)
 	strm << val;
 }
 
-std::string FormatPreFlags(enum_flags<Reflector::FieldFlags> flags, enum_flags<Reflector::FieldFlags> except)
+std::string FormatPreFlags(enum_flags<FieldFlags> flags, enum_flags<FieldFlags> except)
 {
 	std::vector<std::string_view> prefixes;
 	flags = flags - except;
@@ -53,9 +53,9 @@ std::string FormatAccess(AccessMode mode)
 	return {};
 }
 
-std::string FormatPreFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except)
+std::string FormatPreFlags(enum_flags<MethodFlags> flags, enum_flags<MethodFlags> except)
 {
-	using enum Reflector::MethodFlags;
+	using enum MethodFlags;
 
 	std::vector<std::string_view> prefixes;
 	flags = flags - except;
@@ -67,9 +67,9 @@ std::string FormatPreFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<
 	return join(prefixes, "");
 }
 
-std::string FormatPostFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except)
+std::string FormatPostFlags(enum_flags<MethodFlags> flags, enum_flags<MethodFlags> except)
 {
-	using enum Reflector::MethodFlags;
+	using enum MethodFlags;
 
 	std::vector<std::string_view> suffixes;
 	flags = flags - except;

@@ -15,7 +15,7 @@ using namespace ghassanpl::parsing;
 
 std::string HighlightTypes(std::string_view type, TypeDeclaration const* search_context);
 
-struct HTMLFileWriter : public FileWriter
+struct HTMLFileWriter : FileWriter
 {
 	using FileWriter::FileWriter;
 
@@ -40,12 +40,12 @@ struct HTMLFileWriter : public FileWriter
 			WriteLine("<div class='breadcrumbs' id='breadcrumbs'>");
 			std::vector<std::string> breadcrumbs;
 			breadcrumbs.emplace_back("<a href='Types.html'>Types</a>");
-			if (auto typedecl = dynamic_cast<TypeDeclaration const*>(decl))
+			if (const auto typedecl = dynamic_cast<TypeDeclaration const*>(decl))
 			{
 				if (!typedecl->Namespace.empty())
 					breadcrumbs.push_back(format(R"({}<a href='Namespace.{}.html'>{}</a>)", IconFor(DeclarationType::Namespace), replaced(typedecl->Namespace, "::", "."), typedecl->Namespace));
 			}
-			else if (auto memdecl = dynamic_cast<BaseMemberDeclaration const*>(decl))
+			else if (const auto memdecl = dynamic_cast<BaseMemberDeclaration const*>(decl))
 			{
 				breadcrumbs.push_back(memdecl->ParentDecl()->MakeLink(LinkFlag::DeclarationType));
 			}
@@ -102,7 +102,7 @@ struct DocumentationGenerator
 		: mOptions(options)
 	{
 		/// Load and create styles
-		const json default_styles = ghassanpl::formats::json::try_load_file(mOptions.GetExePath().parent_path() / "documentation_default_css.json");
+		const json default_styles = formats::json::try_load_file(mOptions.GetExePath().parent_path() / "documentation_default_css.json");
 		styles = default_styles;
 		styles.update(mOptions.Documentation.AdditionalStyles, true);
 
@@ -153,16 +153,16 @@ struct DocumentationGenerator
 		{
 			std::string doc_notes_str;
 			/// Add in-list docnotes
-			for (auto& note : decl.DocNotes)
+			for (const auto& [Header, Contents, ShowInMemberList, Icon] : decl.DocNotes)
 			{
 				if (
-					(note.ShowInMemberList && !mOptions.Documentation.IgnoreDocNotes.contains(note.Header))
-					|| mOptions.Documentation.InlineDocNotes.contains(note.Header)
+					(ShowInMemberList && !mOptions.Documentation.IgnoreDocNotes.contains(Header))
+					|| mOptions.Documentation.InlineDocNotes.contains(Header)
 					)
 				{
 					doc_notes_str += "<span class='docnote'>";
 					//result += format("<md>{}**{}**</md>", Icon(note.Icon), note.Header);
-					doc_notes_str += format("{}<b>{}</b>", Icon(note.Icon), note.Header);
+					doc_notes_str += format("{}<b>{}</b>", ::Icon(Icon), Header);
 					doc_notes_str += "</span>";
 				}
 			}
@@ -175,7 +175,7 @@ struct DocumentationGenerator
 		{
 			if (for_inline_list)
 			{
-				auto empty_comment_line = std::ranges::find_if(decl.Comments, [](auto& cmntline) { return trimmed_whitespace(cmntline).empty(); });
+				const auto empty_comment_line = std::ranges::find_if(decl.Comments, [](auto& cmntline) { return trimmed_whitespace(cmntline).empty(); });
 				comment_lines.insert(comment_lines.end(), decl.Comments.begin(), empty_comment_line);
 			}
 			else
@@ -262,8 +262,7 @@ struct DocumentationGenerator
 		{
 			if (!decl.BaseClass.empty())
 			{
-				const auto inhlist = decl.GetInheritanceList();
-				if (inhlist.empty())
+				if (const auto inhlist = decl.GetInheritanceList(); inhlist.empty())
 					out.WriteLine("<li><b>Inheritance</b>: <pre>{} : {}</pre></li>", decl.Name, HighlightTypes(decl.BaseClass, &decl));
 				else
 				{
@@ -367,28 +366,27 @@ struct DocumentationGenerator
 			out.EndBlock("</table>");
 		}
 
-		auto& documented_flags = klass.ClassDeclaredFlags;
-		if (!documented_flags.empty())
+		if (auto& documented_flags = klass.ClassDeclaredFlags; !documented_flags.empty())
 		{
 			out.WriteLine("<h2>Flags</h2>");
 			out.StartBlock("<table class='decllist'>");
 
 			Enum const* parent_enum = nullptr;
-			for (const auto& flag : documented_flags)
+			for (const auto& [Name, SourceField, Represents, GeneratedArtificialMethods] : documented_flags)
 			{
 				/// Print a row for each parent type
-				if (flag.Represents->Parent() != parent_enum)
+				if (Represents->Parent() != parent_enum)
 				{
-					parent_enum = flag.Represents->Parent();
+					parent_enum = Represents->Parent();
 
 					out.StartTag("tr", "class='parenttyperow'");
-					out.WriteLine("<td colspan='2'>From {} via {} field:</td>", parent_enum->MakeLink(LinkFlags::all()), flag.SourceField->MakeLink());
+					out.WriteLine("<td colspan='2'>From {} via {} field:</td>", parent_enum->MakeLink(LinkFlags::all()), SourceField->MakeLink());
 					out.EndTag();
 				}
 
 				out.StartTag("tr");
-				out.WriteLine("<td class='declnamecol classflag'>{}</td>", flag.Represents->MakeLink(LinkFlags::all() - LinkFlag::Parent));
-				out.WriteLine("<td>{}</td>", GetPrettyComments(*flag.Represents, true));
+				out.WriteLine("<td class='declnamecol classflag'>{}</td>", Represents->MakeLink(LinkFlags::all() - LinkFlag::Parent));
+				out.WriteLine("<td>{}</td>", GetPrettyComments(*Represents, true));
 				out.EndTag();
 			}
 			out.EndBlock("</table>");
@@ -489,7 +487,7 @@ struct DocumentationGenerator
 
 			std::string_view first_line = param_paragraph[0];
 			eat(first_line, "@param");
-			auto param_name = eat_identifier(first_line);
+			const auto param_name = eat_identifier(first_line);
 			auto& comments_for_param = param_comments[std::string{param_name}];
 			comments_for_param += first_line;
 			comments_for_param += '\n';
@@ -502,7 +500,7 @@ struct DocumentationGenerator
 			out.StartTag("dl");
 			for (auto& param : method.ParametersSplit)
 			{
-				auto comments = ghassanpl::map_find(param_comments, param.Name);
+				const auto comments = map_find(param_comments, param.Name);
 				out.WriteLine("<dt><pre class='paramname'>{}</pre> : <code class='language-cpp'>{} {}</code></dt><dd><md>{}</md></dd>", param.Name, HighlightTypes(param.Type, method.ParentType), Escaped(param.Initializer), comments ? *comments : "");
 			}
 			out.EndTag();

@@ -77,14 +77,14 @@ namespace Reflector
 	{
 		if (BaseClassName == base_klass_name)
 			return true;
-		if (auto base_class = FindBaseClass())
+		if (const auto base_class = FindBaseClass())
 			return base_class->HasBaseClass(base_klass_name);
 		return false;
 	}
 
 	inline auto Class::HasBaseClass(Class const& klass) const -> bool
 	{
-		if (auto base_class = FindBaseClass())
+		if (const auto base_class = FindBaseClass())
 		{
 			if (base_class == &klass)
 				return true;
@@ -140,7 +140,7 @@ namespace Reflector
 
 	template<typename U>
 	requires reflected_class<U>
-	inline auto Class::HasBaseClass() const -> bool
+	auto Class::HasBaseClass() const -> bool
 	{
 		return this->HasBaseClass(::Reflector::Reflect<U>());
 	}
@@ -150,8 +150,8 @@ namespace Reflector
 	void ForEachField(T& object, VISITOR&& visitor)
 	{
 		static_assert(reflected_class<std::remove_cvref_t<T>>, "Type must be marked as reflectable");
-		std::remove_cvref_t<T>::ForEachField([&](auto properties) {
-			if constexpr (decltype(properties)::HasFlag(FieldFlags::Static))
+		std::remove_cvref_t<T>::ForEachField([&]<typename T0>(T0 properties) {
+			if constexpr (T0::HasFlag(FieldFlags::Static))
 				visitor(*properties.Pointer, properties);
 			else
 				visitor((object.*(properties.Pointer)), properties);
@@ -162,9 +162,9 @@ namespace Reflector
 	void WithMethodOverloadThatCanTake(auto&& func, std::string_view function_name, std::type_identity<std::tuple<ARGS...>>)
 	{
 		static_assert(reflected_class<std::remove_cvref_t<T>>, "Type must be marked as reflectable");
-		std::remove_cvref_t<T>::ForEachMethod([&](auto properties) {
-			if constexpr (decltype(properties)::template CanTake<ARGS...>())
-				if (function_name == decltype(properties)::Name) func(properties);
+		std::remove_cvref_t<T>::ForEachMethod([&]<typename T0>(T0 properties) {
+			if constexpr (T0::template CanTake<ARGS...>())
+				if (function_name == T0::Name) func(properties);
 		});
 	}
 
@@ -172,8 +172,8 @@ namespace Reflector
 	void WithMethodOverloadThatCanTake(auto&& func, std::type_identity<std::tuple<ARGS...>>)
 	{
 		static_assert(reflected_class<std::remove_cvref_t<T>>, "Type must be marked as reflectable");
-		std::remove_cvref_t<T>::ForEachMethod([&](auto properties) {
-			if constexpr (decltype(properties)::template CanTake<ARGS...>() && decltype(properties)::Name == NAME)
+		std::remove_cvref_t<T>::ForEachMethod([&]<typename T0>(T0 properties) {
+			if constexpr (T0::template CanTake<ARGS...>() && T0::Name == NAME)
 				func(properties);
 		});
 	}

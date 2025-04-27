@@ -75,7 +75,7 @@ namespace Reflector
 	{
 		if constexpr (could_be_marked<std::ranges::range_value_t<RANGE>>::value)
 		{
-			for (auto&& val : range)
+			for (auto&& val : std::forward<RANGE>(range))
 				GCMark(val);
 		}
 	}
@@ -168,7 +168,7 @@ namespace Reflector
 		{
 			Reflectable const* r = p;
 			ResolveHeapObject(&T::StaticGetReflectionData(), r, obj_type, obj_id);
-			p = (T*)r;
+			p = const_cast<T*>(static_cast<T const*>(r));
 		}
 
 		static REFLECTOR_JSON_TYPE ToJson();
@@ -185,7 +185,7 @@ namespace Reflector
 		static void Mark();
 		static void Sweep();
 		static Reflectable* Alloc(Class const* klass_data);
-		template <derives_from_reflectable T, typename... ARGS>
+		template <derives_from_reflectable T>
 		static T* Alloc()
 		{
 			return (T*)Alloc(&T::StaticGetReflectionData());
@@ -201,7 +201,7 @@ namespace Reflector
 	T* New(ARGS&&... args)
 	{
 		if constexpr (derives_from_reflectable<T>)
-			return ::Reflector::Heap::New<T>(std::forward<ARGS>(args)...);
+			return Heap::New<T>(std::forward<ARGS>(args)...);
 		else
 			return nullptr;
 	}

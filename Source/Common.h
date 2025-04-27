@@ -7,7 +7,6 @@
 
 #include <iostream>
 #include <filesystem>
-#include <vector>
 #if defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L && __has_include(<expected>)
 #include <expected>
 namespace tl
@@ -32,6 +31,8 @@ using Reflector::EnumeratorFlags;
 using Reflector::EnumFlags;
 using Reflector::FieldFlags;
 using Reflector::MethodFlags;
+using Reflector::EntityFlags;
+using Reflector::PropertyFlags;
 using Reflector::AccessMode;
 using std::filesystem::path;
 
@@ -80,12 +81,12 @@ void Print(std::string_view fmt, ARGS&&... args)
 }
 
 std::string EscapeJSON(json const& json);
-std::string EscapeString(std::string_view str);
+std::string EscapeString(std::string_view string);
 
 std::string FormatAccess(AccessMode mode);
-std::string FormatPreFlags(enum_flags<Reflector::FieldFlags> flags, enum_flags<Reflector::FieldFlags> except = {});
-std::string FormatPreFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except = {});
-std::string FormatPostFlags(enum_flags<Reflector::MethodFlags> flags, enum_flags<Reflector::MethodFlags> except = {});
+std::string FormatPreFlags(enum_flags<FieldFlags> flags, enum_flags<FieldFlags> except = {});
+std::string FormatPreFlags(enum_flags<MethodFlags> flags, enum_flags<MethodFlags> except = {});
+std::string FormatPostFlags(enum_flags<MethodFlags> flags, enum_flags<MethodFlags> except = {});
 std::string Icon(std::string_view icon);
 
 inline uint64_t ExecutableChangeTime = 0;

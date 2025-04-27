@@ -9,7 +9,7 @@
 
 Options::Options(path exe_path, path const& options_file_path)
 	: mExePath(std::move(exe_path))
-	, mOptionsFilePath(std::filesystem::canonical(options_file_path))
+	, mOptionsFilePath(canonical(options_file_path))
 	, mOptionsFile(json::parse(std::fstream{ options_file_path }))
 {
 	if (!mOptionsFile.is_object())
@@ -49,9 +49,9 @@ Options::Options(path exe_path, path const& options_file_path)
 	Documentation.ClearTargetDirectory = true;
 #endif
 
-	auto ConvertPathRelativeToOptionsFileToAbsolute = [options_file_path = mOptionsFilePath] (std::filesystem::path p) {
+	auto ConvertPathRelativeToOptionsFileToAbsolute = [options_file_path = mOptionsFilePath] (path p) {
 		if (p.empty() || p.is_relative())
-			return std::filesystem::absolute(options_file_path.parent_path() / path{ std::move(p) });
+			return absolute(options_file_path.parent_path() / path{ std::move(p) });
 		return p;
 	};
 

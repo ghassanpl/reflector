@@ -7,7 +7,6 @@
 #include <typeindex>
 #include <vector>
 #include <compare>
-#include <string_view>
 #include <string>
 #include <tuple>
 #if REFLECTOR_USES_JSON
@@ -15,10 +14,7 @@
 #endif
 #if REFLECTOR_USES_GC
 #include <set>
-#include <map>
 #endif
-#include <iostream>
-#include <format>
 
 namespace Reflector
 {
@@ -30,7 +26,7 @@ namespace Reflector
 
 	template <typename T> concept reflected_class = requires {
 		T::StaticClassFlags();
-		{ T::StaticGetReflectionData() } -> std::same_as<::Reflector::Class const&>;
+		{ T::StaticGetReflectionData() } -> std::same_as<Class const&>;
 		typename T::self_type;
 	}&& std::same_as<T, typename T::self_type>;
 
@@ -92,15 +88,15 @@ namespace Reflector
 		template <typename PARENT = PARENT_TYPE, typename VALUE>
 		static auto GenericSetter(PARENT* obj, VALUE&& value) -> void { (obj->*Pointer) = std::forward<VALUE>(value); };
 
-		static auto CopySetter(PARENT_TYPE* obj, FIELD_TYPE const& value) -> void { (obj->*Pointer) = value; };
-		static auto MoveSetter(PARENT_TYPE* obj, FIELD_TYPE&& value) -> void { (obj->*Pointer) = std::move(value); };
+		static auto CopySetter(PARENT_TYPE* obj, FIELD_TYPE const& value) -> void { (obj->*Pointer) = value; }
+		static auto MoveSetter(PARENT_TYPE* obj, FIELD_TYPE&& value) -> void { (obj->*Pointer) = std::move(value); }
 		template <typename PARENT = PARENT_TYPE, typename FIELD = FIELD_TYPE>
-		static auto GenericCopySetter(PARENT* obj, FIELD const& value) -> void { (obj->*Pointer) = value; };
+		static auto GenericCopySetter(PARENT* obj, FIELD const& value) -> void { (obj->*Pointer) = value; }
 		template <typename PARENT = PARENT_TYPE, typename FIELD = FIELD_TYPE>
-		static auto GenericMoveSetter(PARENT* obj, FIELD& value) -> void { (obj->*Pointer) = std::move(value); };
+		static auto GenericMoveSetter(PARENT* obj, FIELD& value) -> void { (obj->*Pointer) = std::move(value); }
 
 		static auto VoidGetter(void const* obj) -> void const* { return &(obj->*Pointer); }
-		static auto VoidSetter(void* obj, void const* value) -> void { (obj->*Pointer) = reinterpret_cast<FIELD_TYPE const*>(value); };
+		static auto VoidSetter(void* obj, void const* value) -> void { (obj->*Pointer) = static_cast<FIELD_TYPE const*>(value); }
 	};
 
 	template <typename RETURN_TYPE, typename PARAMETER_TUPLE_TYPE, typename PARENT_TYPE, uint64_t FLAGS, CompileTimeLiteral NAME_CTL, typename PTR_TYPE, PTR_TYPE POINTER, AccessMode ACCESS_MODE>
@@ -138,7 +134,7 @@ namespace Reflector
 		template <typename FUNC>
 		static constexpr void CallForEachParameter(FUNC&& func)
 		{
-			[func] <size_t... INDICES>(std::index_sequence<INDICES...>) {
+			[func = std::forward<FUNC>(func)] <size_t... INDICES>(std::index_sequence<INDICES...>) {
 				(func(ParameterInfo<INDICES, ParameterType<INDICES>>{}), ...);
 			}(ParameterIndexSequence{});
 		}
@@ -312,10 +308,10 @@ namespace Reflector
 
 	struct Field
 	{
-		std::string_view Name = "";
-		std::string_view DisplayName = "";
-		std::string_view FieldType = "";
-		std::string_view Initializer = "";
+		std::string_view Name;
+		std::string_view DisplayName;
+		std::string_view FieldType;
+		std::string_view Initializer;
 		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 		/// TODO: std::string_view ScriptName; /// Set to ScriptName if not empty, else UniqueName if not empty, otherwise Name
 #if REFLECTOR_USES_JSON
@@ -328,7 +324,7 @@ namespace Reflector
 	};
 
 	template <typename CTRD>
-	struct FieldVisitorData : public CTRD
+	struct FieldVisitorData : CTRD
 	{
 		explicit FieldVisitorData(Field const* data) : Data(data) {}
 
@@ -365,18 +361,18 @@ namespace Reflector
 			std::string Initializer;
 		};
 
-		std::string_view Name = "";
-		std::string_view DisplayName = "";
+		std::string_view Name;
+		std::string_view DisplayName;
 		std::string_view ReturnType = "void";
-		std::string_view Parameters = "";
+		std::string_view Parameters;
 		std::vector<Parameter> ParametersSplit{}; /// TODO: Could be given at compile-time as well
 		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON = REFLECTOR_JSON_TYPE::object();
 #endif
 
-		std::string_view UniqueName = ""; /// TODO: Could be given at compile-time as well
-		std::string_view ArtificialBody = "";
+		std::string_view UniqueName; /// TODO: Could be given at compile-time as well
+		std::string_view ArtificialBody;
 		std::type_index ReturnTypeIndex = typeid(void);
 		std::vector<std::type_index> ParameterTypeIndices = {};
 		uint64_t Flags = 0;
@@ -389,7 +385,7 @@ namespace Reflector
 	};
 
 	template <typename CTRD>
-	struct MethodVisitorData : public CTRD
+	struct MethodVisitorData : CTRD
 	{
 		explicit(false) MethodVisitorData(Method const* data) : Data(data) {}
 
@@ -399,8 +395,8 @@ namespace Reflector
 
 	struct Enumerator
 	{
-		std::string_view Name = "";
-		std::string_view DisplayName = "";
+		std::string_view Name;
+		std::string_view DisplayName;
 		int64_t Value;
 		uint64_t Flags = 0;
 
@@ -412,9 +408,9 @@ namespace Reflector
 
 	struct Enum
 	{
-		std::string_view Name = "";
-		std::string_view DisplayName = "";
-		std::string_view FullType = "";
+		std::string_view Name;
+		std::string_view DisplayName;
+		std::string_view FullType;
 		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON = REFLECTOR_JSON_TYPE::object();
@@ -436,9 +432,9 @@ namespace Reflector
 
 	struct Property
 	{
-		std::string_view Name = "";
-		std::string_view DisplayName = "";
-		std::string_view Type = "";
+		std::string_view Name;
+		std::string_view DisplayName;
+		std::string_view Type;
 		std::string_view Attributes = "{}"; /// TODO: Could be given at compile-time as well
 #if REFLECTOR_USES_JSON
 		REFLECTOR_JSON_TYPE AttributesJSON = REFLECTOR_JSON_TYPE::object();
@@ -452,7 +448,7 @@ namespace Reflector
 	};
 
 	template <typename CTRD>
-	struct PropertyVisitorData : public CTRD
+	struct PropertyVisitorData : CTRD
 	{
 		explicit PropertyVisitorData(Property const* data) : Data(data) {}
 
@@ -461,9 +457,9 @@ namespace Reflector
 
 	struct Reflectable
 	{
-		using Class = ::Reflector::Class;
-		using Method = ::Reflector::Field;
-		using Field = ::Reflector::Field;
+		using Class = Class;
+		using Method = Field;
+		using Field = Field;
 
 		virtual Class const& GetReflectionData() const;
 		static Class const& StaticGetReflectionData();
@@ -509,7 +505,6 @@ namespace Reflector
 
 		void SetClass(Class const* klass)
 		{
-			std::cout<<std::format("Setting class of object to {}\n", klass->Name);
 			mClass_ = klass;
 		}
 		
@@ -553,10 +548,10 @@ namespace Reflector
 		return false;
 	}
 	template <typename ENUM>
-	::Reflector::Enum const& GetEnumReflectionData();
+	Enum const& GetEnumReflectionData();
 
 	template <typename ENUM>
-	::Reflector::Enumerator const* GetEnumeratorReflectionData(ENUM value)
+	Enumerator const* GetEnumeratorReflectionData(ENUM value)
 	{
 		auto& henum = GetEnumReflectionData<ENUM>();
 		for (auto& enumerator : henum.Enumerators)
@@ -565,25 +560,9 @@ namespace Reflector
 		return nullptr;
 	}
 
-	template <typename T> concept derives_from_reflectable = (::Reflector::reflected_class<std::remove_cvref_t<T>> && std::derived_from<std::remove_cvref_t<T>, ::Reflector::Reflectable>) 
-		|| std::same_as<std::remove_cvref_t<T>, ::Reflector::Reflectable>;
+	template <typename T> concept derives_from_reflectable = (::Reflector::reflected_class<std::remove_cvref_t<T>> && std::derived_from<std::remove_cvref_t<T>, Reflectable>) 
+		|| std::same_as<std::remove_cvref_t<T>, Reflectable>;
 
 	template <typename T> concept reflected_enum = IsReflectedEnum<T>();
 
-	struct NUA
-	{
-		NUA(...) {}
-		NUA(NUA const&) noexcept = default;
-		NUA(NUA&&) noexcept = default;
-		NUA& operator=(NUA const&) noexcept = default;
-		NUA& operator=(NUA&&) noexcept = default;
-		constexpr auto operator<=>(NUA const&) const noexcept = default;
-	};
-
-	template <typename CFUNC, typename DFUNC = decltype([]() {})>
-	struct TNUA
-	{
-		TNUA() { CFUNC{}(); }
-		~TNUA() { DFUNC{}(); }
-	};
 }

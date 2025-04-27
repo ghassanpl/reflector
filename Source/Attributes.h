@@ -10,7 +10,7 @@
 
 struct AttributeProperties;
 
-using AttributeValidatorFunc = std::function<tl::expected<void, std::string>(json const&, Declaration const&)>;
+using AttributeValidatorFunc = std::function<expected<void, std::string>(json const&, Declaration const&)>;
 extern AttributeValidatorFunc IsString;
 extern AttributeValidatorFunc NotEmptyString;
 
@@ -20,7 +20,7 @@ enum class AttributePropertyFlags
 	NotUserSettable,
 };
 
-using AttributeCategory = ghassanpl::named<std::string_view, "AttributeCategory">;
+using AttributeCategory = named<std::string_view, "AttributeCategory">;
 ghassanpl_named_string_literal_ce(AttributeCategory, _ac);
 
 struct AttributeProperties
@@ -55,7 +55,7 @@ struct AttributeProperties
 		(this->Set(std::forward<ARGS>(args)), ...);
 	}
 
-	tl::expected<void, std::string> Validate(json const& attr_value, Declaration const& decl) const;
+	expected<void, std::string> Validate(json const& attr_value, Declaration const& decl) const;
 
 	void Set(AttributeValidatorFunc validator) { this->Validator = std::move(validator); }
 	void Set(enum_flags<AttributePropertyFlags> flags) { this->Flags += flags; }
@@ -110,7 +110,7 @@ protected:
 };
 
 template <typename T>
-struct TypedAttributeProperties : public AttributeProperties
+struct TypedAttributeProperties : AttributeProperties
 {
 	using AttributeProperties::AttributeProperties;
 	using AttributeProperties::Set;

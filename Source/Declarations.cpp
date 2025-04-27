@@ -24,10 +24,10 @@ void Declaration::CreateArtificialMethodsAndDocument(Options const& options)
 			return;
 
 		Deprecation = attr.is_string() ? std::string{ attr } : std::string{};
-		EntityFlags.set(Reflector::EntityFlags::Deprecated);
+		DeclarationFlags.set(EntityFlags::Deprecated);
 	}
 
-	EntityFlags.set_to(Attribute::Unimplemented.GetOr(*this, false), Reflector::EntityFlags::Unimplemented);
+	DeclarationFlags.set_to(Attribute::Unimplemented.GetOr(*this, false), EntityFlags::Unimplemented);
 	Attribute::DocumentMembers.TryGet(*this, DocumentMembers);
 	if (bool document_set = false; Attribute::Document.TryGet(*this, document_set))
 		ForceDocument = document_set;
@@ -40,7 +40,7 @@ void Declaration::CreateArtificialMethodsAndDocument(Options const& options)
 		AddNoDiscard(attr.is_string() ? std::string{ attr } : std::string{});
 	}
 
-	if (EntityFlags.is_set(Reflector::EntityFlags::Deprecated))
+	if (DeclarationFlags.is_set(EntityFlags::Deprecated))
 	{
 		if (Deprecation)
 			AddWarningDocNote("Deprecated", Deprecation.value());
@@ -48,7 +48,7 @@ void Declaration::CreateArtificialMethodsAndDocument(Options const& options)
 			AddWarningDocNote("Deprecated", "This {} is deprecated; no reason was given", ascii::tolower(magic_enum::enum_name(this->DeclarationType())));
 	}
 
-	if (EntityFlags.is_set(Reflector::EntityFlags::Unimplemented))
+	if (DeclarationFlags.is_set(EntityFlags::Unimplemented))
 	{
 		AddWarningDocNote("Unimplemented", "This {}'s functionality is unimplemented", ascii::tolower(magic_enum::enum_name(this->DeclarationType()))).Icon = "circle-slash";
 	}
@@ -125,9 +125,11 @@ void to_json(json& j, DocNote const& p)
 	if (!p.Icon.empty()) j["Icon"] = p.Icon;
 }
 
-Method* Field::AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags, ghassanpl::enum_flags<Reflector::EntityFlags> entity_flags)
+Method* Field::AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments,
+	enum_flags<MethodFlags> additional_flags, enum_flags<EntityFlags> entity_flags)
 {
-	return ParentType->AddArtificialMethod(*this, std::move(function_type), std::move(results), std::move(name), std::move(parameters), std::move(body), std::move(comments), additional_flags, entity_flags);
+	return ParentType->AddArtificialMethod(*this, std::move(function_type), std::move(results), std::move(name), std::move(parameters), std::move(body),
+		std::move(comments), additional_flags, entity_flags);
 }
 
 void Field::CreateArtificialMethodsAndDocument(Options const& options)
@@ -142,7 +144,7 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 
 	Property* property_for_field = nullptr;
 	if (
-		(Flags.is_set(Reflector::FieldFlags::DeclaredPrivate) || options.GeneratePropertiesForPublicFields)
+		(Flags.is_set(FieldFlags::DeclaredPrivate) || options.GeneratePropertiesForPublicFields)
 		&& !Flags.contains_all_of(FieldFlags::NoGetter, FieldFlags::NoSetter)
 		&& Attribute::Property.GetOr(*this, true))
 	{
@@ -152,27 +154,27 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 	}
 
 	/// Getters and Setters
-	if (!Flags.is_set(Reflector::FieldFlags::NoGetter))
+	if (!Flags.is_set(FieldFlags::NoGetter))
 	{
-		using enum Reflector::MethodFlags;
+		using enum MethodFlags;
 		auto getter = AddArtificialMethod("Getter", Type + " const&", options.Names.GetterPrefix + CleanName, "", "return this->" + Name + ";", { "Gets " + field_comments },
 			{ Const, Noexcept, NoDiscard });
-		if (Flags.is_set(Reflector::FieldFlags::NoScript))
-			getter->Flags += Reflector::MethodFlags::NoScript;
+		if (Flags.is_set(FieldFlags::NoScript))
+			getter->Flags += NoScript;
 		AddDocNote("Getter", "The value of this field is retrieved by the {} method.", getter->MakeLink());
 
 		if (property_for_field)
 			property_for_field->Getter = getter;
 	}
 
-	if (!Flags.is_set(Reflector::FieldFlags::NoSetter))
+	if (!Flags.is_set(FieldFlags::NoSetter))
 	{
 		auto on_change = Attribute::OnChange(*this);
 		auto setter = AddArtificialMethod("Setter", "void", options.Names.SetterPrefix + CleanName, Type + " const& value",
 			"static_assert(std::is_copy_assignable_v<decltype(this->" + Name + ")>, \"err\"); this->" + Name + " = value; " + on_change + ";",
 			{ "Sets " + field_comments }, {});
-		if (Flags.is_set(Reflector::FieldFlags::NoScript))
-			setter->Flags += Reflector::MethodFlags::NoScript;
+		if (Flags.is_set(FieldFlags::NoScript))
+			setter->Flags += MethodFlags::NoScript;
 		AddDocNote("Setter", "The value of this field is set by the {} method.", setter->MakeLink());
 		if (!on_change.empty())
 			AddDocNote("On Change", "When this field is changed (via its setter and other such functions), the following code will be executed: `{}`", Escaped(on_change));
@@ -181,13 +183,14 @@ void Field::CreateArtificialMethodsAndDocument(Options const& options)
 			property_for_field->Setter = setter;
 	}
 
-	if (Flags.is_set(Reflector::FieldFlags::NoEdit)) AddDocNote("Not Editable", "This field is not be editable in the editor.");
-	if (Flags.is_set(Reflector::FieldFlags::NoScript)) AddDocNote("Not Scriptable", "This field is not accessible via script.");
-	if (Flags.is_set(Reflector::FieldFlags::NoSave)) AddDocNote("Not Saved", "This field will not be serialized when saving {}.", ParentType->MakeLink());
-	if (Flags.is_set(Reflector::FieldFlags::NoLoad)) AddDocNote("Not Loaded", "This field will not be deserialized when loading {}.", ParentType->MakeLink());
-	if (Flags.is_set(Reflector::FieldFlags::NoDebug)) AddDocNote("Not Debuggable", "This field will not be debuggable when debugging {}.", ParentType->MakeLink());
+	if (Flags.is_set(FieldFlags::NoEdit)) AddDocNote("Not Editable", "This field is not be editable in the editor.");
+	if (Flags.is_set(FieldFlags::NoScript)) AddDocNote("Not Scriptable", "This field is not accessible via script.");
+	if (Flags.is_set(FieldFlags::NoSave)) AddDocNote("Not Saved", "This field will not be serialized when saving {}.", ParentType->MakeLink());
+	if (Flags.is_set(FieldFlags::NoLoad)) AddDocNote("Not Loaded", "This field will not be deserialized when loading {}.", ParentType->MakeLink());
+	if (Flags.is_set(FieldFlags::NoDebug)) AddDocNote("Not Debuggable", "This field will not be debuggable when debugging {}.", ParentType->MakeLink());
 
-	if (Flags.is_set(Reflector::FieldFlags::NoUniqueAddress)) AddDocNote("No Unique Address", "This field has the [\\[\\[no_unique_address\\]\\]](https://en.cppreference.com/w/cpp/language/attributes/no_unique_address) attribute applied to it..", ParentType->MakeLink());
+	if (Flags.is_set(FieldFlags::NoUniqueAddress)) AddDocNote("No Unique Address",
+		R"(This field has the [\[\[no_unique_address\]\]](https://en.cppreference.com/w/cpp/language/attributes/no_unique_address) attribute applied to it.)", ParentType->MakeLink());
 
 	/// This doesn't work because the ID needs to be serialized to work, which means we can only do it per-class
 	/*
@@ -350,7 +353,7 @@ void SetFlags(enum_flags<T> Flags, json& result, std::string_view field_name = "
 
 json Field::ToJSON() const
 {
-	json result = MemberDeclaration<Class>::ToJSON();
+	json result = MemberDeclaration::ToJSON();
 	result["Type"] = Type;
 	if (!InitializingExpression.empty()) result["InitializingExpression"] = InitializingExpression;
 	if (CleanName != Name) result["CleanName"] = CleanName;
@@ -411,9 +414,10 @@ void Method::Split()
 		case '=':
 			if (parens == 0 && tris == 0 && brackets == 0)
 			{
-				eq_ptr = &argstring[0];
+				eq_ptr = argstring.data();
 			}
 			break;
+		default: break;
 		}
 
 		argstring.remove_prefix(1);
@@ -438,7 +442,7 @@ void Method::SetParameters(std::string params)
 
 std::string Method::GetSignature(Class const& parent_class) const
 {
-	using enum Reflector::MethodFlags;
+	using enum MethodFlags;
 
 	auto base = Flags.is_set(Static) ?
 		std::format("{} (*)({})", Return.Name, ParametersTypesOnly)
@@ -451,14 +455,16 @@ std::string Method::GetSignature(Class const& parent_class) const
 	return base;
 }
 
-Method* Method::AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags, ghassanpl::enum_flags<Reflector::EntityFlags> entity_flags)
+Method* Method::AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body,
+	std::vector<std::string> comments, enum_flags<MethodFlags> additional_flags, enum_flags<EntityFlags> entity_flags)
 {
-	return ParentType->AddArtificialMethod(*this, std::move(function_type), std::move(results), std::move(name), std::move(parameters), std::move(body), std::move(comments), additional_flags, entity_flags);
+	return ParentType->AddArtificialMethod(*this, std::move(function_type), std::move(results), std::move(name), std::move(parameters), std::move(body),
+		std::move(comments), additional_flags, entity_flags);
 }
 
 void Method::CreateArtificialMethodsAndDocument(Options const& options)
 {
-	using enum Reflector::MethodFlags;
+	using enum MethodFlags;
 
 	MemberDeclaration::CreateArtificialMethodsAndDocument(options);
 
@@ -484,7 +490,7 @@ std::string Method::FullName(std::string_view sep) const
 
 json Method::ToJSON() const
 {
-	json result = MemberDeclaration<Class>::ToJSON();
+	json result = MemberDeclaration::ToJSON();
 	result["Return.Name"] = Return.Name;
 	if (!ParametersSplit.empty()) std::ranges::transform(ParametersSplit, std::back_inserter(result["Parameters"]), [](auto& param) { return param.ToJSON(); });
 	if (!ArtificialBody.empty()) result["ArtificialBody"] = ArtificialBody;
@@ -498,13 +504,13 @@ void Property::CreateArtificialMethodsAndDocument(Options const& options)
 {
 	if (SourceField)
 	{
-		Flags += Reflector::PropertyFlags::FromField;
-		if (SourceField->Flags.is_set(Reflector::FieldFlags::NoEdit))
-			Flags += Reflector::PropertyFlags::NoEdit;
-		if (SourceField->Flags.is_set(Reflector::FieldFlags::NoScript))
-			Flags += Reflector::PropertyFlags::NoScript;
-		if (SourceField->Flags.is_set(Reflector::FieldFlags::NoDebug))
-			Flags += Reflector::PropertyFlags::NoDebug;
+		Flags += PropertyFlags::FromField;
+		if (SourceField->Flags.is_set(FieldFlags::NoEdit))
+			Flags += PropertyFlags::NoEdit;
+		if (SourceField->Flags.is_set(FieldFlags::NoScript))
+			Flags += PropertyFlags::NoScript;
+		if (SourceField->Flags.is_set(FieldFlags::NoDebug))
+			Flags += PropertyFlags::NoDebug;
 	}
 	/// TODO: Static properties?
 
@@ -513,7 +519,7 @@ void Property::CreateArtificialMethodsAndDocument(Options const& options)
 
 json Property::ToJSON() const
 {
-	auto result = MemberDeclaration<Class>::ToJSON();
+	auto result = MemberDeclaration::ToJSON();
 	result.update(json::object({
 		{ "Type", Type },
 		{ "Getter", Getter ? json{Getter->FullName(".")} : json{} },
@@ -523,30 +529,30 @@ json Property::ToJSON() const
 	return result;
 }
 
-Method* Class::AddArtificialMethod(Declaration& for_decl, std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags, ghassanpl::enum_flags<Reflector::EntityFlags> entity_flags)
+Method* Class::AddArtificialMethod(Declaration& for_decl, std::string function_type, std::string results, std::string name, std::string parameters, std::string body,
+	std::vector<std::string> comments, enum_flags<MethodFlags> additional_flags, enum_flags<EntityFlags> entity_flags)
 {
 	Method& method = *mArtificialMethods.emplace_back(std::make_unique<Method>(this));
 	method.SourceDeclaration = this; /// The class is the default source of the artificial method
-	method.Flags += Reflector::MethodFlags::Artificial;
+	method.Flags += MethodFlags::Artificial;
 	method.Flags += additional_flags;
-	method.EntityFlags += entity_flags;
+	method.DeclarationFlags += entity_flags;
 	method.Return.Name = std::move(results);
 	method.Name = std::move(name);
 	method.SetParameters(std::move(parameters));
 	method.ArtificialBody = std::move(body);
 	if (!method.ArtificialBody.empty())
-		method.Flags += Reflector::MethodFlags::HasBody;
+		method.Flags += MethodFlags::HasBody;
 	method.DeclarationLine = 0;
 	method.Access = AccessMode::Public;
 	method.Comments = std::move(comments);
 	method.SourceDeclaration = &for_decl;
-	auto [it, inserted] = for_decl.AssociatedArtificialMethods.try_emplace(function_type, &method);
-	if (!inserted)
+	if (auto [it, inserted] = for_decl.AssociatedArtificialMethods.try_emplace(function_type, &method); !inserted)
 	{
 		ReportError(for_decl, "Artificial method '{}' already exists in class {}: {}", function_type, MakeLink(), it->second->MakeLink());
 		throw std::runtime_error("Internal error");
 	}
-	method.ReflectionUID = ghassanpl::hash64(ParentMirror->SourceFilePath.string(), method.ActualDeclarationLine(), method.GetParameters());
+	method.ReflectionUID = hash64(ParentMirror->SourceFilePath.string(), method.ActualDeclarationLine(), method.GetParameters());
 	return &method;
 }
 
@@ -559,7 +565,7 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 
 	for (const auto& method : Methods)
 	{
-		if (method->Flags.is_set(Reflector::MethodFlags::Virtual) && !method->Flags.is_set(Reflector::MethodFlags::Final))
+		if (method->Flags.is_set(MethodFlags::Virtual) && !method->Flags.is_set(MethodFlags::Final))
 			should_build_proxy = true;
 	}
 
@@ -575,7 +581,7 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 	/// Create singleton method if singleton
 	if (Attribute::Singleton(*this))
 	{
-		using enum Reflector::MethodFlags;
+		using enum MethodFlags;
 		const auto getter = AddArtificialMethod(*this, "SingletonGetter", format("{}&", this->FullType()), options.Names.SingletonInstanceGetterName, "",
 			"static_assert(!::Reflector::derives_from_reflectable<self_type>, \"Reflectable classes cannot be singletons currently\"); static self_type instance; return instance;",
 			{ "Returns the single instance of this class" }, { Noexcept, Static, NoDiscard });
@@ -643,7 +649,7 @@ void Class::CreateArtificialMethodsAndDocument(Options const& options)
 	{
 		for (auto const& method : Methods)
 		{
-			if (method->Flags.is_set(Reflector::MethodFlags::Abstract))
+			if (method->Flags.is_set(MethodFlags::Abstract))
 			{
 				ReportError(*method, "Abstract method '{}' in non-abstract class '{}'", FullType());
 				return;
@@ -709,7 +715,7 @@ json Class::ToJSON() const
 
 json Enumerator::ToJSON() const
 {
-	json result = MemberDeclaration<Enum>::ToJSON();
+	json result = MemberDeclaration::ToJSON();
 	result["Value"] = Value;
 	if (!Opposite.empty()) result["Opposite"] = Opposite;
 	SetFlags(Flags, result);
@@ -840,7 +846,7 @@ json SimpleDeclaration::ToJSON() const
 	if (Document() != true) result["Document"] = false;
 	if (Deprecation) result["Deprecation"] = Deprecation->empty() ? json{ true } : json{ *Deprecation };
 	if (!DocNotes.empty()) result["DocNotes"] = DocNotes;
-	SetFlags(EntityFlags, result, "EntityFlags");
+	SetFlags(DeclarationFlags, result, "EntityFlags");
 	return result;
 }
 
@@ -984,7 +990,7 @@ std::string Field::MakeLink(LinkFlags flags) const
 
 std::string Method::MakeLink(LinkFlags flags) const
 {
-	using enum Reflector::MethodFlags;
+	using enum MethodFlags;
 	LinkParts parts{ *this, flags };
 	if (flags.contain(LinkFlag::Parent)) parts.Parent = ParentType->Name + "::";
 	if (flags.contain(LinkFlag::SignatureSpecifiers)) parts.PostSpecifiers = FormatPostFlags(Flags, { Final, Noexcept });

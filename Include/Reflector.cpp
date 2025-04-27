@@ -7,7 +7,6 @@
 #endif
 
 #include <unordered_map>
-#include <atomic>
 
 namespace Reflector
 {
@@ -123,7 +122,7 @@ namespace Reflector
 	
 	bool Heap::RemoveRoot(std::string_view key)
 	{
-		if (auto it = mRoots.find(key); it != mRoots.end())
+		if (const auto it = mRoots.find(key); it != mRoots.end())
 		{
 			mRoots.erase(it);
 			return true;
@@ -133,7 +132,7 @@ namespace Reflector
 
 	Reflectable* Heap::GetRoot(std::string_view key)
 	{
-		if (auto it = mRoots.find(key); it != mRoots.end())
+		if (const auto it = mRoots.find(key); it != mRoots.end())
 			return it->second;
 		return nullptr;
 	}
@@ -188,7 +187,7 @@ namespace Reflector
 	{
 		void* result_alloc = nullptr;
 
-		if (auto listit = mFreeLists.find(klass_data); listit != mFreeLists.end() && !listit->second.empty())
+		if (const auto listit = mFreeLists.find(klass_data); listit != mFreeLists.end() && !listit->second.empty())
 		{
 			result_alloc = listit->second.back();
 			listit->second.pop_back();
@@ -199,8 +198,7 @@ namespace Reflector
 		}
 
 		::memset(result_alloc, 0, klass_data->Size);
-		Reflectable* result = new (result_alloc) Reflectable(*klass_data, (1ULL << int(Reflectable::Flags::OnHeap)));
-		return result;
+		return new (result_alloc) Reflectable(*klass_data, (1ULL << int(Reflectable::Flags::OnHeap)));
 	}
 
 #if REFLECTOR_USES_JSON && defined(NLOHMANN_JSON_NAMESPACE_BEGIN)
@@ -214,14 +212,14 @@ namespace Reflector
 
 		for (auto obj : mExtantObjects)
 		{
-			auto& j = objects.emplace_back();
-			j["$id"] = (intptr_t)obj;
-			j["$type"] = obj->GetReflectionData().FullType;
-			obj->JSONSaveFields(j);
+			auto& j2 = objects.emplace_back();
+			j2["$id"] = reinterpret_cast<intptr_t>(obj);
+			j2["$type"] = obj->GetReflectionData().FullType;
+			obj->JSONSaveFields(j2);
 		}
 
 		for (auto const& [name, obj] : mRoots)
-			roots[name] = (intptr_t)obj;
+			roots[name] = reinterpret_cast<intptr_t>(obj);
 
 		return j;
 	}
@@ -230,7 +228,7 @@ namespace Reflector
 	{
 		mLoadingHeap = true;
 
-		Heap::Clear();
+		Clear();
 
 		mLoadingMapping.clear();
 
@@ -268,16 +266,15 @@ namespace Reflector
 			if (mExtantObjects.contains(mapping.first))
 				continue;
 
-			auto klass = mapping.second;
+			const auto klass = mapping.second;
 			assert(klass);
-
 			klass->DefaultPlacementConstructor(mapping.first);
 			Add(mapping.first);
 		}
 
 		/// Load rootset
 		for (auto& [name, id] : j.at("Roots").items())
-			mRoots[name] = mLoadingMapping.at((intptr_t)id).first;
+			mRoots[name] = mLoadingMapping.at(id).first;
 
 		mLoadingHeap = false;
 	}
@@ -293,7 +290,7 @@ namespace Reflector
 		Reflectable* obj = nullptr;
 		if (mLoadingHeap)
 		{
-			if (auto it = mLoadingMapping.find(obj_id); it != mLoadingMapping.end())
+			if (const auto it = mLoadingMapping.find(obj_id); it != mLoadingMapping.end())
 			{
 				obj = it->second.first;
 			}
@@ -305,7 +302,7 @@ namespace Reflector
 		}
 		else
 		{
-			if (auto it = mExtantObjects.find(reinterpret_cast<Reflectable*>(obj_id)); it != mExtantObjects.end())
+			if (const auto it = mExtantObjects.find(reinterpret_cast<Reflectable*>(obj_id)); it != mExtantObjects.end())
 			{
 				obj = reinterpret_cast<Reflectable*>(obj_id);
 				assert(obj->GetReflectionData().FullType == obj_type);
@@ -333,18 +330,18 @@ namespace Reflector
 	{
 		for (auto const& [name, root] : mRoots)
 		{
-			::Reflector::GCMark(root);
+			GCMark(root);
 		}
 	}
 
 	void Heap::Delete(Reflectable* ptr)
 	{
-		auto klass_data = &ptr->GetReflectionData();
+		const auto klass_data = &ptr->GetReflectionData();
 		mFreeLists[klass_data].push_back(ptr);
 		ptr->~Reflectable();
 
 #ifndef NDEBUG
-		std::memset((void*)ptr, 0xFE, klass_data->Size);
+		std::memset(ptr, 0xFE, klass_data->Size);
 #endif
 	}
 

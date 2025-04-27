@@ -41,7 +41,7 @@ struct DocNote
 	std::string Header;
 	std::string Contents;
 	bool ShowInMemberList = false;
-	std::string Icon = "";
+	std::string Icon;
 };
 
 void to_json(json& j, DocNote const& p);
@@ -65,9 +65,9 @@ struct SimpleDeclaration
 
 	std::vector<DocNote> DocNotes;
 
-	enum_flags<Reflector::EntityFlags> EntityFlags;
+	enum_flags<EntityFlags> DeclarationFlags;
 
-	bool Unimplemented() const { return EntityFlags.is_set(Reflector::EntityFlags::Unimplemented); }
+	bool Unimplemented() const { return DeclarationFlags.is_set(EntityFlags::Unimplemented); }
 
 	template <typename... ARGS>
 	DocNote& AddDocNote(std::string header, std::string_view str, ARGS&& ... args)
@@ -84,7 +84,7 @@ struct SimpleDeclaration
 		return note;
 	}
 
-	json ToJSON() const;
+	virtual json ToJSON() const;
 
 	virtual ~SimpleDeclaration() noexcept = default;
 };
@@ -101,10 +101,10 @@ enum class LinkFlag
 };
 using LinkFlags = enum_flags<LinkFlag>;
 
-struct Declaration : public SimpleDeclaration
+struct Declaration : SimpleDeclaration
 {
 	Declaration() noexcept = default;
-	Declaration(FileMirror* parent) noexcept : ParentMirror(parent) {}
+	explicit Declaration(FileMirror* parent) noexcept : ParentMirror(parent) {}
 
 	FileMirror* ParentMirror = nullptr;
 	virtual FileMirror* GetParentMirror() const { return ParentMirror; }
@@ -135,19 +135,19 @@ struct Declaration : public SimpleDeclaration
 
 	virtual DeclarationType DeclarationType() const = 0;
 
-	void CreateArtificialMethodsAndDocument(Options const& options);
+	virtual void CreateArtificialMethodsAndDocument(Options const& options);
 
 	virtual void AddNoDiscard(std::optional<std::string> reason) {}
 
 	virtual json ToJSON() const;
 };
 
-struct TypeDeclaration : public Declaration
+struct TypeDeclaration : Declaration
 {
 	std::string Namespace;
 	std::string GUID;
 
-	TypeDeclaration(FileMirror* parent) : Declaration(parent) {}
+	explicit TypeDeclaration(FileMirror* parent) : Declaration(parent) {}
 
 	std::string FullType() const
 	{
@@ -178,7 +178,7 @@ struct TypeDeclaration : public Declaration
 
 	static TypeDeclaration const* FindTypeByPossiblyQualifiedName(std::string_view type_name, TypeDeclaration const* search_context)
 	{
-		if (auto types = FindTypes(type_name); !types.empty())
+		if (const auto types = FindTypes(type_name); !types.empty())
 		{
 			if (types.size() == 1)
 				return types[0];
@@ -203,19 +203,19 @@ struct BaseMemberDeclaration : Declaration
 
 	virtual Declaration* ParentDecl() const = 0;
 
-	virtual FileMirror* GetParentMirror() const override { if (auto parent = ParentDecl()) return parent->GetParentMirror(); else return ParentMirror; }
+	virtual FileMirror* GetParentMirror() const override { if (const auto parent = ParentDecl()) return parent->GetParentMirror(); return ParentMirror; }
 
 	virtual bool Document() const override;
 
-	void CreateArtificialMethodsAndDocument(Options const& options);
+	void CreateArtificialMethodsAndDocument(Options const& options) override;
 };
 
 template <typename PARENT_TYPE>
-struct MemberDeclaration : public BaseMemberDeclaration
+struct MemberDeclaration : BaseMemberDeclaration
 {
 	PARENT_TYPE* ParentType{};
 
-	MemberDeclaration(PARENT_TYPE* parent) : ParentType(parent) {}
+	explicit MemberDeclaration(PARENT_TYPE* parent) : ParentType(parent) {}
 
 	virtual Declaration* ParentDecl() const override { return ParentType; }
 
@@ -227,11 +227,11 @@ struct MemberDeclaration : public BaseMemberDeclaration
 	}
 };
 
-struct Field : public MemberDeclaration<Class>
+struct Field final : MemberDeclaration<Class>
 {
-	using MemberDeclaration<Class>::MemberDeclaration;
+	using MemberDeclaration::MemberDeclaration;
 
-	ghassanpl::enum_flags<Reflector::FieldFlags> Flags;
+	enum_flags<FieldFlags> Flags;
 	std::string Type;
 	std::string InitializingExpression;
 
@@ -244,8 +244,8 @@ struct Field : public MemberDeclaration<Class>
 	/// Name it will be saved under
 	std::string SaveName;
 
-	Method* AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {}, ghassanpl::enum_flags<Reflector::EntityFlags> entity_flags = {});
-	void CreateArtificialMethodsAndDocument(Options const& options);
+	Method* AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, enum_flags<MethodFlags> additional_flags = {}, enum_flags<EntityFlags> entity_flags = {});
+	void CreateArtificialMethodsAndDocument(Options const& options) override;
 
 	virtual json ToJSON() const override;
 
@@ -254,7 +254,7 @@ struct Field : public MemberDeclaration<Class>
 	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Field; }
 };
 
-struct MethodParameter : SimpleDeclaration
+struct MethodParameter final : SimpleDeclaration
 {
 	std::string Type;
 	std::string Initializer;
@@ -262,11 +262,11 @@ struct MethodParameter : SimpleDeclaration
 	json ToJSON() const;
 };
 
-struct Method : public MemberDeclaration<Class>
+struct Method final : MemberDeclaration<Class>
 {
-	using MemberDeclaration<Class>::MemberDeclaration;
+	using MemberDeclaration::MemberDeclaration;
 
-	ghassanpl::enum_flags<Reflector::MethodFlags> Flags;
+	enum_flags<MethodFlags> Flags;
 
 	void SetParameters(std::string params);
 	auto const& GetParameters() const { return mParameters; }
@@ -288,8 +288,9 @@ struct Method : public MemberDeclaration<Class>
 
 	std::string GetSignature(Class const& parent_class) const;
 
-	Method* AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body, std::vector<std::string> comments, ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {}, ghassanpl::enum_flags<Reflector::EntityFlags> entity_flags = {});
-	void CreateArtificialMethodsAndDocument(Options const& options);
+	Method* AddArtificialMethod(std::string function_type, std::string results, std::string name, std::string parameters, std::string body,
+		std::vector<std::string> comments, enum_flags<MethodFlags> additional_flags = {}, enum_flags<EntityFlags> entity_flags = {});
+	void CreateArtificialMethodsAndDocument(Options const& options) override;
 
 	virtual std::string FullName(std::string_view sep = "_") const override;
 
@@ -308,18 +309,18 @@ private:
 	void Split();
 };
 
-struct Property : MemberDeclaration<Class>
+struct Property final : MemberDeclaration<Class>
 {
-	using MemberDeclaration<Class>::MemberDeclaration;
+	using MemberDeclaration::MemberDeclaration;
 
-	ghassanpl::enum_flags<Reflector::PropertyFlags> Flags;
+	enum_flags<PropertyFlags> Flags;
 
 	Method const* Setter = nullptr;
 	Method const* Getter = nullptr;
 	Field const* SourceField = nullptr;
 	std::string Type;
 
-	void CreateArtificialMethodsAndDocument(Options const& options);
+	void CreateArtificialMethodsAndDocument(Options const& options) override;
 
 	virtual json ToJSON() const override;
 
@@ -328,7 +329,7 @@ struct Property : MemberDeclaration<Class>
 	virtual std::string MakeLink(LinkFlags flags = {}) const override;
 };
 
-struct Class : public TypeDeclaration
+struct Class final : TypeDeclaration
 {
 	using TypeDeclaration::TypeDeclaration;
 
@@ -352,7 +353,7 @@ struct Class : public TypeDeclaration
 	json DefaultFieldAttributes = json::object();
 	json DefaultMethodAttributes = json::object();
 
-	ghassanpl::enum_flags<ClassFlags> Flags;
+	enum_flags<ClassFlags> Flags;
 
 	size_t BodyLine = 0;
 
@@ -366,10 +367,10 @@ struct Class : public TypeDeclaration
 		std::string parameters,
 		std::string body,
 		std::vector<std::string> comments,
-		ghassanpl::enum_flags<Reflector::MethodFlags> additional_flags = {},
-		ghassanpl::enum_flags<Reflector::EntityFlags> entity_flags = {}
+		enum_flags<MethodFlags> additional_flags = {},
+		enum_flags<EntityFlags> entity_flags = {}
 	);
-	void CreateArtificialMethodsAndDocument(Options const& options);
+	void CreateArtificialMethodsAndDocument(Options const& options) override;
 
 	Property& EnsureProperty(std::string name);
 
@@ -378,7 +379,7 @@ struct Class : public TypeDeclaration
 	static Class const* FindClassByPossiblyQualifiedName(std::string_view class_name, Class const* search_context)
 	{
 		/// TODO: This needs to be better, as it won't find a semi-qualified class, e.g. `B::C` won't find class '::A::B::C`
-		if (auto klasses = FindClasses(class_name); !klasses.empty())
+		if (const auto klasses = FindClasses(class_name); !klasses.empty())
 		{
 			if (klasses.size() == 1)
 				return klasses[0];
@@ -412,27 +413,27 @@ private:
 	std::vector<std::unique_ptr<Method>> mArtificialMethods;
 };
 
-struct Enumerator : public MemberDeclaration<Enum>
+struct Enumerator final : MemberDeclaration<Enum>
 {
-	using MemberDeclaration<Enum>::MemberDeclaration;
+	using MemberDeclaration::MemberDeclaration;
 
 	int64_t Value = 0;
 
 	std::string Opposite; /// TODO: Initialize this from options & attribute
 
-	ghassanpl::enum_flags<EnumeratorFlags> Flags;
+	enum_flags<EnumeratorFlags> Flags;
 
 	virtual json ToJSON() const override;
 
 	/// TODO: We should also use the artificial method subsystem for enumerators, as it means they will get docnotes
-	void CreateArtificialMethodsAndDocument(Options const& options);
+	void CreateArtificialMethodsAndDocument(Options const& options) override;
 
 	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Enumerator; }
 
 	virtual std::string MakeLink(LinkFlags flags = {}) const override;
 };
 
-struct Enum : public TypeDeclaration
+struct Enum final : TypeDeclaration
 {
 	using TypeDeclaration::TypeDeclaration;
 
@@ -442,7 +443,7 @@ struct Enum : public TypeDeclaration
 
 	json DefaultEnumeratorAttributes = json::object();
 
-	ghassanpl::enum_flags<EnumFlags> Flags;
+	enum_flags<EnumFlags> Flags;
 
 	bool IsConsecutive() const
 	{
@@ -461,7 +462,7 @@ struct Enum : public TypeDeclaration
 
 	/// TODO: We should also use the artificial method subsystem to create functions like GetNext, etc.
 	/// as they will be documented/referenced that way!
-	void CreateArtificialMethodsAndDocument(Options const& options);
+	void CreateArtificialMethodsAndDocument(Options const& options) override;
 
 	virtual ::DeclarationType DeclarationType() const override { return DeclarationType::Enum; }
 };

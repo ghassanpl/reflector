@@ -35,7 +35,7 @@ std::string EscapeString(std::string_view string)
 	if (!string_contains(string, '"'))
 		return std::format("\"{}\"", string);
 	/// """" is not a valid substring of a JSON document, so we can use it to escape the string
-	return std::format("R\"\"\"\"\"({})\"\"\"\"\"", string);
+	return std::format(R"lit(R"""""({})""""")lit", string);
 }
 
 std::string EscapeJSON(json const& json)
@@ -45,9 +45,9 @@ std::string EscapeJSON(json const& json)
 	return EscapeString(json.dump());
 }
 
-uint64_t GenerateUID(std::filesystem::path const& file_path, size_t declaration_line)
+uint64_t GenerateUID(path const& file_path, size_t declaration_line)
 {
-	return ghassanpl::hash64(file_path.string(), declaration_line);
+	return hash64(file_path.string(), declaration_line);
 }
 
 bool SwallowOptional(string_view& str, string_view swallow)
@@ -90,14 +90,14 @@ void ParseCppAttributes(std::string_view& line, json& target_attrs)
 		trim_whitespace_left(line);
 
 		auto id = ParseIdentifier(line);
-		id = ghassanpl::map_at_or_default(cpp_attributes_to_reflector_attributes, id, id);
+		id = map_at_or_default(cpp_attributes_to_reflector_attributes, id, id);
 		auto& entry = target_attrs[id] = true;
 
 		trim_whitespace_left(line);
 		if (consume(line, "("))
 		{
 			trim_whitespace_left(line);
-			entry = ghassanpl::formats::wilson::consume_word_or_string(line).value_or("");
+			entry = formats::wilson::consume_word_or_string(line).value_or("");
 			trim_whitespace_left(line);
 			std::ignore = consume(line, ")");
 			trim_whitespace_left(line);
@@ -139,6 +139,7 @@ std::string ParseType(string_view& str)
 		case ')': parens--; continue;
 		case '<': tris++; continue;
 		case '>': tris--; continue;
+		default: break;
 		}
 
 		if (ascii::isblank(str[0]))
@@ -176,13 +177,14 @@ std::string ParseExpression(string_view& str)
 		switch (*p)
 		{
 		case '[': brackets++; continue;
-		case ']': if (brackets > 0) { brackets--; continue; } else break;
+		case ']': if (brackets > 0) { brackets--; continue; } break;
 		case '(': parens++; continue;
-		case ')': if (parens > 0) { parens--; continue; } else break;
+		case ')': if (parens > 0) { parens--; continue; } break;
 		case '{': braces++; continue;
-		case '}': if (braces > 0) { braces--; continue; } else break;
+		case '}': if (braces > 0) { braces--; continue; } break;
 		case '<': tris++; continue;
 		case '>': tris--; continue;
+		default: break;
 		}
 
 		if ((*p == ',' || *p == ')' || *p == ';') && parens == 0 && tris == 0 && brackets == 0 && braces == 0)
@@ -201,7 +203,7 @@ json ParseAttributeList(string_view line)
 	line = TrimWhitespace(line);
 	if (line.empty())
 		return json::object();
-	auto result = ghassanpl::formats::wilson::consume_object(line, ')').value_or(json{});
+	auto result = formats::wilson::consume_object(line, ')').value_or(json{});
 	if (auto unsettable = AttributeProperties::FindUnsettable(result); !unsettable.empty())
 		throw std::runtime_error(format("The following attributes: '{}' cannot be set by the user, try using the C++ equivalents if applicable.", join(unsettable, ", ")));
 	return result;
@@ -291,12 +293,12 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::strin
 				{
 					base = 8;
 				}
-				auto fc_result = std::from_chars(std::to_address(rest.begin()), std::to_address(rest.end()), enumerator_value, base);
+				auto [end_ptr, ec] = std::from_chars(std::to_address(rest.begin()), std::to_address(rest.end()), enumerator_value, base);
 
-				if (fc_result.ec != std::errc{})
+				if (ec != std::errc{})
 					throw std::runtime_error("Non-integer enumerator values are not supported");
 				
-				rest = TrimWhitespace(make_sv(fc_result.ptr, rest.end()));
+				rest = TrimWhitespace(make_sv(end_ptr, rest.end()));
 			}
 
 			(void)consume(rest, ",");
@@ -347,10 +349,10 @@ void RemoveBlockComments(std::string& str)
 {
 	while (!str.empty())
 	{
-		auto start = str.find("/*");
+		const auto start = str.find("/*");
 		if (start == std::string::npos)
 			break;
-		auto end = str.find("*/", start);
+		const auto end = str.find("*/", start);
 		if (end == std::string::npos)
 		{
 			str.erase(start);
@@ -456,13 +458,10 @@ ParsedFieldDecl ParseFieldDecl(string_view line)
 			continue;
 		break;
 	}
-	
 
-	const string_view eq = "=";
-	const string_view open_brace = "{";
+	const auto eq_start = std::ranges::find_first_of(line, "=");
+	const auto brace_start = std::ranges::find_first_of(line, "{");
 	string_view type_and_name;
-	const auto eq_start = std::ranges::find_first_of(line, eq);
-	const auto brace_start = std::ranges::find_first_of(line, open_brace);
 	
 	if (eq_start != line.end())
 	{
@@ -501,7 +500,7 @@ ParsedFieldDecl ParseFieldDecl(string_view line)
 	return result;
 }
 
-std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, string_view line, string_view next_line, size_t line_num, AccessMode mode, std::vector<std::string> comments, Options const& options)
+std::unique_ptr<Field> ParseFieldDecl(const FileMirror&, Class& klass, string_view line, string_view next_line, size_t line_num, AccessMode mode, std::vector<std::string> comments, Options const& options)
 {
 	auto result = std::make_unique<Field>(&klass);
 	Field& field = *result;
@@ -544,32 +543,32 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 		|| (!is_public && Attribute::PrivateGetters(klass) == false)
 		|| (is_public && !options.GenerateAccessorsForPublicFields)
 		)
-		field.Flags.set(Reflector::FieldFlags::NoGetter);
+		field.Flags.set(FieldFlags::NoGetter);
 	if (Attribute::Setter.GetOr(field, true) == false 
 		|| (!is_public && Attribute::PrivateSetters(klass) == false)
 		|| (is_public && !options.GenerateAccessorsForPublicFields)
 		)
-		field.Flags.set(Reflector::FieldFlags::NoSetter);
+		field.Flags.set(FieldFlags::NoSetter);
 	if (Attribute::Editor.GetOr(field, true) == false)
-		field.Flags.set(Reflector::FieldFlags::NoEdit);
+		field.Flags.set(FieldFlags::NoEdit);
 	if (Attribute::Script.GetOr(field, true) == false)
-		field.Flags.set(Reflector::FieldFlags::NoScript);
+		field.Flags.set(FieldFlags::NoScript);
 	if (Attribute::Save.GetOr(field, true) == false)
-		field.Flags.set(Reflector::FieldFlags::NoSave);
+		field.Flags.set(FieldFlags::NoSave);
 	if (Attribute::Load.GetOr(field, true) == false)
-		field.Flags.set(Reflector::FieldFlags::NoLoad);
+		field.Flags.set(FieldFlags::NoLoad);
 
 	/// Serialize = false implies Save = false, Load = false
 	if (Attribute::Serialize.GetOr(field, true) == false)
-		field.Flags.set(Reflector::FieldFlags::NoSave, Reflector::FieldFlags::NoLoad);
+		field.Flags.set(FieldFlags::NoSave, FieldFlags::NoLoad);
 
 	/// Private implies Getter = false, Setter = false, Editor = false
 	if (Attribute::Private.GetOr(field, false))
-		field.Flags.set(Reflector::FieldFlags::NoEdit, Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
+		field.Flags.set(FieldFlags::NoEdit, FieldFlags::NoSetter, FieldFlags::NoGetter);
 	if (Attribute::Transient.GetOr(field, false))
-		field.Flags.set(Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoSave, Reflector::FieldFlags::NoLoad);
+		field.Flags.set(FieldFlags::NoSetter, FieldFlags::NoSave, FieldFlags::NoLoad);
 	if (Attribute::ScriptPrivate.GetOr(field, false))
-		field.Flags.set(Reflector::FieldFlags::NoSetter, Reflector::FieldFlags::NoGetter);
+		field.Flags.set(FieldFlags::NoSetter, FieldFlags::NoGetter);
 
 	/// ParentPointer implies Editor = false, Setter = false
 	/*
@@ -587,18 +586,18 @@ std::unique_ptr<Field> ParseFieldDecl(const FileMirror& mirror, Class& klass, st
 
 	/// Enable if explictly stated
 	if (Attribute::Getter.GetOr(field, false) == true)
-		field.Flags.unset(Reflector::FieldFlags::NoGetter);
+		field.Flags.unset(FieldFlags::NoGetter);
 	if (Attribute::Setter.GetOr(field, false) == true)
-		field.Flags.unset(Reflector::FieldFlags::NoSetter);
+		field.Flags.unset(FieldFlags::NoSetter);
 	if (Attribute::Editor.GetOr(field, false) == true)
-		field.Flags.unset(Reflector::FieldFlags::NoEdit);
+		field.Flags.unset(FieldFlags::NoEdit);
 	if (Attribute::Save.GetOr(field, false) == true)
-		field.Flags.unset(Reflector::FieldFlags::NoSave);
+		field.Flags.unset(FieldFlags::NoSave);
 	if (Attribute::Load.GetOr(field, false) == true)
-		field.Flags.unset(Reflector::FieldFlags::NoLoad);
+		field.Flags.unset(FieldFlags::NoLoad);
 
 	if (Attribute::Required(field))
-		field.Flags.set(Reflector::FieldFlags::Required);
+		field.Flags.set(FieldFlags::Required);
 
 	if (Attribute::NoUniqueAddress(field))
 		field.Flags += FieldFlags::NoUniqueAddress;
@@ -620,7 +619,7 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 
 	while (true)
 	{
-		using enum Reflector::MethodFlags;
+		using enum MethodFlags;
 
 		if (SwallowOptional(next_line, "virtual")) method.Flags += Virtual;
 		else if (SwallowOptional(next_line, "static")) method.Flags += Static;
@@ -667,7 +666,7 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 
 	while (true)
 	{
-		using enum Reflector::MethodFlags;
+		using enum MethodFlags;
 
 		if (SwallowOptional(next_line, "const")) method.Flags += Const;
 		else if (SwallowOptional(next_line, "final")) method.Flags += Final;
@@ -679,8 +678,7 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 	{
 		next_line = Expect(next_line, "->");
 
-		auto end_line = next_line.find_first_of("{;=");
-		if (end_line != std::string::npos)
+		if (auto end_line = next_line.find_first_of("{;="); end_line != std::string::npos)
 		{
 			if (next_line[end_line] == '=')
 				method.Flags += MethodFlags::Abstract;
@@ -694,8 +692,7 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 	{
 		method.Return.Name = pre_type;
 
-		auto end_line = next_line.find_first_of("{;=");
-		if (end_line != std::string::npos && next_line[end_line] == '=')
+		if (auto end_line = next_line.find_first_of("{;="); end_line != std::string::npos && next_line[end_line] == '=')
 			method.Flags += MethodFlags::Abstract;
 	}
 
@@ -709,7 +706,7 @@ std::unique_ptr<Method> ParseMethodDecl(Class& klass, string_view line, string_v
 		method.Flags += MethodFlags::NoReturn;
 
 	if (Attribute::Script.GetOr(method, true) == false)
-		method.Flags.set(Reflector::MethodFlags::NoScript);
+		method.Flags.set(MethodFlags::NoScript);
 
 	method.Comments = std::move(comments);
 
@@ -794,7 +791,7 @@ std::unique_ptr<Class> ParseClassDecl(FileMirror* mirror, string_view line, stri
 	return result;
 }
 
-bool ParseClassFile(std::filesystem::path path, Options const& options)
+bool ParseClassFile(path path, Options const& options)
 {
 	path = path.lexically_normal();
 
@@ -809,9 +806,9 @@ bool ParseClassFile(std::filesystem::path path, Options const& options)
 	infile.close();
 
 	FileMirror& mirror = *AddMirror();
-	mirror.SourceFilePath = std::filesystem::absolute(path);
+	mirror.SourceFilePath = absolute(path);
 
-	AccessMode current_access = AccessMode::Unspecified;
+	auto current_access = AccessMode::Unspecified;
 
 	std::vector<std::string> comments;
 

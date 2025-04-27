@@ -14,7 +14,7 @@ bool AttributeProperties::AppliesTo(Declaration const& decl) const { return Vali
 std::vector<std::string_view> AttributeProperties::FindUnsettable(json const& attrs)
 {
 	std::vector<std::string_view> result;
-	for (auto& attr : AllAttributes)
+	for (auto const& attr : AllAttributes)
 	{
 		if (attr->ExistsIn(attrs) && attr->Flags.contain(AttributePropertyFlags::NotUserSettable))
 			result.push_back(attr->Name());
@@ -22,7 +22,7 @@ std::vector<std::string_view> AttributeProperties::FindUnsettable(json const& at
 	return result;
 }
 
-tl::expected<void, std::string> AttributeProperties::Validate(json const& attr_value, Declaration const& decl) const
+expected<void, std::string> AttributeProperties::Validate(json const& attr_value, Declaration const& decl) const
 {
 	if (!AppliesTo(decl))
 		return tl::unexpected(std::format("`{}` attribute only applies on the following entities: {}", Name(), join(ValidTargets, ", ", [](auto e) { return magic_enum::enum_name(e); })));
@@ -75,36 +75,35 @@ namespace Targets
 	enum_flags Types { DeclarationType::Class, DeclarationType::Enum };
 }
 
-AttributeValidatorFunc IsString = [](json const& attr_value, Declaration const& on_decl) -> tl::expected<void, std::string> {
+AttributeValidatorFunc IsString = [](json const& attr_value, Declaration const&) -> expected<void, std::string> {
 	if (!attr_value.is_string())
 		return tl::unexpected("must be a string"s);
 	return {};
 };
 
-AttributeValidatorFunc IsBoolOrString = [](json const& attr_value, Declaration const& on_decl) -> tl::expected<void, std::string> {
+AttributeValidatorFunc IsBoolOrString = [](json const& attr_value, Declaration const&) -> expected<void, std::string> {
 	if (!attr_value.is_string() && !attr_value.is_boolean())
 		return tl::unexpected("must be a string or boolean"s);
 	return {};
 };
 
-AttributeValidatorFunc NotEmptyString = [](json const& attr_value, Declaration const& on_decl) -> tl::expected<void, std::string> {
+AttributeValidatorFunc NotEmptyString = [](json const& attr_value, Declaration const& on_decl) -> expected<void, std::string> {
 	if (auto err = IsString(attr_value, on_decl); !err) return err;
 	if (attr_value.get_ref<std::string const&>().empty())
 		return tl::unexpected(", if set, cannot be empty"s);
 	return {};
 };
 
-AttributeValidatorFunc IsReflectedEnum = [](json const& attr_value, Declaration const& on_decl) -> tl::expected<void, std::string> {
+AttributeValidatorFunc IsReflectedEnum = [](json const& attr_value, Declaration const& on_decl) -> expected<void, std::string> {
 	if (auto err = NotEmptyString(attr_value, on_decl); !err) return err;
 	if (FindEnum(attr_value) != nullptr)
 		return {};
 	return tl::unexpected(format("must name a reflected enum; '{}' is not a reflected enum.", attr_value.get_ref<std::string const&>()));
 };
 
-AttributeValidatorFunc IsIdentifier = [](json const& attr_value, Declaration const& on_decl)->tl::expected<void, std::string> {
+AttributeValidatorFunc IsIdentifier = [](json const& attr_value, Declaration const& on_decl)->expected<void, std::string> {
 	if (auto err = NotEmptyString(attr_value, on_decl); !err) return err;
-	std::string_view identifier{attr_value};
-	if (!ascii::is_identifier(identifier))
+	if (std::string_view identifier{attr_value}; !ascii::is_identifier(identifier))
 		return tl::unexpected(format("must be a valid C++ identifier", identifier));
 	return {};
 };
@@ -134,7 +133,7 @@ const StringAttributeProperties Attribute::Namespace {
 	"Namespace",
 	"A helper since we don't parse namespaces; set this to the full namespace of the following type, otherwise you might get errors",
 	Targets::Types,
-	[](json const& attr_value, Declaration const& on_decl) -> tl::expected<void, std::string> {
+	[](json const& attr_value, Declaration const& on_decl) -> expected<void, std::string> {
 		if (auto err = NotEmptyString(attr_value, on_decl); !err) return err;
 		auto namespaces = split(attr_value.get_ref<std::string const&>(), "::");
 		for (auto& ns : namespaces)

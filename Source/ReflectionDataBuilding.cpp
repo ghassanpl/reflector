@@ -49,8 +49,8 @@ static path RelativePath(path const& writing_file, path const& referenced_file)
 /// The executable change time, if it is newer, always takes precedence over the source file's last write time.
 uint64_t ArtifactNeedsRegenerating(const path& target_path, const path& source_path, const Options& opts)
 {
-	const auto stat = std::filesystem::status(target_path);
-	const uint64_t file_change_time = std::max(ExecutableChangeTime, static_cast<uint64_t>(std::filesystem::last_write_time(source_path).time_since_epoch().count()));
+	const auto stat = status(target_path);
+	const uint64_t file_change_time = std::max(ExecutableChangeTime, static_cast<uint64_t>(last_write_time(source_path).time_since_epoch().count()));
 	if (stat.type() != std::filesystem::file_type::not_found)
 	{
 		/// Open file and get first line
@@ -74,7 +74,7 @@ bool CreateJSONDBArtifact(ArtifactArgs args)
 {
 	json db;
 
-	for (const auto& mirror : GetMirrors())
+	for (auto&& mirror : GetMirrors())
 	{
 		db[mirror->SourceFilePath.string()] = mirror->ToJSON();
 	}
@@ -173,7 +173,7 @@ bool CreateReflectorHeaderArtifact(ArtifactArgs args)
 bool CreateIncludeListArtifact(ArtifactArgs args)
 {
 	FileWriter out{ args };
-	for (const auto& mirror : GetMirrors())
+	for (auto&& mirror : GetMirrors())
 	{
 		/// TODO: Make these relative
 		auto relative = mirror->SourceFilePath.lexically_relative(args.TargetPath.parent_path());
@@ -187,7 +187,7 @@ bool CreateTypeListArtifact(ArtifactArgs args)
 {
 	FileWriter out{ args };
 
-	for (const auto& mirror : GetMirrors())
+	for (auto&& mirror : GetMirrors())
 	{
 		for (auto& klass : mirror->Classes)
 			out.WriteLine("ReflectClass({}, {})", klass->Name, klass->FullType());
@@ -281,7 +281,7 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 
 	/// Property visitor
 	output.StartDefine("#define {0}_VISIT_{1}_PROPERTIES({0}_VISITOR)", options.MacroPrefix, klass.FullName());
-	size_t i = 0;
+	size_t property_index = 0;
 	for (const auto& property : klass.Properties | std::views::values)
 	{
 #if 0
@@ -309,9 +309,9 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 
 		const auto debugging_comment_prefix = options.DebuggingComments ? std::format("/* {} */ ", property.Name) : std::string{};
 		output.WriteLine("{}{}_VISITOR(::Reflector::PropertyVisitorData<{}>{{ &{}::StaticGetReflectionData().Properties[{}] }});",
-			debugging_comment_prefix, options.MacroPrefix, compile_time_property_data, klass_full_type, i);
+			debugging_comment_prefix, options.MacroPrefix, compile_time_property_data, klass_full_type, property_index);
 
-		++i;
+		++property_index;
 	}
 	output.EndDefine("");
 
@@ -337,8 +337,6 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 	{
 		output.WriteLine("using parent_type = {};", klass.BaseClass);
 		output.WriteLine("using parent_type::parent_type;");
-
-		//output.WriteLine("[[no_unique_address]] ::Reflector::NUA _nua_for_{} = [](auto* me) {{ me->SetClass(&self_type::StaticGetReflectionData()); return 0; }}(this);", klass.FullName());
 	}
 	else
 	{
@@ -433,7 +431,7 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 	/// Output artificial methods
 	for (auto& func : klass.Methods)
 	{
-		if (func->Flags.is_set(Reflector::MethodFlags::Artificial))
+		if (func->Flags.is_set(MethodFlags::Artificial))
 			output.WriteLine("{}{}auto {}({}){} -> {} {{ {} }}", FormatAccess(func->Access), FormatPreFlags(func->Flags), func->Name, func->GetParameters(), FormatPostFlags(func->Flags), func->Return.Name, func->ArtificialBody);
 	}
 
@@ -481,22 +479,22 @@ bool FileMirrorOutputContext::BuildClassEntry(const Class& klass)
 		output.WriteLine("mutable PROXY_OBJ ReflectionProxyObject;");
 		for (auto& func : klass.Methods)
 		{
-			if (!func->Flags.is_set(Reflector::MethodFlags::Virtual))
+			if (!func->Flags.is_set(MethodFlags::Virtual))
 				continue;
 
 			auto base = std::format("virtual auto {}({})", func->Name, func->GetParameters());
-			if (func->Flags.is_set(Reflector::MethodFlags::Const))
+			if (func->Flags.is_set(MethodFlags::Const))
 				base += " const";
-			if (func->Flags.is_set(Reflector::MethodFlags::Noexcept))
+			if (func->Flags.is_set(MethodFlags::Noexcept))
 				base += " noexcept";
 
 			output.StartBlock("{} -> decltype(T::{}({})) override {{", base, func->Name, func->ParametersNamesOnly);
 			/// TODO: Change {1} to std::forward<>({1})
 			output.WriteLine("using return_type = decltype(T::{0}({1}));", func->Name, func->ParametersNamesOnly);
 			if (func->Flags.is_set(MethodFlags::Abstract))
-				output.WriteLine(R"(if (ReflectionProxyObject.Contains("{0}")) return ReflectionProxyObject.template CallOverload<return_type>("{0}"{2}{1}); else ReflectionProxyObject.AbstractCall("{0}");)", func->Name, func->ParametersNamesOnly, (func->ParametersSplit.size() ? ", " : ""));
+				output.WriteLine(R"(if (ReflectionProxyObject.Contains("{0}")) return ReflectionProxyObject.template CallOverload<return_type>("{0}"{2}{1}); else ReflectionProxyObject.AbstractCall("{0}");)", func->Name, func->ParametersNamesOnly, (func->ParametersSplit.empty() ? "" : ", "));
 			else
-				output.WriteLine(R"(return ReflectionProxyObject.Contains("{0}") ? ReflectionProxyObject.template CallOverload<return_type>("{0}"{2}{1}) : T::{0}({1});)", func->Name, func->ParametersNamesOnly, (func->ParametersSplit.size() ? ", " : ""));
+				output.WriteLine(R"(return ReflectionProxyObject.Contains("{0}") ? ReflectionProxyObject.template CallOverload<return_type>("{0}"{2}{1}) : T::{0}({1});)", func->Name, func->ParametersNamesOnly, (func->ParametersSplit.empty() ? "" : ", "));
 			output.EndBlock("}}");
 		}
 		output.CurrentIndent--;
@@ -619,7 +617,7 @@ bool FileMirrorOutputContext::BuildEnumEntry(const Enum& henum)
 					if (enumerator->DisplayName == enumerator->Name)
 						output.WriteLine("case {}: return \"{}\";", enumerator->Value, enumerator->Name);
 					else
-						output.WriteLine("case {}: return display_name ? \"{}\" : \"{}\";", enumerator->Value, enumerator->DisplayName, enumerator->Name);
+						output.WriteLine(R"(case {}: return display_name ? "{}" : "{}";)", enumerator->Value, enumerator->DisplayName, enumerator->Name);
 				}
 				output.WriteLine("}}");
 			}
@@ -844,11 +842,11 @@ void OutputContext::BuildStaticReflectionData(const Enum& henum)
 	for (auto& enumerator : henum.Enumerators)
 	{
 		if (enumerator->Attributes.empty())
-			output.WriteLine("{{ \"{}\", \"{}\", {}, {}, }},", enumerator->Name, enumerator->DisplayName, enumerator->Value, enumerator->Flags.bits);
+			output.WriteLine(R"({{ "{}", "{}", {}, {}, }},)", enumerator->Name, enumerator->DisplayName, enumerator->Value, enumerator->Flags.bits);
 		else if (options.JSON.Use)
-			output.WriteLine("{{ \"{}\", \"{}\", {}, {}, {}, {}({}) }},", enumerator->Name, enumerator->DisplayName, enumerator->Value, enumerator->Flags.bits, EscapeJSON(enumerator->Attributes), options.JSON.ParseFunction, EscapeJSON(enumerator->Attributes));
+			output.WriteLine(R"({{ "{}", "{}", {}, {}, {}, {}({}) }},)", enumerator->Name, enumerator->DisplayName, enumerator->Value, enumerator->Flags.bits, EscapeJSON(enumerator->Attributes), options.JSON.ParseFunction, EscapeJSON(enumerator->Attributes));
 		else
-			output.WriteLine("{{ \"{}\", \"{}\", {}, {}, {} }},", enumerator->Name, enumerator->DisplayName, enumerator->Value, enumerator->Flags.bits, EscapeJSON(enumerator->Attributes));
+			output.WriteLine(R"({{ "{}", "{}", {}, {}, {} }},)", enumerator->Name, enumerator->DisplayName, enumerator->Value, enumerator->Flags.bits, EscapeJSON(enumerator->Attributes));
 	}
 	output.EndBlock("}},");
 	output.WriteLine(".TypeIndex = typeid({}),", henum.FullType());
@@ -972,9 +970,9 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 		}
 		if (!klass.BaseClass.empty())
 		{
-			output.WriteLine("dest_object[\"{}\"] = \"{}\";", options.JSON.ObjectTypeFieldName, klass.FullType());
+			output.WriteLine(R"(dest_object["{}"] = "{}";)", options.JSON.ObjectTypeFieldName, klass.FullType());
 			if (!klass.GUID.empty())
-				output.WriteLine("dest_object[\"{}\"] = \"{}\";", options.JSON.ObjectGUIDFieldName, klass.GUID);
+				output.WriteLine(R"(dest_object["{}"] = "{}";)", options.JSON.ObjectGUIDFieldName, klass.GUID);
 		}
 		output.EndBlock("}}");
 	}
@@ -985,12 +983,12 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 	output.StartBlock("static const ::Reflector::Class _data = {{");
 	output.WriteLine(".Name = \"{}\",", klass.Name);
 	if (!klass.DisplayName.empty())
-		output.WriteLine(".DisplayName = \"{}\",", klass.DisplayName);
-	output.WriteLine(".FullType = \"{}\",", klass.FullType());
+		output.WriteLine(R"(.DisplayName = "{}",)", klass.DisplayName);
+	output.WriteLine(R"(.FullType = "{}",)", klass.FullType());
 
 	/// TODO: Comment and describe here why we should only give the type as the parent class name, since we support full namespaced names?
 	///output.WriteLine(".BaseClassName = \"{}\",", OnlyType(klass.BaseClass));
-	output.WriteLine(".BaseClassName = \"{}\",", klass.BaseClass);
+	output.WriteLine(R"(.BaseClassName = "{}",)", klass.BaseClass);
 
 	if (!klass.Attributes.empty())
 	{
