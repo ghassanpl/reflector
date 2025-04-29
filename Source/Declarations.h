@@ -7,6 +7,8 @@
 
 #include "Common.h"
 
+#include <boost/icl/interval_set.hpp>
+
 Enum const* FindEnum(string_view name);
 std::vector<Class const*> FindClasses(string_view name);
 std::vector<TypeDeclaration const*> FindTypes(string_view name);
@@ -486,6 +488,15 @@ struct FileMirror
 	FileMirror(FileMirror&&) noexcept = default;
 	FileMirror& operator=(FileMirror const&) = delete;
 	FileMirror& operator=(FileMirror&&) noexcept = default;
+
+	/// These fields and methods are only usable during parsing
+	std::string SourceFileContents;
+	std::vector<std::string_view> SourceFileLines;
+	boost::icl::interval_set<intptr_t> SourceInactiveSpans;
+
+	bool LineIsInactive(std::string_view line) const;
+	bool LineIsInactive(size_t line) const { return LineIsInactive(SourceFileLines.at(line)); }
+
 };
 
 std::vector<FileMirror const*> GetMirrors();

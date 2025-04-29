@@ -756,6 +756,12 @@ void Enum::CreateArtificialMethodsAndDocument(Options const& options)
 		enumerator->CreateArtificialMethodsAndDocument(options);
 }
 
+bool FileMirror::LineIsInactive(std::string_view line) const
+{
+	const auto line_start_character_index = line.data() - SourceFileContents.data();
+	return boost::icl::contains(SourceInactiveSpans, line_start_character_index);
+}
+
 json FileMirror::ToJSON() const
 {
 	json result = json::object();

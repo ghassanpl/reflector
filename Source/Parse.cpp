@@ -209,8 +209,9 @@ json ParseAttributeList(string_view line)
 	return result;
 }
 
-std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, const std::vector<std::string>& lines, size_t& line_num, Options const& options)
+std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, size_t& line_num, Options const& options)
 {
+	auto& lines = mirror->SourceFileLines;
 	auto result = std::make_unique<Enum>(mirror);
 	Enum& henum = *result;
 
@@ -791,6 +792,71 @@ std::unique_ptr<Class> ParseClassDecl(FileMirror* mirror, string_view line, stri
 	return result;
 }
 
+/// Function that finds disabled sections of code
+/// If a start of a line lands within an inactive span, it is skipped when parsing
+static boost::icl::interval_set<intptr_t> FindInactiveSpans(std::string_view file, Options const& options)
+{
+	boost::icl::interval_set<intptr_t> result;
+	size_t quotes = 0;
+	std::string terminator;
+	std::string_view inactivity_type;
+	bool in_inactive = false;
+
+	auto start = file.data();
+
+	while (!file.empty())
+	{
+		if (in_inactive)
+		{
+			if (auto terminator_pos = file.find(terminator); terminator_pos != std::string::npos)
+			{
+				const auto inactivity_start = file.data() - start;
+				const auto inactivity_end = inactivity_start + intptr_t(terminator_pos);
+				result.add({ inactivity_start, inactivity_end });
+				file = file.substr(terminator_pos + terminator.size());
+				in_inactive = false;
+				terminator = {};
+				continue;
+			}
+			else
+				throw std::runtime_error(std::format("Unterminated {}", inactivity_type));
+		}
+		else
+		{
+			/// Find raw string literals or comments, as those are the only two token types that can span lines
+			/// TODO: Lines that end with \ can also span multiple lines, tackle that later
+			
+			if (auto start_raw_string = file.find("R\""); start_raw_string != std::string::npos)
+			{
+				auto end_terminator_pos = file.find('(', start_raw_string);
+				if (end_terminator_pos == std::string::npos)
+					throw std::runtime_error("Invalid raw string literal, missing starting '('");
+				terminator = std::format("){}\"", file.substr(start_raw_string + 2, end_terminator_pos - (start_raw_string+2)));
+				in_inactive = true;
+				inactivity_type = "raw string literal";
+				file = file.substr(end_terminator_pos + 1);
+				continue;
+			}
+
+			if (auto start_raw_string = file.find("/*"); start_raw_string != std::string::npos)
+			{
+				terminator = "*/";
+				in_inactive = true;
+				inactivity_type = "block comment";
+				file = file.substr(start_raw_string + 2);
+				continue;
+			}
+
+			file = {}; /// No more stuff to find, end loop
+		}
+	}
+
+	if (in_inactive)
+		throw std::runtime_error(std::format("Unterminated {}", inactivity_type));
+
+	return result;
+}
+
 bool ParseClassFile(path path, Options const& options)
 {
 	path = path.lexically_normal();
@@ -798,24 +864,39 @@ bool ParseClassFile(path path, Options const& options)
 	if (options.Verbose)
 		PrintLine("Analyzing file {}", path.string());
 
-	std::vector<std::string> lines;
-	std::string input_line;
-	std::ifstream infile{ path };
-	while (std::getline(infile, input_line))
-		lines.push_back(std::exchange(input_line, {}));
-	infile.close();
+
+	auto mapping = make_mmap_source<char>(path);
 
 	FileMirror& mirror = *AddMirror();
 	mirror.SourceFilePath = absolute(path);
+	mirror.SourceFileContents.assign(mapping.begin(), mapping.end());
+
+	mapping.unmap();
+
+	mirror.SourceFileLines = string_ops::split(mirror.SourceFileContents, '\n');
+	mirror.SourceInactiveSpans = FindInactiveSpans(mirror.SourceFileContents, options);
+
+	//if (options.Verbose) /// TODO: options.Debug/Trace
+	/*{
+		for (auto& span : mirror.SourceInactiveSpans)
+		{
+			PrintLine("\tInactive span in file {}: {} - {}", path.string(), span.lower(), span.upper());
+			Print("{}", std::string_view{ mirror.SourceFileContents }.substr(span.lower(), span.upper()-span.lower()));
+			PrintLine("");
+		}
+	}*/
 
 	auto current_access = AccessMode::Unspecified;
 
 	std::vector<std::string> comments;
 
-	for (size_t line_num = 1; line_num < lines.size(); line_num++)
+	for (size_t line_num = 1; line_num < mirror.SourceFileLines.size(); line_num++)
 	{
-		auto current_line = TrimWhitespace(string_view{ lines[line_num - 1] });
-		const auto next_line = TrimWhitespace(string_view{ lines[line_num] });
+		if (mirror.LineIsInactive(line_num))
+			continue;
+
+		auto current_line = TrimWhitespace(string_view{ mirror.SourceFileLines[line_num - 1] });
+		const auto next_line = TrimWhitespace(string_view{ mirror.SourceFileLines[line_num] });
 
 		/// TODO: RAlias(); for `using`s
 
@@ -829,7 +910,7 @@ bool ParseClassFile(path path, Options const& options)
 				current_access = AccessMode::Private;
 			else if (current_line.starts_with(options.EnumAnnotationName))
 			{
-				mirror.Enums.push_back(ParseEnum(&mirror, lines, line_num, options));
+				mirror.Enums.push_back(ParseEnum(&mirror, line_num, options));
 				mirror.Enums.back()->Comments = std::exchange(comments, {});
 				mirror.Enums.back()->ReflectionUID = GenerateUID(path, line_num);
 				if (options.Verbose)
@@ -909,6 +990,10 @@ bool ParseClassFile(path path, Options const& options)
 			return false;
 		}
 	}
+
+	mirror.SourceInactiveSpans = {};
+	mirror.SourceFileLines = {};
+	mirror.SourceFileContents = {};
 
 	return true;
 }

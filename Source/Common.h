@@ -77,7 +77,7 @@ void PrintLine(std::string_view fmt, ARGS&&... args)
 template <typename... ARGS>
 void Print(std::string_view fmt, ARGS&&... args)
 {
-	PrintSafe(std::cout, std::vformat(fmt, std::make_format_args(std::forward<ARGS>(args)...)));
+	PrintSafe(std::cout, std::vformat(fmt, std::make_format_args(args...)));
 }
 
 std::string EscapeJSON(json const& json);

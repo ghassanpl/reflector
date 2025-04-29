@@ -4,6 +4,7 @@
   "dependencies": [
     "nlohmann-json",
     "magic-enum",
-    "tl-expected"
+    "tl-expected",
+    "boost-icl"
   ]
 }
