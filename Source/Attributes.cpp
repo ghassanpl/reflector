@@ -7,16 +7,14 @@
 #include "Documentation.h"
 #include "Declarations.h"
 
-std::vector<AttributeProperties const*> AttributeProperties::AllAttributes;
-
-bool AttributeProperties::AppliesTo(Declaration const& decl) const { return ValidTargets.contain(decl.DeclarationType()); }
+bool AttributeProperties::AppliesTo(Declaration const& decl) const { return mValidTargets.contain(decl.DeclarationType()); }
 
 std::vector<std::string_view> AttributeProperties::FindUnsettable(json const& attrs)
 {
 	std::vector<std::string_view> result;
-	for (auto const& attr : AllAttributes)
+	for (auto const& attr : mAllAttributes)
 	{
-		if (attr->ExistsIn(attrs) && attr->Flags.contain(AttributePropertyFlags::NotUserSettable))
+		if (attr->mFlags.contain(AttributePropertyFlags::NotUserSettable) && attr->ExistsIn(attrs))
 			result.push_back(attr->Name());
 	}
 	return result;
@@ -25,9 +23,9 @@ std::vector<std::string_view> AttributeProperties::FindUnsettable(json const& at
 expected<void, std::string> AttributeProperties::Validate(json const& attr_value, Declaration const& decl) const
 {
 	if (!AppliesTo(decl))
-		return tl::unexpected(std::format("`{}` attribute only applies on the following entities: {}", Name(), join(ValidTargets, ", ", [](auto e) { return magic_enum::enum_name(e); })));
-	if (Validator)
-		return Validator(attr_value, decl);
+		return tl::unexpected(std::format("`{}` attribute only applies on the following entities: {}", Name(), join(mValidTargets, ", ", [](auto e) { return magic_enum::enum_name(e); })));
+	if (mValidator)
+		return mValidator(attr_value, decl);
 	return {};
 }
 
@@ -38,7 +36,7 @@ std::optional<std::string> AttributeProperties::ExistsIn(Declaration const& decl
 
 std::optional<std::string> AttributeProperties::ExistsIn(json const& attrs) const
 {
-	if (const auto it = std::ranges::find_if(ValidNames, [&](std::string const& name) { return attrs.contains(name); }); it != ValidNames.end())
+	if (const auto it = std::ranges::find_if(mValidNames, [&](std::string const& name) { return attrs.contains(name); }); it != mValidNames.end())
 		return *it;
 	return std::nullopt;
 }
@@ -51,7 +49,7 @@ void AttributeProperties::ValidateThrowing(json const& attr_value, Declaration c
 
 json const* AttributeProperties::Find(Declaration const& decl, bool validate) const
 {
-	for (auto& name : ValidNames)
+	for (auto& name : mValidNames)
 	{
 		if (auto it = decl.Attributes.find(name); it != decl.Attributes.end() && !it->is_null())
 		{
@@ -63,6 +61,7 @@ json const* AttributeProperties::Find(Declaration const& decl, bool validate) co
 	return nullptr;
 }
 
+/// Simple aliases for common sets of attribute targets
 namespace Targets
 {
 	enum_flags Enums = DeclarationType::Enum;
@@ -110,20 +109,20 @@ AttributeValidatorFunc IsIdentifier = [](json const& attr_value, Declaration con
 
 AttributeValidatorFunc NoValidator{};
 
-const StringAttributeProperties Attribute::DisplayName{
+const StringAttributeProperties Attribute::DisplayName {
 	"DisplayName",
 	"The name that is going to be displayed in editors and such",
 	Targets::Any
 };
 
-const StringAttributeProperties Attribute::SaveName{
+const StringAttributeProperties Attribute::SaveName {
 	"SaveName",
 	"The name that this field will be saved with; can be used to rename fields without losing alraedy serialized data",
 	Targets::Fields
 };
 
 /// TODO: This should become LoadName with "LoadNames;LoadName", and be a ';'-separated list of names to try to load from
-const StringAttributeProperties Attribute::LoadName{
+const StringAttributeProperties Attribute::LoadName {
 	"LoadName",
 	"The name that this field will be loaded from; can be used to rename fields without losing alraedy serialized data",
 	Targets::Fields
@@ -139,13 +138,13 @@ const StringAttributeProperties Attribute::Namespace {
 		for (auto& ns : namespaces)
 		{
 			if (!ascii::is_identifier(ns))
-				return tl::unexpected(format("must be a valid namespace ('{}' unexpected)", ns));
+				return tl::unexpected(format("must be a valid namespace name ('{}' unexpected)", ns));
 		}
 		return {};
 	}
 };
 
-const StringAttributeProperties Attribute::GUID{
+const StringAttributeProperties Attribute::GUID {
 	"GUID",
 	"A globaly-unique ID for this type. Can aid with renaming.",
 	Targets::Types,
@@ -166,13 +165,13 @@ const BoolAttributeProperties Attribute::Setter {
 	Targets::Fields,
 	true
 };
-const BoolAttributeProperties Attribute::Editor{
+const BoolAttributeProperties Attribute::Editor {
 	"Editor;Edit",
 	"Whether or not this entity should be editable",
 	Targets::Fields + Targets::Classes,
 	true
 };
-const BoolAttributeProperties Attribute::Script{
+const BoolAttributeProperties Attribute::Script {
 	"Script;Scriptable",
 	"Whether or not this field should be accessible via script",
 	Targets::Members,
@@ -206,7 +205,7 @@ const BoolAttributeProperties Attribute::DocumentMembers {
 
 const BoolAttributeProperties Attribute::Serialize{ "Serialize", "False means both 'Save' and 'Load' are false", {DeclarationType::Field, DeclarationType::Class}, true };
 const BoolAttributeProperties Attribute::Private{ "Private", "True sets 'Edit', 'Setter', 'Getter' to false", Targets::Fields, false };
-const BoolAttributeProperties Attribute::Transient{ "Transient", "True sets 'Setter' and 'Serialize' to false", Targets::Fields, false }; /// TODO: This
+const BoolAttributeProperties Attribute::Transient{ "Transient", "True sets 'Setter' and 'Serialize' to false", Targets::Fields, false };
 const BoolAttributeProperties Attribute::ScriptPrivate{ "ScriptPrivate", "True sets 'Setter', 'Getter' to false", Targets::Fields, false };
 
 /// TODO: Add AMs and docnotes for this
@@ -214,7 +213,7 @@ const BoolAttributeProperties Attribute::ScriptPrivate{ "ScriptPrivate", "True s
 
 const BoolAttributeProperties Attribute::Required {
 	"Required",
-	"A helper flag for the serialization system - will set the FieldFlags::Required flag",
+	"The marked field is required to be present when deserializing class",
 	Targets::Fields,
 	false
 };
@@ -235,51 +234,60 @@ const BoolAttributeProperties Attribute::PrivateSetters {
 
 const StringAttributeProperties Attribute::OnChange {
 	"OnChange",
-	"Executes the given code when this field changes",
+	"Executes the given code when this field changes via setter functions",
 	Targets::Fields,
-	NoValidator /// It can be empty, because it is code
+	IsString,
 };
+
+constexpr auto FlagsCat = "Flags"_ac;
+
+/// TODO: We could make `Requires(attr)` and `Excludes(attr)` validators, and a function
+/// that concats validators; this way we can enforce FlagGetters/FlagNots/etc. early
 
 const StringAttributeProperties Attribute::FlagGetters {
 	"FlagGetters",
-	"If set to an (reflected) enum name, creates public getter functions (IsFlag) for each Flag in this field, and private setters; can't be set if 'Flags' is set",
+	"If set to an (reflected) enum name, creates public getter functions (IsFlag) for each Flag in the enum, and private setters; can't be set if the 'Flags' attribute is set",
 	Targets::Fields,
-	IsReflectedEnum
+	IsReflectedEnum,
+	FlagsCat
 };
 const StringAttributeProperties Attribute::Flags {
 	"Flags",
-	"If set to an (reflected) enum name, creates public getter and setter functions (IsFlag, SetFlag, UnsetFlag, ToggleFlag) for each Flag in this field; can't be set if 'FlagGetters' is set",
+	"If set to an (reflected) enum name, creates public getter and setter functions (IsFlag, SetFlag, UnsetFlag, ToggleFlag) for each Flag in the enum; can't be set if the 'FlagGetters' attribute is set",
 	Targets::Fields,
-	IsReflectedEnum
+	IsReflectedEnum,
+	FlagsCat
 };
 const BoolAttributeProperties Attribute::FlagNots {
 	"FlagNots",
 	"Requires 'Flags' attribute. If set, creates IsNotFlag functions in addition to regular IsFlag (except for enumerators with Opposite attribute).",
 	Targets::Fields,
-	true
+	true,
+	FlagsCat
 };
+/// TODO: SkipFlags=[Black, Blue] for Flags fields
 
-const StringAttributeProperties Attribute::UniqueName{
+const StringAttributeProperties Attribute::UniqueName {
 	"UniqueName",
-	"A unique (within this class) name of this method; useful for overloaded functions",
+	"A unique (within this class) name of this method; useful when script-binding overloaded functions to languages without overloading",
 	Targets::Methods,
 	IsIdentifier
 };
-const StringAttributeProperties Attribute::ScriptName{
+const StringAttributeProperties Attribute::ScriptName {
 	"ScriptName",
-	"A name of this class member that will be used in scripts",
+	"The name of this class member that will be used in scripts",
 	Targets::Members,
 	IsIdentifier
 };
 
 const StringAttributeProperties Attribute::GetterFor {
 	"GetterFor",
-	"This function is a getter for the named field",
+	"This function is a getter for the named field; useful when you are binding Property accessors to scripts",
 	Targets::Methods,
 };
 const StringAttributeProperties Attribute::SetterFor {
 	"SetterFor",
-	"This function is a setter for the named field",
+	"This function is a setter for the named field; useful when you are binding Property accessors to scripts",
 	Targets::Methods,
 };
 const BoolAttributeProperties Attribute::Property{
@@ -291,14 +299,14 @@ const BoolAttributeProperties Attribute::Property{
 /// TODO: Should this also be a flag?
 const BoolAttributeProperties Attribute::Abstract {
 	"Abstract",
-	"This record is abstract (don't create special constructors)",
+	"This class is abstract (don't create special constructors)",
 	Targets::Classes,
 	false
 };
 
 const BoolAttributeProperties Attribute::Singleton {
 	"Singleton",
-	"This record is a singleton. Adds a static function (default name 'SingletonInstance') that returns the single instance of this record. Note that for now, GC-enabled classes cannot be singletons.",
+	"This class is a singleton. Adds a static function (default name 'SingletonInstance') that returns the single instance of this record. Note that for now, GC-enabled classes cannot be singletons.",
 	Targets::Classes,
 	false
 };
@@ -339,7 +347,7 @@ const BoolAttributeProperties Attribute::Unimplemented {
 };
 
 /// TODO: This will also generate a enum class type that represents the unique IDs (`ClassNameID` or controlled by options: `{}_id`)
-const StringAttributeProperties Attribute::UniqueID{
+const StringAttributeProperties Attribute::UniqueID {
 	"UniqueID",
 	"If set, will create a unique ID field with the given name, and a generator function, for this class",
 	Targets::Classes,
