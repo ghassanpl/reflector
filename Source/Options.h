@@ -105,7 +105,7 @@ struct DocumentationOptions
 	RField();
 	std::string Language = "en";
 
-	/// The directory to put documentation into
+	/// The directory to put documentation into, relative to the artifact path
 	RField();
 	path TargetDirectory = "Documentation";
 

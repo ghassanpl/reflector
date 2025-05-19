@@ -286,6 +286,7 @@ struct Attribute
 	///		and will return it in functions that can return an invalid value (e.g. `GetEnumeratorValue`, etc.)
 	static const TypedAttributeProperties<int64_t> InvalidValue;
 	static const StringAttributeProperties InvalidValueName;
+	static const BoolAttributeProperties AliasEnum; 
 
 	static const BoolAttributeProperties GenerateJSONSchema;
 

@@ -298,7 +298,7 @@ const BoolAttributeProperties Attribute::Property{
 
 /// TODO: Should this also be a flag?
 const BoolAttributeProperties Attribute::Abstract {
-	"Abstract",
+	"Abstract;Interface",
 	"This class is abstract (don't create special constructors)",
 	Targets::Classes,
 	false
@@ -368,6 +368,13 @@ const StringAttributeProperties Attribute::Opposite {
 	"When used in a Flag enum, will create a virtual flag with the given name that is the complement of this one, for the purposes of creating getters and setters",
 	Targets::Enumerators,
 	IsIdentifier,
+	EnumerationsCat
+};
+const BoolAttributeProperties Attribute::AliasEnum{
+	"AliasEnum",
+	"The marked enum is not meant as a container for enumerators, but as an strong type alias for another integral type",
+	Targets::Enums,
+	false,
 	EnumerationsCat
 };
 

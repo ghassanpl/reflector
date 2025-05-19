@@ -182,7 +182,7 @@ std::string ParseExpression(string_view& str)
 		case ')': if (parens > 0) { parens--; continue; } break;
 		case '{': braces++; continue;
 		case '}': if (braces > 0) { braces--; continue; } break;
-		case '<': tris++; continue;
+		case '<': tris++; continue; /// TODO: These won't work for normal comparisons (e.g. A < B)
 		case '>': tris--; continue;
 		default: break;
 		}
@@ -241,96 +241,105 @@ std::unique_ptr<Enum> ParseEnum(FileMirror* mirror, size_t& line_num, Options co
 	if (SwallowOptional(header_line, ":"))
 		henum.BaseType = ParseType(header_line);
 
+	header_line = TrimWhitespace(header_line);
+
 	if (!SwallowOptional(header_line, "{"))
 	{
 		line_num++;
 		Expect(TrimWhitespace(lines[line_num]), "{");
 	}
 
-	json attribute_list = json::object();
+	header_line = TrimWhitespace(header_line);
 
-	/// TODO: Gather comments
-
-	std::vector<std::string> comments;
-
-	line_num++;
-	int64_t enumerator_value = 0;
-	while (TrimWhitespace(lines[line_num]) != "};")
+	if (!SwallowOptional(header_line, "}")) /// Could be empty enum
 	{
-		auto enumerator_line = TrimWhitespace(string_view{ lines[line_num] });
+		json attribute_list = json::object();
 
-		if (consume(enumerator_line, "///"))
-		{
-			comments.push_back((std::string)TrimWhitespace(enumerator_line));
-		}
-		else if (enumerator_line.empty() || enumerator_line.starts_with("//") || enumerator_line.starts_with("/*"))
-		{
-			/// just skip
-		}
-		else if (consume(enumerator_line, options.EnumeratorAnnotationName))
-		{
-			attribute_list = ParseAttributeList(enumerator_line);
-		}
-		else
-		{
-			auto name = ParseIdentifier(enumerator_line);
+		/// TODO: Gather comments
 
-			json cpp_attributes = json::object();
-			ParseCppAttributes(header_line, cpp_attributes);
-
-			auto rest = TrimWhitespace(enumerator_line);
-			if (consume(rest, '='))
-			{
-				rest = TrimWhitespace(rest);
-
-				/// TODO: Parse C++ integer literal (including 0x/0b bases, ' separators, suffixes, etc.)
-				int base = 10;
-				if (ascii::string_starts_with_ignore_case(rest, "0x"))
-				{
-					rest.remove_prefix(2);
-					base = 16;
-				} 
-				else if (rest.starts_with('0'))
-				{
-					base = 8;
-				}
-				auto [end_ptr, ec] = std::from_chars(std::to_address(rest.begin()), std::to_address(rest.end()), enumerator_value, base);
-
-				if (ec != std::errc{})
-					throw std::runtime_error("Non-integer enumerator values are not supported");
-				
-				rest = TrimWhitespace(make_sv(end_ptr, rest.end()));
-			}
-
-			(void)consume(rest, ",");
-			rest = TrimWhitespace(rest);
-
-			if (consume(rest, "///"))
-				comments.push_back((std::string)trimmed_whitespace_left(rest));
-			else if (!rest.empty())
-				throw std::runtime_error("Enumerators must be the only thing on their line (except comments)");
-
-			if (!name.empty())
-			{
-				auto enumerator_result = std::make_unique<Enumerator>(&henum);
-				Enumerator& enumerator = *enumerator_result;
-				enumerator.Name = TrimWhitespace(name);
-				enumerator.DisplayName = enumerator.Name;
-				enumerator.Value = enumerator_value;
-				enumerator.DeclarationLine = line_num;
-				enumerator.Attributes = henum.DefaultEnumeratorAttributes;
-				enumerator.Attributes.update(std::exchange(attribute_list, json::object()), true);
-				enumerator.Attributes.update(cpp_attributes);
-				enumerator.Comments = std::exchange(comments, {});
-				Attribute::DisplayName.TryGet(enumerator, enumerator.DisplayName);
-				henum.Enumerators.push_back(std::move(enumerator_result));
-				enumerator_value++;
-			}
-
-			comments.clear();
-		}
+		std::vector<std::string> comments;
 
 		line_num++;
+		int64_t enumerator_value = 0;
+		while (TrimWhitespace(lines.at(line_num)) != "};")
+		{
+			if (mirror->LineIsInactive(line_num)) continue;
+
+			auto enumerator_line = TrimWhitespace(string_view{ lines[line_num] });
+
+			if (consume(enumerator_line, "///"))
+			{
+				comments.push_back((std::string)TrimWhitespace(enumerator_line));
+			}
+			else if (enumerator_line.empty() || enumerator_line.starts_with("//") || enumerator_line.starts_with("/*"))
+			{
+				/// just skip
+			}
+			else if (consume(enumerator_line, options.EnumeratorAnnotationName))
+			{
+				attribute_list = ParseAttributeList(enumerator_line);
+			}
+			else
+			{
+				auto name = ParseIdentifier(enumerator_line);
+
+				json cpp_attributes = json::object();
+				ParseCppAttributes(header_line, cpp_attributes);
+
+				auto rest = TrimWhitespace(enumerator_line);
+				if (consume(rest, '='))
+				{
+					rest = TrimWhitespace(rest);
+
+					/// TODO: Parse C++ integer literal (including 0x/0b bases, ' separators, suffixes, etc.)
+					int base = 10;
+					if (ascii::string_starts_with_ignore_case(rest, "0x"))
+					{
+						rest.remove_prefix(2);
+						base = 16;
+					}
+					else if (rest.starts_with('0'))
+					{
+						base = 8;
+					}
+					auto [end_ptr, ec] = std::from_chars(std::to_address(rest.begin()), std::to_address(rest.end()), enumerator_value, base);
+
+					if (ec != std::errc{})
+						throw std::runtime_error("Non-integer enumerator values are not supported");
+
+					rest = TrimWhitespace(make_sv(end_ptr, rest.end()));
+				}
+
+				(void)consume(rest, ",");
+				rest = TrimWhitespace(rest);
+
+				if (consume(rest, "///"))
+					comments.push_back((std::string)trimmed_whitespace_left(rest));
+				else if (!rest.empty())
+					throw std::runtime_error("Enumerators must be the only thing on their line (except comments)");
+
+				if (!name.empty())
+				{
+					auto enumerator_result = std::make_unique<Enumerator>(&henum);
+					Enumerator& enumerator = *enumerator_result;
+					enumerator.Name = TrimWhitespace(name);
+					enumerator.DisplayName = enumerator.Name;
+					enumerator.Value = enumerator_value;
+					enumerator.DeclarationLine = line_num;
+					enumerator.Attributes = henum.DefaultEnumeratorAttributes;
+					enumerator.Attributes.update(std::exchange(attribute_list, json::object()), true);
+					enumerator.Attributes.update(cpp_attributes);
+					enumerator.Comments = std::exchange(comments, {});
+					Attribute::DisplayName.TryGet(enumerator, enumerator.DisplayName);
+					henum.Enumerators.push_back(std::move(enumerator_result));
+					enumerator_value++;
+				}
+
+				comments.clear();
+			}
+
+			line_num++;
+		}
 	}
 
 	henum.Namespace = Attribute::Namespace.GetOr(henum, options.DefaultNamespace);

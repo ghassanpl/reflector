@@ -916,7 +916,7 @@ void OutputContext::BuildStaticReflectionData(const Class& klass)
 			output.StartBlock("else try {{");
 			output.WriteLine("using field_type = std::remove_cvref_t<decltype({})>;", field->FullName("::"));
 			output.WriteLine("static_assert(::nlohmann::detail::is_basic_json<field_type>::value || ::nlohmann::detail::has_from_json<::nlohmann::json, field_type>::value, \"cannot serialize type '{0}' of field {1}\");", field->Type, field->FullName("::"));
-			output.WriteLine("it->get_to<{}>(this->{});", field->Type, field->Name);
+			output.WriteLine("it->get_to<field_type>(this->{});", field->Name);
 			output.EndBlock("}}");
 			if (options.JSON.IgnoreInvalidObjectFields)
 			{
